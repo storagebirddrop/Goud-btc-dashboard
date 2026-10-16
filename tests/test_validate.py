@@ -36,7 +36,8 @@ def test_reject_unknown_series(tmp_path):
 
 def test_daily_gold_multiple_days_allowed(tmp_path):
     path = write_rows(tmp_path, [{"date": "2000-01-03", "series": "gold_daily_eur_oz", "value": "300"}, {"date": "2000-01-04", "series": "gold_daily_eur_oz", "value": "310"}])
-    assert load_csv(path)[("gold_daily_eur_oz", "2000-01-03")] == [300]\n    assert load_csv(path)[("gold_daily_eur_oz", "2000-01-04")] == [310]
+    assert load_csv(path)[("gold_daily_eur_oz", "2000-01-03")] == [300]
+    assert load_csv(path)[("gold_daily_eur_oz", "2000-01-04")] == [310]
 
 def test_daily_duplicate_date_rejected(tmp_path):
     row = {"date": "2000-01-03", "series": "gold_daily_eur_oz", "value": "300"}
