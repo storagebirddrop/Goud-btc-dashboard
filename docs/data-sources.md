@@ -19,3 +19,10 @@
 - Distinguish the average house sale price from the quality-adjusted price index.
 
 The CSV validation code checks input structure, ranges and duplicates. It does not establish the truth or licensing of submitted data.
+
+## Verified identifiers for adapter development
+
+- CBS national existing-home series: [85773NED](https://opendata.cbs.nl/CBS/nl/dataset/85773NED/table). Verify exact OData fields and category codes before ingesting.
+- ECB USD per EUR: [EXR.D.USD.EUR.SP00.A](https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.USD.EUR.SP00.A). The adapter in `etl/sources/ecb.py` downloads daily quotes to a local CSV only.
+- Convert same-date gold USD per ounce to EUR per ounce by **dividing** by USD per EUR. Do not invert the rate.
+- Gold data provider and redistribution rights remain unverified. No production data is loaded.
