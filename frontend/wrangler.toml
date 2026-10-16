@@ -1,0 +1,9 @@
+name = "goud-btc-dashboard"
+compatibility_date = "2026-09-01"
+pages_build_output_dir = "dist"
+
+# Configure the actual D1 database ID before deploying.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "gold-housing"
+# database_id = "REPLACE_WITH_REAL_DATABASE_ID"
