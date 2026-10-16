@@ -1,6 +1,10 @@
 """Live CBS contract checks. Run only in dedicated network-enabled CI workflow."""
+import os
 import re
+import pytest
 import requests
+
+pytestmark = pytest.mark.skipif(os.getenv('CBS_LIVE_TEST') != '1', reason='live CBS contract checks run in dedicated workflow')
 from etl.sources.cbs import BASE, resolve_fields, parse_rows
 
 def get_json(endpoint, params=None):
