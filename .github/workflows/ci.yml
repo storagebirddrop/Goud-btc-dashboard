@@ -11,6 +11,7 @@ concurrency:
 jobs:
   python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,6 +21,7 @@ jobs:
       - run: python -m pytest -q
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -28,6 +30,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Bootstrap only: replace with npm ci once a reviewed lockfile is committed.
+      # Bootstrap only. Replace with npm ci after committing a reviewed lockfile.
       - run: npm install --no-audit --no-fund
       - run: npm run build
