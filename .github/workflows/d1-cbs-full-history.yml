@@ -1,0 +1,59 @@
+name: D1 CBS full history local integration
+on:
+  pull_request:
+    paths:
+      - 'etl/d1_import.py'
+      - 'etl/sources/cbs.py'
+      - '.github/workflows/d1-cbs-full-history.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  import-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - name: Download and validate real CBS history; generate SQL
+        run: python -m etl.d1_import --output db/cbs-history-smoke.sql
+      - name: Configure disposable local D1
+        working-directory: frontend
+        run: |
+          cat > wrangler.d1-smoke.toml <<'EOF'
+          name = "goud-btc-history-smoke"
+          compatibility_date = "2026-09-01"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "gold-housing"
+          database_id = "00000000-0000-0000-0000-000000000002"
+          EOF
+          npx wrangler d1 execute gold-housing --local --config wrangler.d1-smoke.toml --file ../db/migrations/0001_init.sql
+      - name: Import real historical SQL twice
+        working-directory: frontend
+        run: |
+          npx wrangler d1 execute gold-housing --local --config wrangler.d1-smoke.toml --file ../db/cbs-history-smoke.sql
+          npx wrangler d1 execute gold-housing --local --config wrangler.d1-smoke.toml --file ../db/cbs-history-smoke.sql
+      - name: Verify count, series and earliest period in local D1
+        working-directory: frontend
+        run: |
+          npx wrangler d1 execute gold-housing --local --config wrangler.d1-smoke.toml --command "SELECT series_id, COUNT(*) AS n, MIN(period) AS first_month, MAX(period) AS last_month FROM observations GROUP BY series_id ORDER BY series_id" --json > ../db/cbs-history-result.json
+          python - <<'PY'
+          import json
+          payload = json.load(open("../db/cbs-history-result.json"))
+          rows = payload[0]["results"]
+          assert {r["series_id"] for r in rows} == {"nl_hpi", "nl_house_avg_eur"}, rows
+          for r in rows:
+              assert r["first_month"] <= "2000-01", r
+              assert r["n"] >= 300, r
+          assert rows[0]["n"] == rows[1]["n"], rows
+          print("Verified historical CBS records in local D1:", rows)
+          PY
