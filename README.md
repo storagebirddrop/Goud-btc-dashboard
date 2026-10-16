@@ -29,7 +29,7 @@ npm install
 npm run build
 ```
 
-The frontend currently uses `npm install` as a bootstrap step because no reviewed `package-lock.json` has been committed. **Before merging**, generate and commit the lockfile and switch CI to `npm ci`.
+The frontend lockfile is committed. Use `npm ci` for reproducible dependency installation in CI and locally.
 
 ## Data format
 
