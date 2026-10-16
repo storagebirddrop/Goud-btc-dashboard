@@ -20,21 +20,29 @@ def load_csv(path):
     rows, _ = read_observations(path)
     data = defaultdict(list)
     for series, d, value in rows:
-        data[(series, d.strftime("%Y-%m"))].append(value)
+        data[(series, d.isoformat() if series == "gold_daily_eur_oz" else d.strftime("%Y-%m"))].append(value)
     return data
 
 def transform(data):
     out = {}
+    gold_daily = defaultdict(list)
     for (series, period), values in data.items():
         if series in SERIES:
             if len(values) != 1:
                 raise ValueError(f"Duplicate monthly observation: {series}/{period}")
             out[(series, period)] = values[0]
-    for (series, period), values in data.items():
-        if series == "gold_daily_eur_oz":
-            if ("gold_eur_oz", period) in out:
-                raise ValueError(f"Conflicting gold inputs: {period}")
-            out[("gold_eur_oz", period)] = sum(values) / len(values)
+        elif series == "gold_daily_eur_oz":
+            if len(values) != 1:
+                raise ValueError(f"Duplicate daily observation: {series}/{period}")
+            if len(period) != 10:
+                raise ValueError(f"Daily gold observation requires YYYY-MM-DD: {period}")
+            gold_daily[period[:7]].append(values[0])
+        else:
+            raise ValueError(f"Unknown series: {series}")
+    for period, values in gold_daily.items():
+        if ("gold_eur_oz", period) in out:
+            raise ValueError(f"Conflicting gold inputs: {period}")
+        out[("gold_eur_oz", period)] = sum(values) / len(values)
     return out
 
 def export_sql(observations, path):
