@@ -12,3 +12,8 @@ Before publication:
 5. Only then add a separate, gated export to public monthly JSON.
 
 The default monthly aggregation rejects incomplete calendar months. A partial first or current month must be handled explicitly rather than silently averaged.
+
+## Manual historical backfill verification
+The workflow `.github/workflows/bitcoin-backfill.yml` can be started manually with a UTC start/end date and EUR/USD quote currency **after merging the branch**. It is intentionally read-only and writes only an artifact containing counts, missing dates and failure reasons, not actual prices. No schedule, repository write permission or public JSON modification.
+
+Suggested first test: 2011-01-01 through 2011-01-31 EUR; a failed run may mean Coin Metrics does not have coverage in that interval, not necessarily a software defect. Follow with verified supported dates, then split longer history into manageable windows. A complete backfill that can be published remains a separate, licensing-gated feature.
