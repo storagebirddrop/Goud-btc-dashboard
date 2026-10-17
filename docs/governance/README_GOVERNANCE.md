@@ -1,6 +1,10 @@
 # Goud & Bitcoin Dashboard — Project Resources v3.0
 
-Deze distributie behoudt de acht aangeleverde v2.1-documenten **ongewijzigd** en voegt vijf governancebestanden toe.
+**Historische pakketbeschrijving:** de oorspronkelijke distributie bevatte acht v2.1-documenten en aanvullende governancebestanden. Deze repository-integratie bevat gecontroleerde aanvullingen op onder meer status, verificatie en documenthiërarchie; de bestanden zijn daarom niet meer ongewijzigd.
+
+## Oorspronkelijke gebruiksinstructies (historisch, niet normatief voor GitHub)
+
+Onderstaande instructies beschrijven de aangeleverde distributie. De actuele repositorywerkwijze staat in [AGENTS.md](../../AGENTS.md) en [DOCUMENT_HIERARCHY.md](DOCUMENT_HIERARCHY.md).
 
 ## In gebruik nemen
 1. Voeg de Markdown-bestanden toe aan de ChatGPT-projectresources; plaats `AGENTS.md` ook in de repositoryroot voor agenten die dat bestand ondersteunen.
@@ -10,9 +14,9 @@ Deze distributie behoudt de acht aangeleverde v2.1-documenten **ongewijzigd** en
 5. Maak GitHub branch protection en vereiste CI-checks apart operationeel. Deze ZIP installeert of configureert ze niet.
 
 ## Status en auditgrenzen
-- De acht oorspronkelijke documenten zijn gekopieerd uit `projectresources-v2.1.zip`, zonder inhoudelijke herziening.
+- De oorspronkelijke v2.1-teksten vormden de basis; deze PR voegt expliciete repositoryverificaties en interpretatienotities toe.
 - De vijf nieuwe bestanden zijn governancevoorstellen, niet bewezen repository-instellingen.
-- Er is in deze oplevering geen actuele GitHub HEAD, CI-run of externe API live geverifieerd.
+- Deze zin gold voor de oorspronkelijke distributie; de repository-integratie heeft GitHub HEAD en CI afzonderlijk geverifieerd in [VERIFICATION_LOG.md](VERIFICATION_LOG.md). Live externe bron- en productiecontroles blijven open.
 - Bestaande `PROPOSED`, `DECIDED` en `VERIFIED_REPO` labels behouden hun oorspronkelijke historische betekenis; een nieuwe sessie moet actuele implementatieclaims opnieuw toetsen.
 
 ## Volgende technische stap
