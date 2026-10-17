@@ -70,3 +70,27 @@ def test_independent_source_crosscheck():
     assert check_reference_prices("103", "100") == Decimal("0.03")
     with pytest.raises(ValueError, match="deviation"):
         check_reference_prices("120", "100")
+
+def test_requested_range_reports_missing_boundaries():
+    checked = validate_daily_prices(sample(("2026-01-02", "2026-01-03")),
+                                    asset="BTC", currency="USD", source="fixture",
+                                    expected_start="2026-01-01", expected_end="2026-01-04")
+    assert checked["missing_days"] == ["2026-01-01", "2026-01-04"]
+    assert checked["requested_start"] == "2026-01-01"
+    assert checked["requested_end"] == "2026-01-04"
+
+
+def test_requested_range_rejects_out_of_range_observations():
+    with pytest.raises(ValueError, match="outside requested"):
+        validate_daily_prices(sample(("2026-01-01", "2026-01-03")),
+                              asset="BTC", currency="USD", source="fixture",
+                              expected_start="2026-01-02", expected_end="2026-01-03")
+
+
+def test_requested_range_rejects_invalid_boundaries():
+    with pytest.raises(ValueError, match="Expected start and end"):
+        validate_daily_prices(sample(), asset="BTC", currency="USD", source="fixture",
+                              expected_start="2026-01-01")
+    with pytest.raises(ValueError, match="Invalid expected date range"):
+        validate_daily_prices(sample(), asset="BTC", currency="USD", source="fixture",
+                              expected_start="2026-01-04", expected_end="2026-01-01")
