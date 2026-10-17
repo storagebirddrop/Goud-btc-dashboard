@@ -78,3 +78,21 @@ def test_missing_requested_boundary_days_are_reported():
                                 session=Session({"prices": [[stamp("2026-09-02"), 100],
                                                             [stamp("2026-09-03"), 200]]}))
     assert result["missing_days"] == ["2026-09-01", "2026-09-04"]
+
+def test_nonfinite_timestamp_and_invalid_price_types_rejected():
+    for bad_timestamp in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="timestamp"):
+            fetch_daily_prices(start="2026-09-01", end="2026-09-01",
+                               session=Session({"prices": [[bad_timestamp, 100]]}))
+    for bad_price in (None, {}, []):
+        with pytest.raises(ValueError, match="price"):
+            fetch_daily_prices(start="2026-09-01", end="2026-09-01",
+                               session=Session({"prices": [[stamp("2026-09-01"), bad_price]]}))
+
+
+def test_price_method_is_explicit_and_earliest_utc_sample_wins():
+    result = fetch_daily_prices(start="2026-09-01", end="2026-09-01",
+                                session=Session({"prices": [[stamp("2026-09-01", 12), 200],
+                                                            [stamp("2026-09-01", 1), 100]]}))
+    assert result["price_method"] == "earliest_available_utc_observation"
+    assert str(next(iter(result["values"].values()))) == "100"
