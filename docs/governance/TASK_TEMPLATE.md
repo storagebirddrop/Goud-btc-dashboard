@@ -25,3 +25,13 @@ Korte samenvatting, gewijzigde bestanden, concrete testcommando's + uitkomst, co
 **Doel:** realiseer reproduceerbare BTC-backfill binnen reeds goedgekeurde methodologie.
 **Acceptatie:** aantoonbare bronprovenance, expliciete ontbrekende waarnemingen, consistente valuta-/datumconversie, idempotente reruns, falende tests voor corruptie of dubbele datums.
 **Escalatie:** alleen bij noodzakelijke wijziging van bronprioriteit, aggregatie of economische definitie.
+
+## v3.1 — taakcontract
+- **Risicoklasse:** [GROEN / ORANJE / ROOD en feitelijke impact]
+- **Delegatie:** [vooraf verleende uitvoering- en mergebevoegdheid]
+- **Merge-gate:** [head-SHA, checks, reviews, beveiligingsstatus en onbekenden]
+- **Beslisgrens:** [eigenaarbesluit dat de agent niet zelfstandig mag nemen]
+- **Technische beoordeling:** [PASS / PASS WITH CONDITIONS / FAIL]
+- **Mergeautorisatie:** [AUTHORIZED / NOT AUTHORIZED / UNKNOWN]
+
+Technische fouten autonoom oplossen; technische kwaliteit nooit als zelfstandige mergeautorisatie beschouwen.
