@@ -1,5 +1,11 @@
 name: Update static CBS dashboard data
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'etl/static_export.py'
+      - 'etl/sources/cbs.py'
+      - '.github/workflows/update-static-data.yml'
   schedule:
     - cron: '20 8 * * 1'
   workflow_dispatch:
