@@ -22,7 +22,7 @@ def check():
         path = ROOT / name if name == "AGENTS.md" else ROOT / "docs" / "governance" / name
         if not path.is_file():
             errors.append(f"Missing: {path.relative_to(ROOT)}")
-    for path in [ROOT / "AGENTS.md", *(ROOT / "docs" / "governance").glob("*.md")]:
+    for path in [ROOT / "AGENTS.md", ROOT / "README.md", ROOT / "docs" / "next-phase.md", *(ROOT / "docs" / "governance").glob("*.md")]:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
@@ -35,8 +35,7 @@ def check():
             target = (path.parent / unquote(href.split("#", 1)[0])).resolve()
             if not target.is_relative_to(ROOT.resolve()) or not target.exists():
                 errors.append(f"{path.relative_to(ROOT)}: broken link {href}")
-    return errors
-
+    # Explicit semantic gate: a documentation-only PR must not silently turn\n    # pending economic choices into approved decisions.\n    decisions = (ROOT / "docs" / "governance" / "DECISIONS.md")\n    if decisions.is_file():\n        decision_text = decisions.read_text(encoding="utf-8")\n        for adr in ("ADR-004", "ADR-007", "ADR-008", "ADR-009"):\n            lines = [line for line in decision_text.splitlines() if line.startswith("| " + adr + " |")]\n            if len(lines) != 1 or "PROPOSED" not in lines[0]:\n                errors.append(f"{adr}: unexpected approval or missing proposal status")\n        if "Geen weekend-/feestdag-carry-forward" not in decision_text and "Geen forward fill" not in (ROOT / "docs" / "governance" / "METHODOLOGY.md").read_text(encoding="utf-8"):\n            errors.append("Missing explicit prohibition on unapproved FX carry-forward")\n    return errors\n
 
 if __name__ == "__main__":
     errors = check()
