@@ -18,11 +18,11 @@ function App(){
  const [error,setError]=React.useState('');
  const [loading,setLoading]=React.useState(true);
  const [metric,setMetric]=React.useState<Metric>('hpi');
- React.useEffect(()=>{fetch('/api/monthly').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}).then((j:{data:Point[]})=>{if(!Array.isArray(j.data))throw Error('Ongeldig API-formaat');setData(j.data)}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
+ React.useEffect(()=>{fetch('/data/monthly.json').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}).then((j:{data:Point[]})=>{if(!Array.isArray(j.data))throw Error('Ongeldig API-formaat');setData(j.data)}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
  const valid=data.filter(p=>p[metric]!==null&&Number.isFinite(p[metric]));
  const first=valid[0]?.period, last=valid[valid.length-1]?.period;
  return <main><h1>Goud versus Nederlandse huizenprijzen</h1><p>Maandelijkse historische vergelijking vanaf 2000 · EUR</p>
- {error?<p role="alert">API niet beschikbaar: {error}</p>:loading?<p>Gegevens laden…</p>:data.length===0?<p>Nog geen gevalideerde brongegevens geladen.</p>:<>
+ {error?<p role="alert">Dashboardgegevens niet beschikbaar: {error}</p>:loading?<p>Gegevens laden…</p>:data.length===0?<p>Nog geen gevalideerde brongegevens geladen.</p>:<>
  <h2>Historische reeksen</h2>
  <label htmlFor="metric">Kies een reeks: </label> <select id="metric" value={metric} onChange={e=>setMetric(e.target.value as Metric)}>{(Object.keys(metrics) as Metric[]).map(k=><option key={k} value={k}>{metrics[k].label}</option>)}</select>
  {valid.length===0?<p>Voor deze reeks zijn nog geen gegevens beschikbaar.</p>:<>

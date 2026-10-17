@@ -16,6 +16,7 @@ frontend/.wrangler/
 *.key
 # Generated datasets
 data/*.csv
+!data/cbs-housing.csv
 data/upsert.sql
 # Editor and OS
 .DS_Store
