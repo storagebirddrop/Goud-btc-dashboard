@@ -77,6 +77,8 @@ def fetch_reference_rates(*, start, end, currency="EUR", session=None, max_pages
         params["next_page_token"] = token
     else:
         raise ValueError("Coin Metrics pagination exceeded page limit")
+    if not records:
+        raise ValueError(f"Coin Metrics returned no BTC/{currency} observations for {start}..{end}; check historical availability and metric support")
     checked = validate_daily_prices(records, asset="BTC", currency=currency,
                                     source="Coin Metrics Community")
     if checked["start"] < start or checked["end"] > end:
