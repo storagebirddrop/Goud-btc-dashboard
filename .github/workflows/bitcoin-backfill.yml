@@ -1,0 +1,48 @@
+name: Bitcoin historical backfill (validation only)
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: First UTC date (YYYY-MM-DD)
+        required: true
+        default: '2011-01-01'
+        type: string
+      end:
+        description: Last UTC date (YYYY-MM-DD)
+        required: true
+        default: '2011-01-31'
+        type: string
+      currency:
+        description: BTC reference-rate quote currency
+        required: true
+        default: EUR
+        type: choice
+        options:
+          - EUR
+          - USD
+permissions:
+  contents: read
+jobs:
+  validate-backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Fetch and validate historical BTC reference rates
+        env:
+          START_DATE: ${{ inputs.start }}
+          END_DATE: ${{ inputs.end }}
+          QUOTE_CURRENCY: ${{ inputs.currency }}
+        run: python -m etl.coinmetrics_backfill
+      - name: Upload validation report (no prices)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-backfill-validation
+          path: backfill-report.json
+          if-no-files-found: warn
+          retention-days: 14
