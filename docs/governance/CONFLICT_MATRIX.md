@@ -43,3 +43,14 @@ Documentintegratie kan onafhankelijk van deze **inhoudelijke** open punten worde
 | G-06 | MEDIUM | Auditcheck op Markdown-links is regex-gebaseerd en dekt geen reference-style links of alle ankers | Scope gedocumenteerd; voor toekomstige uitbreiding overweeg parser of gerichte test | Restbeperking, geen economische wijziging |
 
 **Afbakening:** Dit is een onafhankelijke audit van documentintegratie en PR-diff, niet van CBS- of marktprijsjuistheid. PR #40 is niet gewijzigd. Geen FX-forward-fill, maandaggregatie of publicatieregel goedgekeurd.
+
+## v3.1 update-package reconciliatie
+| Ernst | Pakket versus PR #41 | Beslissing |
+|---|---|---|
+| HIGH | v3.1 `AGENTS.md` verwijst naar root-bestanden en draagt oorspronkelijke `Status: governancevoorstel`; PR #41 bevat correcte root- en `docs/governance/`-paden | Alleen v3.1-autonomieparagraaf geïntegreerd; bestaande paden en status behouden |
+| HIGH | v3.1 `README_GOVERNANCE.md` herhaalt historische claim dat documenten ongewijzigd zijn; eerdere audit heeft dit gecorrigeerd | Correctie behouden; alleen nieuwe synchronisatieregels toegevoegd |
+| HIGH | Nieuwe mergebevoegdheid zou circulair kunnen worden toegepast op PR #41 | Niet-retroactieve autorisatiegrens expliciet in hiërarchie, AGENTS en change control |
+| MEDIUM | v3.1 `PROJECT_STATUS.md` en `VERIFICATION_LOG.md` bevatten oudere snapshots | Bestaande verificaties behouden; uitsluitend nieuw controleerbaar bewijs en open gates toegevoegd |
+| LOW | v3.1 `DOCUMENT_HIERARCHY.md` is een korte aanvulling, niet de bestaande volledige hiërarchie | Bestaande hiërarchie behouden en aangevuld |
+
+**Geen inhoudelijk besluit:** FX-forward-fill, maandaggregatie, bronprioriteit en economische formules blijven onveranderd. PR #40 niet wijzigen.
