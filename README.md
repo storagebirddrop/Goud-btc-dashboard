@@ -4,6 +4,10 @@ Historical purchasing-power comparisons of gold and Bitcoin against Dutch housin
 
 **Status:** early development; not production-ready. The initial scope is **gold versus Dutch house prices**, monthly from January 2000, displayed in EUR. Bitcoin, CPI, fuel, USD and historical NLG conversions are future work.
 
+## Project governance
+
+The authoritative version-controlled governance framework is [AGENTS.md](AGENTS.md) and the [governance document hierarchy](docs/governance/DOCUMENT_HIERARCHY.md). [Decisions](docs/governance/DECISIONS.md) are normative only when explicitly marked `DECIDED`; technical documentation and historical audits are preserved separately. [Conflict matrix](docs/governance/CONFLICT_MATRIX.md) tracks unresolved discrepancies. Open PRs do not constitute approval.
+
 ## Repository structure
 
 - `frontend/` — React/Vite UI loading static JSON from Pages
