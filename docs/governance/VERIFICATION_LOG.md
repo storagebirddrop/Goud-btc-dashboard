@@ -75,3 +75,10 @@ Via verbonden GitHub-connector zijn repository en onderstaande bestanden op de s
 | V-306 | [CI-run 39057669726](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39057669726) | `failure`: letterlijk `\\n` in commentaar schakelde de return/semantische gate uit (`check() is None`); gecorrigeerd |
 
 **Auditstatus:** Bewijs van Python-, frontend- en documentatiecontroles op de **definitieve** HEAD moet afzonderlijk via de laatste CI-run worden vastgelegd. De mislukte runs zijn niet genegeerd of als geslaagd voorgesteld. Geen lokale volledige repositorytest uitgevoerd.
+
+## V-3.1 integratie — nieuwe bewijsgrens (2026-10-17)
+- `VERIFIED_REPO`: PR #41 `open`, `draft`, vóór integratie HEAD `7ae264036ef8d5d97277e5095e231181e3fe1d96`; main `ef5a5e1007affe093d6187631e79c28ed4850326`.
+- `VERIFIED_REPO`: PR-bestandslijst vóór v3.1: 20 bestanden; geen productiecodewijzigingen.
+- `VERIFIED_RUN`: [39057761181](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39057761181) `success` voor v3.0, **niet** voor v3.1.
+- `UNVERIFIED_ACCESS`: beschermingdetail-API 403; zichtbare `protected=false`/lege rulesets geen alomvattende garantie.
+- `PENDING`: nieuwe definitieve GitHub Actions-resultaten, expliciete mergeautorisatie en resource-sync na merge.
