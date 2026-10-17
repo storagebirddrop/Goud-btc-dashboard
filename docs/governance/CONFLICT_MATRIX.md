@@ -30,3 +30,16 @@
 ## Reviewbesluit
 
 Documentintegratie kan onafhankelijk van deze **inhoudelijke** open punten worden beoordeeld, zolang zij als `PROPOSED`/`BLOCKED` blijven staan. Geen economische definitie, bronprioriteit of publicatiebeleid wordt met deze PR gewijzigd.
+
+## Onafhankelijke PR #41 audit — aanvullende bevindingen
+
+| ID | Ernst | Bewijs / betrokken bestand | Remediation | Reststatus |
+|---|---|---|---|---|
+| G-01 | HIGH | `README_GOVERNANCE.md` stelde dat oorspronkelijke documenten ongewijzigd waren en dat geen GitHub-runs waren gecontroleerd, terwijl integratie status/verificatie had aangevuld | Historische pakketclaims expliciet onderscheiden van actuele repository-integratie | Hersteld in PR; CI op definitieve HEAD vereist |
+| G-02 | MEDIUM | `scripts/check_governance_docs.py` controleerde alleen governancepaden, niet README en legacy verwijzingen | README/legacy-paden in controle opgenomen; regressietest voor kapotte links | Hersteld, definitieve CI vereist |
+| G-03 | HIGH (preventief) | Een `PROPOSED` ADR kon zonder geautomatiseerde detectie `DECIDED` worden gemaakt | Statusbewaking voor ADR-004, ADR-007, ADR-008, ADR-009 plus negatieve regressietest | Baselinebewaking toegevoegd; inhoudelijke autorisatie blijft menselijke beslissing |
+| G-04 | MEDIUM | Branch `main` meldt `protected=false` en rulesets API geeft lege lijst; eerdere 403 op protection endpoint | Geen beveiliging gefingeerd; repositoryinstellingen blijven apart in te richten | Open operationeel risico, geen bypass |
+| G-05 | LOW | `CHANGE_CONTROL.md` verwees niet klikbaar naar besluitregister | Relatieve Markdown-link toegevoegd | Hersteld |
+| G-06 | MEDIUM | Auditcheck op Markdown-links is regex-gebaseerd en dekt geen reference-style links of alle ankers | Scope gedocumenteerd; voor toekomstige uitbreiding overweeg parser of gerichte test | Restbeperking, geen economische wijziging |
+
+**Afbakening:** Dit is een onafhankelijke audit van documentintegratie en PR-diff, niet van CBS- of marktprijsjuistheid. PR #40 is niet gewijzigd. Geen FX-forward-fill, maandaggregatie of publicatieregel goedgekeurd.
