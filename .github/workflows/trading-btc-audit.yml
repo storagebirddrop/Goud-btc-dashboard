@@ -1,0 +1,31 @@
+name: Audit existing trading BTC history
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: storagebirddrop/script-trading-anlytics
+          ref: master
+          path: trading-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Audit BTC and EURUSD daily rows without exporting prices
+        run: python -m etl.trading_history_audit trading-source/data/history.csv
+      - name: Upload audit report only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trading-btc-history-audit
+          path: trading-btc-audit-report.json
+          if-no-files-found: warn
+          retention-days: 14
