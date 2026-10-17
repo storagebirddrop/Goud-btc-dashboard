@@ -1,6 +1,12 @@
 name: Audit existing trading BTC history
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trading-btc-audit.yml'
+      - 'etl/trading_history_audit.py'
+      - 'etl/btc_fx_calendar_audit.py'
 permissions:
   contents: read
 jobs:
@@ -21,11 +27,15 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Audit BTC and EURUSD daily rows without exporting prices
         run: python -m etl.trading_history_audit trading-source/data/history.csv
-      - name: Diagnose FX calendar gaps (no conversion)\n        run: python -m etl.btc_fx_calendar_audit trading-source/data/history.csv\n      - name: Upload audit report only
+      - name: Diagnose FX calendar gaps (no conversion)
+        run: python -m etl.btc_fx_calendar_audit trading-source/data/history.csv
+      - name: Upload audit report only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trading-btc-history-audit
-          path: |\n            trading-btc-audit-report.json\n            btc-fx-calendar-report.json
-          if-no-files-found: warn
+          path: |
+            trading-btc-audit-report.json
+            btc-fx-calendar-report.json
+          if-no-files-found: error
           retention-days: 14
