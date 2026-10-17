@@ -1,0 +1,62 @@
+name: Monthly API D1 integration
+on:
+  pull_request:
+    paths:
+      - 'frontend/functions/api/monthly.ts'
+      - 'db/migrations/**'
+      - '.github/workflows/api-monthly-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  monthly-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: frontend
+      - name: Prepare disposable D1 and fixture
+        working-directory: frontend
+        run: |
+          cat > wrangler.api-smoke.toml <<'EOF'
+          name = "goud-btc-api-smoke"
+          compatibility_date = "2026-09-01"
+          pages_build_output_dir = "dist"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "gold-housing"
+          database_id = "00000000-0000-0000-0000-000000000003"
+          EOF
+          npx wrangler d1 execute gold-housing --local --config wrangler.api-smoke.toml --file ../db/migrations/0001_init.sql
+          npx wrangler d1 execute gold-housing --local --config wrangler.api-smoke.toml --command "INSERT INTO observations(series_id,period,value) VALUES ('nl_hpi','2000-01',50),('nl_house_avg_eur','2000-01',150000),('nl_hpi','2000-02',55),('nl_house_avg_eur','2000-02',160000)"
+      - name: Build Pages app
+        working-directory: frontend
+        run: npm run build
+      - name: Start local Pages API
+        working-directory: frontend
+        run: |
+          npx wrangler pages dev dist --d1 DB=gold-housing --local --port 8788 > /tmp/pages-api.log 2>&1 &
+          echo $! > /tmp/pages-api.pid
+          for i in $(seq 1 40); do
+            if curl --silent --fail http://127.0.0.1:8788/api/monthly > /tmp/monthly.json; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/pages-api.log
+          exit 1
+      - name: Assert monthly endpoint and derived fields
+        run: |
+          python - <<'PY'
+          import json
+          rows = json.load(open('/tmp/monthly.json'))['data']
+          assert len(rows) == 2, rows
+          assert [r['period'] for r in rows] == ['2000-01','2000-02'], rows
+          assert [r['house_eur'] for r in rows] == [150000,160000], rows
+          assert [r['hpi'] for r in rows] == [50,55], rows
+          assert [r['hpi_index'] for r in rows] == [100,110], rows
+          assert all(r['gold_index'] is None and r['gold_grams_per_house'] is None for r in rows), rows
+          print('Monthly API integration assertions passed')
+          PY
