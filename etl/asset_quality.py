@@ -24,7 +24,7 @@ def positive_decimal(value, field):
     return result
 
 
-def validate_daily_prices(records, *, asset, currency, source):
+def validate_daily_prices(records, *, asset, currency, source, expected_start=None, expected_end=None):
     """Validate chronological daily observations, no duplicates or silent gaps.
 
     Caller must explicitly identify asset, quote currency and source.
@@ -52,15 +52,29 @@ def validate_daily_prices(records, *, asset, currency, source):
     if not values:
         raise ValueError("Empty price series")
     ordered = sorted(values)
+    if (expected_start is None) != (expected_end is None):
+        raise ValueError("Expected start and end must be provided together")
+    if expected_start is not None:
+        try:
+            lower, upper = date.fromisoformat(expected_start), date.fromisoformat(expected_end)
+        except (TypeError, ValueError):
+            raise ValueError("Invalid expected date range") from None
+        if lower.isoformat() != expected_start or upper.isoformat() != expected_end or lower > upper:
+            raise ValueError("Invalid expected date range")
+        if ordered[0] < lower or ordered[-1] > upper:
+            raise ValueError("Observations outside requested date range")
+    else:
+        lower, upper = ordered[0], ordered[-1]
     missing = []
     from datetime import timedelta
-    current = ordered[0]
-    while current <= ordered[-1]:
+    current = lower
+    while current <= upper:
         if current not in values:
             missing.append(current.isoformat())
         current += timedelta(days=1)
     return {"values": values, "missing_days": missing, "start": ordered[0].isoformat(),
-            "end": ordered[-1].isoformat(), "count": len(values)}
+            "end": ordered[-1].isoformat(), "count": len(values),
+            "requested_start": lower.isoformat(), "requested_end": upper.isoformat()}
 
 
 def monthly_arithmetic_mean(checked, *, min_coverage=Decimal("1")):
