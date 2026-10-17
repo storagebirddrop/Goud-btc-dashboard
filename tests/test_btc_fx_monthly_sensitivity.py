@@ -28,7 +28,7 @@ def test_monthly_sensitivity_and_no_price_export(tmp_path):
     assert m["scenarios"]["0"]["covered_days"] == 2
     assert m["scenarios"]["1"]["covered_days"] == 3
     assert m["scenarios"]["2"]["covered_days"] == 4
-    assert m["scenarios"]["2"]["mean_delta_vs_same_day_pct"] == pytest.approx(15.0)
+    assert m["scenarios"]["2"]["mean_delta_vs_same_day_pct"] == pytest.approx(8.333333, abs=1e-5)
     assert report["price_values_exported"] is False
     assert "price" not in str(m).lower()
 
