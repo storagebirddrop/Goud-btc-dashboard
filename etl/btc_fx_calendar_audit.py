@@ -6,7 +6,7 @@ import csv
 import json
 import sys
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -29,6 +29,23 @@ def diagnose_fx_calendar(path):
     by_weekday = Counter(WEEKDAYS[d.weekday()] for d in missing)
     by_month = Counter(d.strftime("%Y-%m") for d in missing)
     weekday_missing = [d for d in missing if d.weekday() < 5]
+    sorted_fx = sorted(fx)
+    fx_before = {}
+    latest = None
+    for day in sorted(btc | fx):
+        if day in fx:
+            latest = day
+        if day in btc:
+            fx_before[day] = latest
+    age_counts = Counter()
+    unmatched_by_cap = {}
+    for cap in (0, 1, 2, 3, 4, 7):
+        unmatched_by_cap[str(cap)] = sum(
+            1 for day in btc if fx_before[day] is None or (day - fx_before[day]).days > cap
+        )
+    for day in missing:
+        prior = fx_before[day]
+        age_counts["no_prior_fx" if prior is None else str((day - prior).days)] += 1
     return {
         "status": "diagnostic_only",
         "btc_days": len(btc),
@@ -36,6 +53,9 @@ def diagnose_fx_calendar(path):
         "missing_same_day_fx_days": len(missing),
         "missing_fx_by_weekday": {name: by_weekday[name] for name in WEEKDAYS},
         "missing_fx_weekdays": len(weekday_missing),
+        "missing_fx_weekday_dates": [d.isoformat() for d in weekday_missing],
+        "missing_fx_age_days": dict(sorted(age_counts.items())),
+        "unmatched_btc_days_by_max_prior_fx_age": unmatched_by_cap,
         "missing_fx_months": dict(sorted(by_month.items())),
         "publication_approved": False,
         "note": "No FX carry-forward or conversion applied; weekday gaps require review.",
