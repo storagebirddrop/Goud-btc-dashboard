@@ -45,5 +45,5 @@ def test_v31_nonretroactive_merge_and_access_limits():
     assert "UNVERIFIED_ACCESS" in agents
     assert "UNVERIFIED_ACCESS" in change
     assert "niet retroactief" in change.lower()
-    assert "dezelfde PR" in hierarchy
+    assert "diezelfde PR" in hierarchy
     assert "CI" in agents and "menselijke review" in agents
