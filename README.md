@@ -6,9 +6,9 @@ Historical purchasing-power comparisons of gold and Bitcoin against Dutch housin
 
 ## Repository structure
 
-- `frontend/` — React/Vite UI and Cloudflare Pages Function API
-- `etl/` — CSV validation and SQL generation (no remote writes)
-- `db/migrations/` — Cloudflare D1 SQLite schema
+- `frontend/` — React/Vite UI loading static JSON from Pages
+- `etl/` — CBS API ingestion, historical CSV validation, static JSON generation; legacy SQL tooling retained
+- `db/migrations/` — optional legacy Cloudflare D1 schema (not needed for static deployment)
 - `tests/` — Python ETL tests
 - `.github/workflows/ci.yml` — pull request checks; no deployment
 
@@ -54,7 +54,7 @@ This does **not** import to D1. The SQL is generated locally and excluded from G
 
 ## Deployment
 
-Cloudflare Pages and D1 have not been configured. The D1 binding in `frontend/wrangler.toml` is intentionally commented out. Do not enable deployment or scheduled writes until provenance, licensing, data QA, and secrets are reviewed.
+The preferred deployment is Git-integrated **Cloudflare Pages without D1**. See [static data pipeline](docs/static-pipeline.md). The legacy D1 binding remains commented out. Source attribution, licensing and data QA must be reviewed before public launch.
 
 ## Contribution and security
 
