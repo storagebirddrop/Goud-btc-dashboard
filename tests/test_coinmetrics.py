@@ -102,6 +102,6 @@ def test_empty_historical_window_has_actionable_error():
 
 
 def test_empty_api_page_is_distinguished_from_http_failure():
-    with pytest.raises(ValueError, match=r"1 valid API page\\(s\\)"):
+    with pytest.raises(ValueError, match=r"1 valid API page\(s\)"):
         fetch_reference_rates(start="2026-09-01", end="2026-09-30",
                               session=Session([{"data": []}]))
