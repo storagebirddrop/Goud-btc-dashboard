@@ -45,3 +45,9 @@ Een dashboard met Nederlandse woningprijzen versus goud vanaf 1900 is methodolog
 
 ## Impact op live dashboard
 Geen. Huidige CBS-data, GitHub Actions en Cloudflare Pages blijven ongewijzigd.
+
+## Aanvullende Bitcoin-bronnen (aangedragen door gebruiker)
+- **BlockHorizon Charts** — https://charts.blockhorizon.io/ — Bitcoin-analyseplatform. Site bereikbaar; historische prijsdekking, CSV/API-export, methode en herpublicatierechten nog **niet geverifieerd**.
+- **Checkonchain** — https://www.checkonchain.com/ en https://charts.checkonchain.com/ — aanbieder van Bitcoin-on-chain- en marktindicatoren. Officiële website verwijst naar een chartportaal; beschikbaarheid van ruwe historische BTC/EUR- of BTC/USD-prijzen, export/API en licentie voor publieke GitHub-JSON nog **niet geverifieerd**.
+- **Onderzoekscriterium**: onderscheid originele spotprijsdata van afgeleide on-chain-indicatoren; controleer timestamp, quote currency, exchange/composite methode, oudste punt, gaten, rate limits en commerciële redistributie.
+- **Besluit**: beide opnemen op shortlist; geen scraping of kopiëren van chartdata zonder expliciete toestemming/voorwaarden.
