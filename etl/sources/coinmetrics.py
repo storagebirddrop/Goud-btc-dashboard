@@ -84,7 +84,7 @@ def fetch_reference_rates(*, start, end, currency="EUR", session=None, max_pages
         raise ValueError(f"Coin Metrics returned no BTC/{currency} observations for {start}..{end} "
                          f"({pages_seen} valid API page(s)); check metric availability in the Coin Metrics catalog")
     checked = validate_daily_prices(records, asset="BTC", currency=currency,
-                                    source="Coin Metrics Community")
+                                    source="Coin Metrics Community", expected_start=start, expected_end=end)
     if checked["start"] < start or checked["end"] > end:
         raise ValueError("Coin Metrics returned observations outside requested range")
     return checked

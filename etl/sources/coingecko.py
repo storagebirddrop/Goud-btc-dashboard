@@ -4,13 +4,16 @@ Public/demo API historical limits vary by plan. This adapter does not publish
 or persist downloaded prices; use only within the permitted access window.
 """
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import math
 
 import requests
 
 from etl.asset_quality import validate_daily_prices, monthly_arithmetic_mean
 
 BASE_URL = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range"
+# This is a sampled observation, NOT a standardized UTC-midnight fixing.
+DAILY_PRICE_METHOD = "earliest_available_utc_observation"
 
 
 def parse_market_chart(payload, *, start, end, currency):
@@ -21,14 +24,18 @@ def parse_market_chart(payload, *, start, end, currency):
         if not isinstance(pair, (list, tuple)) or len(pair) != 2:
             raise ValueError("Malformed CoinGecko price observation")
         timestamp, value = pair
-        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+        if (isinstance(timestamp, bool) or not isinstance(timestamp, (int, float))
+                or not math.isfinite(timestamp)):
             raise ValueError("Invalid CoinGecko timestamp")
         try:
             day = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc).date().isoformat()
         except (ValueError, OverflowError, OSError):
             raise ValueError("Invalid CoinGecko timestamp") from None
         if start <= day <= end:
-            price = Decimal(str(value))
+            try:
+                price = Decimal(str(value))
+            except (InvalidOperation, TypeError, ValueError):
+                raise ValueError("Invalid CoinGecko price") from None
             if not price.is_finite() or price <= 0:
                 raise ValueError("Invalid CoinGecko price")
             # Range endpoint can include multiple intraday observations.
@@ -41,7 +48,10 @@ def parse_market_chart(payload, *, start, end, currency):
     rows = [{"date": day, "price": str(value), "asset": "BTC",
              "currency": currency, "source": "CoinGecko"}
             for day, (_, value) in sorted(observations.items())]
-    return validate_daily_prices(rows, asset="BTC", currency=currency, source="CoinGecko")
+    checked = validate_daily_prices(rows, asset="BTC", currency=currency, source="CoinGecko",
+                                    expected_start=start, expected_end=end)
+    checked["price_method"] = DAILY_PRICE_METHOD
+    return checked
 
 
 def fetch_daily_prices(*, start, end, currency="EUR", session=None):
