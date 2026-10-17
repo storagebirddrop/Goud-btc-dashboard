@@ -23,5 +23,8 @@ def test_fx_gap_breakdown_by_weekday_and_month(tmp_path):
     assert report["missing_fx_by_weekday"]["Sunday"] == 1
     assert report["missing_fx_by_weekday"]["Monday"] == 1
     assert report["missing_fx_weekdays"] == 1
+    assert report["missing_fx_weekday_dates"] == ["2026-01-05"]
+    assert report["missing_fx_age_days"] == {"1": 1, "2": 1, "3": 1}
+    assert report["unmatched_btc_days_by_max_prior_fx_age"] == {"0": 3, "1": 2, "2": 1, "3": 0, "4": 0, "7": 0}
     assert report["missing_fx_months"] == {"2026-01": 3}
     assert report["publication_approved"] is False
