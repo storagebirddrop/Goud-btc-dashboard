@@ -41,7 +41,8 @@ def parse_market_chart(payload, *, start, end, currency):
     rows = [{"date": day, "price": str(value), "asset": "BTC",
              "currency": currency, "source": "CoinGecko"}
             for day, (_, value) in sorted(observations.items())]
-    return validate_daily_prices(rows, asset="BTC", currency=currency, source="CoinGecko")
+    return validate_daily_prices(rows, asset="BTC", currency=currency, source="CoinGecko",
+                                 expected_start=start, expected_end=end)
 
 
 def fetch_daily_prices(*, start, end, currency="EUR", session=None):
