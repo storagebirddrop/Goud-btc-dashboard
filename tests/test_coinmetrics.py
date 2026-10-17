@@ -105,3 +105,8 @@ def test_empty_api_page_is_distinguished_from_http_failure():
     with pytest.raises(ValueError, match=r"1 valid API page\(s\)"):
         fetch_reference_rates(start="2026-09-01", end="2026-09-30",
                               session=Session([{"data": []}]))
+
+def test_missing_requested_boundary_days_are_reported():
+    session = Session([{"data": [entry("2026-01-02"), entry("2026-01-03")]}])
+    result = fetch_reference_rates(start="2026-01-01", end="2026-01-04", session=session)
+    assert result["missing_days"] == ["2026-01-01", "2026-01-04"]
