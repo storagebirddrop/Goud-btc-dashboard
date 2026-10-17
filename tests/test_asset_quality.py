@@ -94,3 +94,10 @@ def test_requested_range_rejects_invalid_boundaries():
     with pytest.raises(ValueError, match="Invalid expected date range"):
         validate_daily_prices(sample(), asset="BTC", currency="USD", source="fixture",
                               expected_start="2026-01-04", expected_end="2026-01-01")
+
+def test_monthly_aggregation_rejects_missing_requested_edge_dates():
+    checked = validate_daily_prices(sample(("2026-01-02", "2026-01-03")),
+                                    asset="BTC", currency="USD", source="fixture",
+                                    expected_start="2026-01-01", expected_end="2026-01-04")
+    with pytest.raises(ValueError, match="coverage"):
+        monthly_arithmetic_mean(checked)
