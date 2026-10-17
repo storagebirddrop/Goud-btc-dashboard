@@ -1,0 +1,48 @@
+name: Static CBS live pipeline smoke
+on:
+  pull_request:
+    paths:
+      - 'etl/static_export.py'
+      - 'etl/sources/cbs.py'
+      - 'frontend/src/main.tsx'
+      - 'frontend/public/data/monthly.json'
+      - '.github/workflows/update-static-data.yml'
+      - '.github/workflows/static-data-live-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-static-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - name: Download live CBS housing observations
+        run: python -m etl.sources.cbs --output data/cbs-housing.csv
+      - name: Generate and validate static dashboard JSON
+        run: |
+          python -m etl.static_export --input data/cbs-housing.csv --output frontend/public/data/monthly.json
+          python - <<'PY'
+          import json
+          from datetime import date
+          rows = json.load(open('frontend/public/data/monthly.json', encoding='utf-8'))['data']
+          assert len(rows) >= 300, len(rows)
+          assert rows[0]['period'] == '2000-01', rows[0]
+          assert rows[-1]['period'] >= f'{date.today().year-1:04d}-{date.today().month:02d}', rows[-1]
+          assert rows[0]['hpi_index'] == 100
+          assert all(r['house_eur'] > 0 and r['hpi'] > 0 for r in rows)
+          print('Validated', len(rows), 'live monthly CBS records')
+          PY
+      - name: Build site and ensure Vite bundles data
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          cmp public/data/monthly.json dist/data/monthly.json
