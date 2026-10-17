@@ -39,3 +39,13 @@ Werk op een taakbranch tenzij anders opgedragen. Commit alleen beoordeelde wijzi
 Doel; wijzigingen; bestanden/commit/PR (indien werkelijk aanwezig); uitgevoerde tests met uitkomst; datacontroles; afwijkingen en risico's; open beslissingen; volgende stap. Gebruik `NIET UITGEVOERD` waar bewijs ontbreekt.
 ## Documenthiërarchie
 Zie [docs/governance/DOCUMENT_HIERARCHY.md](docs/governance/DOCUMENT_HIERARCHY.md). Bij conflicten geldt de goedgekeurde besluitstatus; historisch auditbewijs is geen autorisatie. PR #40 blijft onafhankelijk en mag niet stilzwijgend worden gemerged.
+
+## v3.1 — risicogestuurde autonomie en release-gate
+- Classificeer op **feitelijke semantische impact** als GROEN, ORANJE of ROOD volgens [CHANGE_CONTROL.md](docs/governance/CHANGE_CONTROL.md); niet uitsluitend op bestandsnamen.
+- GROEN: autonoom repareren, testen en PR voorbereiden. Merge alleen bij **vooraf** expliciet gedelegeerde bevoegdheid en geslaagde geldende checks.
+- ORANJE: autonoom implementeren met extra regressie-, provenance-, rollback- en impactcontrole; review en merge uitsluitend volgens vooraf vastgesteld beleid.
+- ROOD: alleen onderzoek/voorstel zonder inhoudelijke uitvoering totdat de eigenaar expliciet beslist.
+- Maak onderscheid tussen technische CI, kritische AI-review, onafhankelijke menselijke review, expliciete mergeautorisatie en geldende repositorybeveiliging.
+- Een HTTP 403 bij branch protection betekent `UNVERIFIED_ACCESS`, niet `UNPROTECTED`. `protected=false` en een lege zichtbare rulesetlijst bewijzen niet dat alle andere reviewvereisten ontbreken.
+- Wijzigingen aan mergebeleid zijn **niet retroactief**: deze v3.1-regels kunnen PR #41 niet zelfstandig autoriseren. Het vooraf geldende mergebeleid blijft gelden.
+- Na een geldige merge: verifieer de commit op `main` en markeer ChatGPT-projectresources als te synchroniseren. Claim geen synchronisatie vóór uitvoering.
