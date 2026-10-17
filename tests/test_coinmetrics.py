@@ -93,3 +93,9 @@ def test_invalid_inputs():
     ]:
         with pytest.raises(ValueError):
             fetch_reference_rates(session=Session([]), **kwargs)
+
+
+def test_empty_historical_window_has_actionable_error():
+    with pytest.raises(ValueError, match="no BTC/EUR observations"):
+        fetch_reference_rates(start="2011-01-01", end="2011-01-31",
+                              session=Session([{"data": []}]))
