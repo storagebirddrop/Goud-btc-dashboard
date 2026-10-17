@@ -12,7 +12,7 @@ REQUIRED = (
     "HANDOVER.md", "TASK_TEMPLATE.md", "REVIEW_CHECKLIST.md",
     "README_GOVERNANCE.md", "DOCUMENT_HIERARCHY.md", "CONFLICT_MATRIX.md",
 )
-LINK = re.compile(r"(?<!!)\\[[^\\]]+\\]\\(([^)]+)\\)")
+LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 SKIP = ("http://", "https://", "mailto:", "#", "data:")
 
 
@@ -27,7 +27,7 @@ def check():
             continue
         text = path.read_text(encoding="utf-8")
         # Ignore fenced code blocks: sample URLs are not actual navigation.
-        text = re.sub(r"(?ms)^\\s*```.*?^\\s*```", "", text)
+        text = re.sub(r"(?ms)^\s*```.*?^\s*```", "", text)
         for match in LINK.finditer(text):
             href = match.group(1).strip().split()[0].strip("<>")
             if href.startswith(SKIP):
@@ -41,5 +41,5 @@ def check():
 if __name__ == "__main__":
     errors = check()
     if errors:
-        raise SystemExit("\\n".join(errors))
+        raise SystemExit("\n".join(errors))
     print("Governance inventory and relative Markdown links: PASS")
