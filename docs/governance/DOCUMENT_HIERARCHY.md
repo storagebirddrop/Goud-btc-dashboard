@@ -22,3 +22,10 @@ GitHub `main` is de versiebeheerbare bron van waarheid **na merge**. Een open PR
 ## Wijzigingsprocedure
 
 Voor iedere taak: lees relevante besluiten, inspecteer actuele HEAD en open PR's, registreer bewijs, gebruik [reviewchecklist](REVIEW_CHECKLIST.md), update status/verificatie na daadwerkelijke uitvoering. Alleen `DECIDED`-regels worden normatief toegepast. Zie [CONFLICT_MATRIX.md](CONFLICT_MATRIX.md) voor bestaande inconsistenties.
+
+## v3.1 — autorisatiegrens
+- Het vooraf geldende eigenaarbeleid, GitHub-beveiligingsregels en verplichte checks zijn harde releasevoorwaarden.
+- Operationele autonomie (GROEN/ORANJE/ROOD) verandert geen `DECIDED` economische methode en keurt geen `PROPOSED` methode goed.
+- CI-resultaat, AI-review, onafhankelijke menselijke review en expliciete mergeautorisatie zijn vier afzonderlijke bewijssoorten.
+- De regels in een open governance-PR mogen niet worden gebruikt om diezelfde PR achteraf te autoriseren.
+- GitHub `main` wordt pas na geldige merge gezaghebbend; ChatGPT-resourcekopieën volgen de geverifieerde mergecommit.
