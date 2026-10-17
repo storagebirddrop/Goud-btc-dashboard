@@ -64,10 +64,13 @@ def fetch_reference_rates(*, start, end, currency="EUR", session=None, max_pages
               "frequency": "1d", "start_time": start, "end_time": end, "page_size": 10000}
     records = []
     tokens = set()
+    pages_seen = 0
     for _ in range(max_pages):
         response = session.get(BASE_URL, params=params, timeout=30)
         response.raise_for_status()
-        page, token = parse_page(response.json(), currency=currency)
+        payload = response.json()
+        page, token = parse_page(payload, currency=currency)
+        pages_seen += 1
         records.extend(page)
         if token is None:
             break
@@ -78,7 +81,8 @@ def fetch_reference_rates(*, start, end, currency="EUR", session=None, max_pages
     else:
         raise ValueError("Coin Metrics pagination exceeded page limit")
     if not records:
-        raise ValueError(f"Coin Metrics returned no BTC/{currency} observations for {start}..{end}; check historical availability and metric support")
+        raise ValueError(f"Coin Metrics returned no BTC/{currency} observations for {start}..{end} "
+                         f"({pages_seen} valid API page(s)); check metric availability in the Coin Metrics catalog")
     checked = validate_daily_prices(records, asset="BTC", currency=currency,
                                     source="Coin Metrics Community")
     if checked["start"] < start or checked["end"] > end:
