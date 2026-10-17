@@ -23,3 +23,6 @@ Onderstaande instructies beschrijven de aangeleverde distributie. De actuele rep
 Controleer bestaande GitHub Actions en branch protection; voeg vervolgens uitsluitend ontbrekende kwaliteitschecks toe, inclusief data-integriteits- en regressietests.
 ## Repository-integratie
 De operationele ingang is [AGENTS.md](../../AGENTS.md). Zie [DOCUMENT_HIERARCHY.md](DOCUMENT_HIERARCHY.md) en [CONFLICT_MATRIX.md](CONFLICT_MATRIX.md). Dit document beschrijft de oorspronkelijke distributie; het is geen bewijs van actuele CI of branch protection.
+
+## v3.1 — repository-integratie en resourcekopieën
+Het v3.1 Update Package is een **wijzigingsvoorstel**, geen volledige of gezaghebbende snapshot van PR #41. De v3.0-auditcorrecties, conflictmatrix, bestaande technische documentatie en tests blijven behouden. De actuele versie staat in de GitHub-branch; pas na geldige merge is `main` de versiebeheerbare bron van waarheid. Resourcekopieën synchroniseren vanaf de **gemergede** commit, met datum en SHA; vóór merge is synchronisatie `PENDING`. PR #41 volgt de vooraf geldende mergevoorwaarden.
