@@ -62,3 +62,16 @@ Via verbonden GitHub-connector zijn repository en onderstaande bestanden op de s
 | V-205 | Repository tree en bestaande docs | technische docs onder `docs/`; centrale v3 governancebestanden ontbraken vóór deze PR |
 
 **Verificatiegrens:** De oorspronkelijke V-001–V-104 registraties zijn historische bewijsclaims en worden niet met terugwerkende kracht herzien. Governance-PR CI en branch protection moeten nog afzonderlijk worden gecontroleerd.
+
+## V-301–V-306 — onafhankelijke governance-PR audit (2026-10-17)
+
+| ID | Controle | Feitelijke uitkomst |
+|---|---|---|
+| V-301 | [PR #41](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/41) files API | 20 bestanden bij initiële audit: 18 toegevoegd, 2 gewijzigd, geen verwijderingen; geen ETL/frontend-productiecodewijzigingen; branch `docs/governance-v3-integration` |
+| V-302 | [PR #37](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/37) t/m [#40](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/40) | #37–#39 merged, #40 open en niet gewijzigd door governance-PR |
+| V-303 | GitHub branches/main API en rulesets API | `protected=false`, `protection.enabled=false`, lege rulesetslijst; branch protection detail-API gaf 403 (connectorbeperking). Geen verplichte reviews uit publiek zichtbare regels afgeleid; repositorybeheerder kan extra beleid hebben |
+| V-304 | [CI-run 39056894346](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39056894346) | `success` op eerdere PR-HEAD `2a4212bf5`; niet geldig als bewijs voor latere commits |
+| V-305 | [CI-run 39057613139](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39057613139) | `failure`: letterlijke `\\n` in regressietest veroorzaakte Python `SyntaxError`; gecorrigeerd |
+| V-306 | [CI-run 39057669726](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39057669726) | `failure`: letterlijk `\\n` in commentaar schakelde de return/semantische gate uit (`check() is None`); gecorrigeerd |
+
+**Auditstatus:** Bewijs van Python-, frontend- en documentatiecontroles op de **definitieve** HEAD moet afzonderlijk via de laatste CI-run worden vastgelegd. De mislukte runs zijn niet genegeerd of als geslaagd voorgesteld. Geen lokale volledige repositorytest uitgevoerd.
