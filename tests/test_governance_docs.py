@@ -33,3 +33,17 @@ def test_governance_checker_rejects_broken_links_and_approval_drift(tmp_path, mo
     errors = audit.check()
     assert any("ADR-004" in error for error in errors)
     assert any("missing-governance.md" in error for error in errors)
+
+def test_v31_nonretroactive_merge_and_access_limits():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    change = (root / "docs/governance/CHANGE_CONTROL.md").read_text(encoding="utf-8")
+    hierarchy = (root / "docs/governance/DOCUMENT_HIERARCHY.md").read_text(encoding="utf-8")
+    for label in ("GROEN", "ORANJE", "ROOD"):
+        assert label in change
+    assert "UNVERIFIED_ACCESS" in agents
+    assert "UNVERIFIED_ACCESS" in change
+    assert "niet retroactief" in change.lower()
+    assert "dezelfde PR" in hierarchy
+    assert "CI" in agents and "menselijke review" in agents
