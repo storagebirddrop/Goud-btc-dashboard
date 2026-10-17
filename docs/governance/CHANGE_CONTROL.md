@@ -9,7 +9,7 @@ Technische keuzes zijn standaard gedelegeerd. Alleen keuzes die de betekenis, sc
 - **Rood:** wijziging van economische definitie, bronrangorde, tijdaggregatie, publicatiebetekenis, productdoel, destructieve actie of beveiligingsgrens; vraag besluit vóór de risicovolle stap.
 
 ## Besluitregistratie
-Leg rode keuzes vast in DECISIONS.md als voorstel met aanleiding, alternatieven, gevolgen, beslisser, datum en status. Markeer pas `DECIDED` na expliciete bevestiging. Werk gekoppelde methodologie, contracten en tests daarna samen bij.
+Leg rode keuzes vast in [DECISIONS.md](DECISIONS.md) als voorstel met aanleiding, alternatieven, gevolgen, beslisser, datum en status. Markeer pas `DECIDED` na expliciete bevestiging. Werk gekoppelde methodologie, contracten en tests daarna samen bij.
 
 ## Niet escaleren
 Gewone compileerfouten, flaky tests, API-timeouts, ontbrekende fixtures en compatibele refactors zijn in beginsel engineeringwerk. Escaleer pas bij hard bewijs van een inhoudelijke of externe blokkade.
