@@ -41,10 +41,21 @@ def main():
     path = Path("btc-catalog-report.json")
     report = {"source": "Coin Metrics Community", "asset": "BTC", "status": "failed"}
     try:
-        response = requests.get(URL, params={"assets": "btc", "metrics": ",".join(METRICS)},
-                                timeout=30)
-        response.raise_for_status()
-        report = parse_catalog(response.json())
+        entries = []
+        for metric in METRICS:
+            response = requests.get(URL, params={"assets": "btc", "metrics": metric}, timeout=30)
+            if not response.ok:
+                try:
+                    detail = json.dumps(response.json(), ensure_ascii=True)[:1000]
+                except ValueError:
+                    detail = response.text[:1000]
+                raise ValueError(f"Coin Metrics catalog {metric}: HTTP {response.status_code}; "
+                                 f"provider response: {detail}")
+            payload = response.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+                raise ValueError(f"Malformed catalog response for {metric}")
+            entries.extend(payload["data"])
+        report = parse_catalog({"data": entries})
         if report["missing_metrics"]:
             raise ValueError("BTC daily reference rate metrics unavailable")
     except Exception as exc:
