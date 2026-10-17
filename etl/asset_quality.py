@@ -99,6 +99,8 @@ def monthly_arithmetic_mean(checked, *, min_coverage=Decimal("1")):
         result.append({"period": f"{year:04d}-{month:02d}",
                        "price": sum(prices) / len(prices),
                        "coverage": coverage})
+    if checked.get("missing_days") and threshold == 1:
+        raise ValueError("Insufficient daily coverage: missing requested dates")
     return result
 
 
