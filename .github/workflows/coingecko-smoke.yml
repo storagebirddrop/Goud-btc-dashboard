@@ -1,0 +1,42 @@
+name: CoinGecko BTC API smoke test (read-only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Check recent BTC/EUR market-chart access
+        env:
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import date, timedelta
+          import requests
+          from etl.sources.coingecko import fetch_daily_prices
+
+          end = date.today() - timedelta(days=2)
+          start = end - timedelta(days=2)
+          session = requests.Session()
+          key = os.environ.get("COINGECKO_DEMO_API_KEY")
+          if key:
+              session.headers["x-cg-demo-api-key"] = key
+          print(f"Checking CoinGecko BTC/EUR {start}..{end}; demo key configured: {bool(key)}", flush=True)
+          try:
+              result = fetch_daily_prices(start=start.isoformat(), end=end.isoformat(), session=session)
+              print(f"Observations: {result['count']}; missing days: {result['missing_days']}")
+              if result["missing_days"] or result["count"] != 3:
+                  raise ValueError("Incomplete recent BTC/EUR window")
+          except requests.HTTPError as exc:
+              code = exc.response.status_code if exc.response is not None else "unknown"
+              print(f"CoinGecko HTTP status: {code}; check Demo API key, plan and endpoint access")
+              raise
+          PY
