@@ -25,3 +25,14 @@ Gebruik bij elke betekenisvolle wijziging. Reviewer moet eigen hypothesen vormen
 
 ## Uitkomst
 `PASS` / `PASS WITH RISKS` / `BLOCKED` / `FAIL` — met concrete bevindingen, severity en herstelactie. `PASS WITH RISKS` is geen automatische merge-toestemming.
+
+## v3.1 — bewijs en autorisatie
+- [ ] Risicoklasse onderbouwd op feitelijke diff en semantische impact.
+- [ ] CI op definitieve head-SHA; geen oudere run als bewijs.
+- [ ] AI-review niet als onafhankelijke menselijke review voorgesteld.
+- [ ] Reviewplicht vastgesteld op basis van **vooraf** geldend beleid; onbekend expliciet gelabeld.
+- [ ] HTTP 403 niet gelijkgesteld aan uitgeschakelde branch protection.
+- [ ] Geen nieuwe mergebevoegdheid gebruikt voor de PR die haar invoert.
+- [ ] Resource-synchronisatie pas na geverifieerde merge.
+
+**Rapporteer twee afzonderlijke uitkomsten:** technisch `PASS` / `PASS WITH CONDITIONS` / `FAIL` en merge `AUTHORIZED` / `NOT AUTHORIZED` / `UNKNOWN`. Een technische PASS geeft niet automatisch mergebevoegdheid.
