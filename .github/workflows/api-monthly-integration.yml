@@ -31,15 +31,15 @@ jobs:
           database_name = "gold-housing"
           database_id = "00000000-0000-0000-0000-000000000003"
           EOF
-          npx wrangler d1 execute gold-housing --local --config wrangler.api-smoke.toml --file ../db/migrations/0001_init.sql
-          npx wrangler d1 execute gold-housing --local --config wrangler.api-smoke.toml --command "INSERT INTO observations(series_id,period,value) VALUES ('nl_hpi','2000-01',50),('nl_house_avg_eur','2000-01',150000),('nl_hpi','2000-02',55),('nl_house_avg_eur','2000-02',160000)"
+          npx wrangler d1 execute gold-housing --local --persist-to .wrangler/state --config wrangler.api-smoke.toml --file ../db/migrations/0001_init.sql
+          npx wrangler d1 execute gold-housing --local --persist-to .wrangler/state --config wrangler.api-smoke.toml --command "INSERT INTO observations(series_id,period,value) VALUES ('nl_hpi','2000-01',50),('nl_house_avg_eur','2000-01',150000),('nl_hpi','2000-02',55),('nl_house_avg_eur','2000-02',160000)"
       - name: Build Pages app
         working-directory: frontend
         run: npm run build
       - name: Start local Pages API
         working-directory: frontend
         run: |
-          npx wrangler pages dev dist --d1 DB=gold-housing --local --port 8788 > /tmp/pages-api.log 2>&1 &
+          npx wrangler pages dev dist --d1 DB=gold-housing --persist-to .wrangler/state --port 8788 > /tmp/pages-api.log 2>&1 &
           echo $! > /tmp/pages-api.pid
           for i in $(seq 1 40); do
             if curl --silent --fail http://127.0.0.1:8788/api/monthly > /tmp/monthly.json; then exit 0; fi
