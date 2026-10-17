@@ -59,3 +59,9 @@
 - `VERIFIED_RUN`: [auditrun 39054825172](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39054825172) en [CI-run 39054825208](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39054825208) op main `ef5a5e1` beide `success`; auditjob bevestigd en acht ontbrekende FX-weekdagen in logs gezien.
 - `PROPOSED`: PR #40 onderzoekt read-only BTC/EUR maandgevoeligheid; geen goedkeuring van FX-carry-forward, maandaggregatie, bronpublicatie of productie-import.
 - Eerdere `UNVERIFIED`-meldingen blijven geldig voor CBS live-broncontrole, Cloudflare deploy, onafhankelijke koersbenchmark en licenties, tenzij afzonderlijk aangetoond. Zie [VERIFICATION_LOG.md](VERIFICATION_LOG.md) voor auditgrenzen.
+
+## v3.1 — integratiestatus (2026-10-17)
+- `VERIFIED_REPO`: PR #41 was open/draft op HEAD `7ae264036ef8d5d97277e5095e231181e3fe1d96` vóór v3.1; GitHub PR API gecontroleerd.
+- `VERIFIED_RUN`: [run 39057761181](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39057761181) `success` op de eerdere v3.0-HEAD; **niet** geldig voor de v3.1-wijzigingen.
+- `UNVERIFIED_ACCESS`: branch protection detail gaf eerder 403. Branch API meldt `protected=false` en rulesets API een lege lijst; daarmee zijn aanvullende eigenaarregels niet bewezen afwezig.
+- `PENDING`: v3.1 definitieve CI, review/mergeautorisatie en resource-synchronisatie. PR #40 blijft buiten scope.
