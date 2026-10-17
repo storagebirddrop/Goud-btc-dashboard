@@ -72,3 +72,9 @@ def test_invalid_inputs():
     ]:
         with pytest.raises(ValueError):
             fetch_daily_prices(session=Session({"prices": []}), **kwargs)
+
+def test_missing_requested_boundary_days_are_reported():
+    result = fetch_daily_prices(start="2026-09-01", end="2026-09-04",
+                                session=Session({"prices": [[stamp("2026-09-02"), 100],
+                                                            [stamp("2026-09-03"), 200]]}))
+    assert result["missing_days"] == ["2026-09-01", "2026-09-04"]
