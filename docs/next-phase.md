@@ -1,3 +1,5 @@
+> **Historical/legacy planning note:** The staging-D1 recommendation below is not the current runtime decision. See [ADR-001](governance/DECISIONS.md) and the [document hierarchy](governance/DOCUMENT_HIERARCHY.md). This file is retained for implementation history, not as an instruction to deploy D1.
+
 # Next phase: verified historical ingestion
 
 1. Choose and document licensed gold daily data and exact ECB EUR/USD series.
