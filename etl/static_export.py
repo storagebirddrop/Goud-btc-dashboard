@@ -8,7 +8,7 @@ from pathlib import Path
 
 SERIES = {"nl_hpi": "hpi", "nl_house_avg_eur": "house_eur"}
 
-def build(csv_path):
+def build(csv_path, *, gold_candidate=None, gold_publication_approved=False):\n    if gold_candidate is not None and not gold_publication_approved:\n        raise PermissionError("Gold publication blocked pending explicit rights and methodology approval")\n    if gold_publication_approved:\n        raise PermissionError("Gold activation requires a separately reviewed implementation; no automatic bypass")
     observations = {}
     with Path(csv_path).open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
