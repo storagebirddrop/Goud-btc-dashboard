@@ -34,16 +34,3 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-  gold_coverage_diagnostic:
-    if: github.event_name == 'pull_request' && github.head_ref == 'poc/gold-market-data-isolated'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Run isolated regression suite
-        run: python -m unittest poc.test_gold_monthly_integration -v
-      - name: Verify actual monthly source coverage
-        run: python -m poc.gold_monthly_integration
