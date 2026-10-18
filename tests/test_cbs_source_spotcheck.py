@@ -74,3 +74,10 @@ def test_coverage_month_order_and_gaps():
     assert month_range("2000-12", "2001-02") == ["2000-12", "2001-01", "2001-02"]
     result = inspect_coverage({("2000-01", "nl_hpi"): 80.}, "2000-01", "2000-02")
     assert len(result["missing"]) == 3
+
+
+def test_out_of_order_committed_rows_rejected(tmp_path):
+    path = tmp_path / "source.csv"
+    path.write_text("date,series,value\n2000-02,nl_hpi,81\n2000-01,nl_hpi,80\n")
+    with pytest.raises(ValueError, match="Nonchronological"):
+        read_committed(path)
