@@ -20,6 +20,9 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Compare complete committed history to live CBS OData
         run: python -m etl.cbs_source_spotcheck --output cbs-history-audit.json
+      - name: Print diagnostic summary
+        if: always()
+        run: cat cbs-history-audit.json || true
       - name: Preserve diagnostic report
         if: always()
         uses: actions/upload-artifact@v4
