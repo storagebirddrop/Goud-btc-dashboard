@@ -45,9 +45,6 @@ def read_committed(path):
             key = (row["date"], row["series"])
             if key in result:
                 raise ValueError(f"Duplicate committed observation {key}")
-            if previous is not None and key < previous:
-                raise ValueError(f"Nonchronological committed CSV row {line}: {key}")
-            previous = key
             if previous_key is not None and key < previous_key:
                 raise ValueError(f"Non-chronological committed CSV at line {line}")
             previous_key = key
