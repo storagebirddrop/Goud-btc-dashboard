@@ -22,11 +22,11 @@ Neem maand `t`, `H_t` = EUR/gemiddeld verkochte woning, `G_t` = EUR/troy ounce, 
 - Bij goud USD/troy oz en ECB `USD per EUR` op dezelfde datum: `gold_EUR_oz[d] = gold_USD_oz[d] / ECB_USD_per_EUR[d]`. Nooit de inverse zonder controle gebruiken.
 - NLG historische bedragen: wettelijk vaste conversie `1 EUR = 2.20371 NLG` geldt voor nominale conversie bij euro-introductie; maakt een oud bedrag **niet** automatisch reëel vergelijkbaar. Voor eerdere markt-/FX-regimes aparte herkomst nodig.
 
-## 3. Maandaggregatie (`PROPOSED`, te besluiten)
+## 3. Maandaggregatie (BTC en overige assets: `PROPOSED`; goud: ADR-004 `ACCEPTED` per 2026-10-18)
 - Dagkoersen: kies exact bronfixing/referentietijdstip, timezone, handelskalender, UTC dag en eventuele weekenddefinitie per asset.
-- Primaire maandwaarde = **rekenkundig gemiddelde van geldige dagkoersen** binnen die maand; voor USD-goud eerst elke dag FX-matchen en naar EUR omrekenen, dan middelen.
+- **Goud (ADR-004 `ACCEPTED`):** World Bank GOLD USD/troy ounce maandgemiddelde gedeeld door het rekenkundig gemiddelde van beschikbare geldige dagelijkse ECB USD-per-EUR-koersen in dezelfde kalendermaand. De verhouding van maandgemiddelden is niet het gemiddelde van dagelijkse EUR-goudprijzen. Tot en met mei 2025 London afternoon fixing; vanaf juni 2025 gemiddelde dagelijkse spotprijzen, zichtbaar annoteren bij publieke visualisatie. **Overige assets:** dagelijkse EUR-matching/aggregatie blijft `PROPOSED`.
 - `H_t / mean(B_d)` is de prijsratio tegen een **gemiddelde referentiekoers**, **niet** `mean(H_t/B_d)`; beide zijn wiskundig verschillend. Leg deze semantiek zichtbaar vast.
-- Dagdekking: primaire `COMPLETE_MONTH` vereist alle volgens de gekozen bronkalender verwachte dagen; anders `PARTIAL` en **geen primaire maandratio**. Bij bronspecifieke uitzonderingen alleen na expliciet besluit.
+- **Goud:** gemiddelde over daadwerkelijk beschikbare geldige ECB-koersdagen (geen kalenderdagendeler en geen imputatie); historische ontbrekende bronmaanden blokkeren, recente nog niet gepubliceerde maanden zijn `pending_publication`. Alleen complete World Bank/ECB/CBS-maandkoppelingen, indexbasis 2000-01 = 100. **Overige assets:** verwachte dagkalender en `PARTIAL`-beleid blijven `PROPOSED`.
 - Maand CBS wordt direct aan maand `YYYY-MM` gekoppeld; niet suggereren dat transacties op dezelfde dagen vielen als koersobservaties.
 - Geen forward fill, lineaire interpolatie of backdating. Een gedeeltelijke lopende maand apart markeren en standaard uitsluiten.
 
@@ -56,4 +56,7 @@ Neem maand `t`, `H_t` = EUR/gemiddeld verkochte woning, `G_t` = EUR/troy ounce, 
 - Eerdere BTC-jaren vereisen een tweede gedocumenteerde bron en overlapcontrole; geen nulwaarden of stilzwijgend aan elkaar geplakte methodes.
 - Bronrechtelijke controle en onafhankelijke prijsvergelijking blijven blokkades. Zie [audit](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39050246824) en `docs/btc-trading-history-audit-2026-10-17.md`.
 ## Interpretatie bij opname in GitHub
-De voorgestelde maandaggregatie en FX-dagmatching in §3 zijn **geen autorisatie** voor carry-forward of productiepublicatie. De read-only scenarioanalyse in PR #40 is uitsluitend onderzoeksimplementatie. Bij conflict met historische technische documentatie gelden alleen expliciet goedgekeurde economische besluiten; zie [DOCUMENT_HIERARCHY.md](DOCUMENT_HIERARCHY.md).
+De goudspecifieke maandaggregatie in §3 is op 2026-10-18 **ACCEPTED** volgens ADR-004 in [DECISIONS.md](DECISIONS.md), maar is **geen autorisatie** voor publieke goudpublicatie of carry-forward. BTC-aggregatie en FX-dagmatching blijven `PROPOSED`. De read-only scenarioanalyse in PR #40 is uitsluitend onderzoeksimplementatie. Bij conflict met historische technische documentatie gelden alleen expliciet goedgekeurde economische besluiten; zie [DOCUMENT_HIERARCHY.md](DOCUMENT_HIERARCHY.md).
+
+## ADR-004-goedkeuring goud (2026-10-18)
+De canonieke besluitregistratie staat in [DECISIONS.md](DECISIONS.md), ADR-004. De formule voor goud in EUR/gram is `gold_eur_oz / 31.1034768`; gram per gemiddeld verkochte woning is `house_eur / gold_eur_gram`; de goudindex is `100 * gold_eur_oz[m] / gold_eur_oz[2000-01]`. Alleen volledige historische maanden. De rechtenvraag en publieke activatie zijn afzonderlijk **NIET GOEDGEKEURD**.
