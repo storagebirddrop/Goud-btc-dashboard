@@ -29,7 +29,7 @@ function App(){
  <p>{valid.length} maanden met gegevens · {first} t/m {last}</p>
  <ResponsiveContainer width="100%" height={360}><LineChart data={data}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="period" minTickGap={35}/><YAxis tickFormatter={v=>metric==='house_eur'?euro.format(Number(v)):decimal.format(Number(v))}/><Tooltip formatter={v=>[metric==='house_eur'?euro.format(Number(v)):decimal.format(Number(v)),metrics[metric].unit]}/><Legend/><Line type="monotone" dataKey={metric} name={metrics[metric].label} dot={false} stroke={metrics[metric].color} connectNulls={false}/></LineChart></ResponsiveContainer>
  </>}
- <p>De CBS-gemiddelde verkoopprijs is gevoelig voor de samenstelling van verkochte woningen. De CBS-huizenprijsindex corrigeert voor kwaliteitsverschillen en is geschikter voor prijsontwikkeling. Goudgerelateerde reeksen verschijnen pas zodra gevalideerde gouddata zijn geïmporteerd.</p>
+ <p>De CBS-gemiddelde verkoopprijs is gevoelig voor de samenstelling van verkochte woningen. De CBS-huizenprijsindex corrigeert voor kwaliteitsverschillen en is geschikter voor prijsontwikkeling. Goudgerelateerde reeksen zijn technisch voorbereid maar blijven geblokkeerd totdat publicatie en methodologie afzonderlijk zijn goedgekeurd. De goudbron kent vanaf juni 2025 een gewijzigde prijsdefinitie.</p>
  </>}
  </main>
 }
