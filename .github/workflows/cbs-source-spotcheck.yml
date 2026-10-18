@@ -1,4 +1,4 @@
-name: CBS independent source spot-check
+name: CBS full historical source audit
 on:
   workflow_dispatch:
   pull_request:
@@ -18,12 +18,12 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
-      - name: Compare committed values to live CBS OData
-        run: python -m etl.cbs_source_spotcheck --output cbs-source-spotcheck.json
+      - name: Compare complete committed history to live CBS OData
+        run: python -m etl.cbs_source_spotcheck --output cbs-history-audit.json
       - name: Preserve diagnostic report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cbs-source-spotcheck
+          name: cbs-history-audit
           path: cbs-source-spotcheck.json
           if-no-files-found: warn
