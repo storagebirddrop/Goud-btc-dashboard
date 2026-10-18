@@ -50,7 +50,7 @@ Vervangt:
 - **Open:** FX-weekenden en feestdagen, USD/EUR-dagmatching, bronlicenties, bronvergelijking en publicatiebesluit. Geen forward fill of bronsplicing zonder apart besluit.
 - **Bewijs:** [run](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39050246824), [PR #35](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/35), [PR #36](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/36).
 ## Governance-integratie (2026-10-17)
-De opname van dit register in GitHub is **geen nieuw economisch besluit**. ADR-004 is voor goud `ACCEPTED` per 2026-10-18; BTC-FX-weekend/feestdagbeleid blijft `PROPOSED`/onbeslist. PR #40 is open; scenarioanalyse geeft geen productieautorisatie. Zie [CONFLICT_MATRIX.md](CONFLICT_MATRIX.md).
+De opname van dit register in GitHub op 2026-10-17 was **geen nieuw economisch besluit**. Op die datum bleef ADR-004 `PROPOSED`. **Latere statuswijziging 2026-10-18:** uitsluitend de goudmethodologie is `ACCEPTED`; BTC-FX-weekend/feestdagbeleid blijft `PROPOSED`/onbeslist. De historische scenarioanalyse van PR #40 gaf geen productieautorisatie. Zie [CONFLICT_MATRIX.md](CONFLICT_MATRIX.md).
 
 ## ADR-004 — maandelijkse goudwaardering (ACCEPTED, 2026-10-18)
 
