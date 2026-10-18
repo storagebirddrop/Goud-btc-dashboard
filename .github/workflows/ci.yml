@@ -34,3 +34,70 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+  gold_poc_diagnostic:
+    if: github.event_name == 'pull_request' && github.head_ref == 'poc/gold-market-data-isolated'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: DNS, HTTPS and gold CSV validation
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv, hashlib, io, json, socket, sys, urllib.request, urllib.error
+          from datetime import datetime, timezone, date
+          from collections import Counter
+          now=lambda: datetime.now(timezone.utc).isoformat()
+          for host in ("example.com","stooq.com"):
+              try:
+                  addresses=sorted({item[4][0] for item in socket.getaddrinfo(host,443,type=socket.SOCK_STREAM)})
+                  print("DNS",host,"PASS",addresses[:5])
+              except Exception as exc:
+                  print("DNS",host,"FAIL",repr(exc))
+          def fetch(url):
+              print("REQUEST",now(),url)
+              try:
+                  req=urllib.request.Request(url,headers={"User-Agent":"GoldDashboard-PoC-Diagnostic/1.0"})
+                  with urllib.request.urlopen(req,timeout=20) as resp:
+                      raw=resp.read(25_000_001)
+                      if len(raw)>25_000_000: raise ValueError("Response exceeds diagnostic size limit")
+                      print("HTTP",resp.status,"final_url",resp.url,"type",resp.headers.get("Content-Type"),"bytes",len(raw),"sha256",hashlib.sha256(raw).hexdigest())
+                      return resp.status,raw
+              except Exception as exc:
+                  print("FETCH_FAILED",type(exc).__name__,str(exc))
+                  return None,None
+          fetch("https://example.com")
+          status,raw=fetch("https://stooq.com/q/d/l/?s=xauusd&i=d")
+          if status!=200 or raw is None:
+              print("GOLD_RESULT FAIL: no successful HTTP 200 response")
+              sys.exit(1)
+          try:
+              decoded=raw.decode("utf-8-sig")
+              reader=csv.DictReader(io.StringIO(decoded))
+              headers=reader.fieldnames
+              print("CSV_HEADER",headers)
+              if not headers or not {"Date","Open","High","Low","Close"}.issubset(set(headers)):
+                  raise ValueError("Missing OHLC columns; possible browser check or invalid instrument")
+              dates=[]; bad=0
+              for row in reader:
+                  try:
+                      d=date.fromisoformat(row["Date"])
+                      close=float(row["Close"])
+                      if not (close>0 and close<float("inf")): raise ValueError("Invalid close")
+                      dates.append(d)
+                  except (ValueError,TypeError,KeyError):
+                      bad+=1
+              counts=Counter(dates)
+              years={y:sum(d.year==y for d in dates) for y in (2000,2008,2015,2020,2025)}
+              print("OBSERVATIONS",len(dates),"FIRST",min(dates).isoformat() if dates else None,"LAST",max(dates).isoformat() if dates else None,"DUPLICATES",sum(v-1 for v in counts.values()),"INVALID",bad,"SAMPLE_YEARS",json.dumps(years))
+              print("INSTRUMENT_UNVERIFIED: endpoint symbol xauusd does not independently establish benchmark, quote currency or troy-ounce unit")
+              if not dates or min(dates)>date(2000,1,31) or bad or len(dates)!=len(counts) or not all(years.values()):
+                  raise ValueError("Coverage or integrity validation failed")
+              print("GOLD_RESULT CONDITIONAL: historical OHLC rows received; instrument semantics and licensing unverified")
+          except Exception as exc:
+              print("GOLD_RESULT FAIL",repr(exc))
+              sys.exit(1)
+          PY
