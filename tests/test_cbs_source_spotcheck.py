@@ -81,3 +81,23 @@ def test_out_of_order_committed_rows_rejected(tmp_path):
     path.write_text("date,series,value\n2000-02,nl_hpi,81\n2000-01,nl_hpi,80\n")
     with pytest.raises(ValueError, match="Non-chronological"):
         read_committed(path)
+
+
+def test_partial_live_history_cannot_pass():
+    from etl.cbs_source_spotcheck import compare_history
+    stored = {("2000-01", "nl_hpi"): 80., ("2000-01", "nl_house_avg_eur"): 150000.}
+    result = compare_history(stored, [("2000-01", "nl_hpi", 80.)], "2000-01", "2000-01")
+    assert not result["complete"]
+    assert not result["all_match"]
+    assert result["counts"]["MISSING_LIVE"] == 1
+
+
+def test_mismatched_live_history_cannot_pass():
+    from etl.cbs_source_spotcheck import compare_history
+    stored = {("2000-01", "nl_hpi"): 80., ("2000-01", "nl_house_avg_eur"): 150000.}
+    result = compare_history(stored, [("2000-01", "nl_hpi", 81.),
+                                      ("2000-01", "nl_house_avg_eur", 150000.)],
+                             "2000-01", "2000-01")
+    assert result["complete"]
+    assert not result["all_match"]
+    assert result["counts"]["VALUE_DIFFERENCE"] == 1
