@@ -34,14 +34,3 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-  gold_monthly_integration_diagnostic:
-    if: github.event_name == 'pull_request' && github.head_ref == 'poc/gold-market-data-isolated'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: World Bank ECB CBS real monthly calculation
-        run: python -m poc.gold_monthly_integration
