@@ -38,12 +38,16 @@ def read_committed(path):
         if reader.fieldnames != ["date", "series", "value"]:
             raise ValueError("Unexpected committed CSV columns")
         result = {}
+        previous_key = None
         for line, row in enumerate(reader, 2):
             if None in row or any(v is None for v in row.values()):
                 raise ValueError(f"Malformed committed CSV row {line}")
             key = (row["date"], row["series"])
             if key in result:
                 raise ValueError(f"Duplicate committed observation {key}")
+            if previous_key is not None and key < previous_key:
+                raise ValueError(f"Non-chronological committed CSV at line {line}")
+            previous_key = key
             if not MONTH_RE.fullmatch(key[0]) or key[1] not in SERIES:
                 raise ValueError(f"Invalid month or series at line {line}: {key}")
             try:
@@ -120,6 +124,14 @@ def compare_history(committed, live, start="2000-01", end=None):
 
 
 def compare_samples(committed, live, months=SAMPLE_MONTHS):
+    # A sparse sample must not imply complete historical coverage.
+    live_map = {(m, s): v for m, s, v in live}
+    return [{"month": m, "series": s, "status": classify(committed.get((m, s)), live_map.get((m, s)), s),
+             "committed": committed.get((m, s)), "live": live_map.get((m, s))}
+            for m in months for s in SERIES]
+
+
+def _legacy_compare_samples_not_used(committed, live, months):
     result = compare_history(committed, live, min(months), max(months))
     lookup = {(d["month"], d["series"]): d for d in result["differences"]}
     live_map = {(m, s): v for m, s, v in live}
