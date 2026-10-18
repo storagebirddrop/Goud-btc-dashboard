@@ -8,7 +8,8 @@ from etl.gold_monthly import build_candidate
 def fixture_candidate():
     gold={"2000-01":D("300"),"2000-02":D("320")}
     fx={"2000-01":D("1.2"),"2000-02":D("1.25")}
-    rows=build("data/cbs-housing.csv")["data"]\n    house={"2000-01":D(str(rows[0]["house_eur"])),"2000-02":D(str(rows[1]["house_eur"]))}
+    rows=build("data/cbs-housing.csv")["data"]
+    house={"2000-01":D(str(rows[0]["house_eur"])),"2000-02":D(str(rows[1]["house_eur"]))}
     return build_candidate(gold,fx,house,{"2000-01":20,"2000-02":20})
 
 def test_default_exactly_unchanged(monkeypatch,tmp_path):
