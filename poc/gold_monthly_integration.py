@@ -45,7 +45,11 @@ def parse_housing(raw):
         houses[month]=value
     return houses
 def compute(gold,fx,homes,counts):
-    if "2000-01" not in gold or "2000-01" not in fx or "2000-01" not in homes:\n        raise ValueError("Incomplete 2000-01 index basis")\n    if any(not v.is_finite() or v<=0 for source in (gold,fx,homes) for v in source.values()):\n        raise ValueError("Invalid nonpositive/nonfinite source value")\n    common=sorted(set(gold)&set(fx)&set(homes))
+    if "2000-01" not in gold or "2000-01" not in fx or "2000-01" not in homes:
+        raise ValueError("Incomplete 2000-01 index basis")
+    if any(not v.is_finite() or v<=0 for source in (gold,fx,homes) for v in source.values()):
+        raise ValueError("Invalid nonpositive/nonfinite source value")
+    common=sorted(set(gold)&set(fx)&set(homes))
     base=gold["2000-01"]/fx["2000-01"] if "2000-01" in fx else None
     if base is None:raise ValueError("No 2000-01 FX basis")
     output=[]
