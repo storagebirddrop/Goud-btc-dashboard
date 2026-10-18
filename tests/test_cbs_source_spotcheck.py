@@ -101,3 +101,42 @@ def test_mismatched_live_history_cannot_pass():
     assert result["complete"]
     assert not result["all_match"]
     assert result["counts"]["VALUE_DIFFERENCE"] == 1
+
+
+@pytest.mark.parametrize("mode,expected_status", [
+    ("unavailable", "INCOMPLETE"),
+    ("partial", "DIFFERENCES"),
+    ("mismatch", "DIFFERENCES"),
+])
+def test_cli_never_passes_incomplete_or_mismatched_audit(tmp_path, monkeypatch, mode, expected_status):
+    import json
+    import sys
+    import etl.cbs_source_spotcheck as audit
+
+    source = tmp_path / "cbs.csv"
+    source.write_text("date,series,value\\n2000-01,nl_hpi,80\\n2000-01,nl_house_avg_eur,150000\\n")
+    report_path = tmp_path / "report.json"
+    monkeypatch.setattr(sys, "argv", ["audit", "--csv", str(source), "--output", str(report_path)])
+    monkeypatch.setattr(audit, "make_session", lambda: object())
+
+    def fake_fetch(_session):
+        if mode == "unavailable":
+            raise ConnectionError("CBS OData unavailable")
+        if mode == "partial":
+            rows = [("2000-01", "nl_hpi", 80.)]
+        else:
+            rows = [("2000-01", "nl_hpi", 81.),
+                    ("2000-01", "nl_house_avg_eur", 150000.)]
+        return rows, {"nl_hpi": "M001505_2", "nl_house_avg_eur": "M001534"}, "Perioden"
+
+    monkeypatch.setattr(audit, "fetch_live_history", fake_fetch)
+    with pytest.raises(SystemExit) as exc:
+        audit.main()
+    assert exc.value.code != 0
+    result = json.loads(report_path.read_text())
+    assert result["status"] == expected_status
+    assert result["publication_approved"] is False
+    if mode == "unavailable":
+        assert "ConnectionError" in result["error"]
+    else:
+        assert result["all_match"] is False
