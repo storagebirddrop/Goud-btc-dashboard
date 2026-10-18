@@ -37,3 +37,16 @@ def test_export_shape_and_index(tmp_path):
 def test_rejects_invalid_history(tmp_path, rows):
     with pytest.raises(ValueError):
         build(fixture(tmp_path, rows))
+
+
+@pytest.mark.parametrize("bad_row", [
+    "2000-02,nl_hpi,88,unexpected",
+    "2000-02,nl_hpi",
+    "2000-02,nl_hpi,88,",
+])
+def test_rejects_malformed_csv_row_width(tmp_path, bad_row):
+    source = fixture(tmp_path)
+    original = source.read_text(encoding="utf-8")
+    source.write_text(original.replace("2000-02,nl_hpi,88", bad_row), encoding="utf-8")
+    with pytest.raises(ValueError, match="Malformed CSV row"):
+        build(source)

@@ -14,7 +14,9 @@ def build(csv_path):
         reader = csv.DictReader(handle)
         if reader.fieldnames != ["date", "series", "value"]:
             raise ValueError("Expected CSV columns date,series,value")
-        for row in reader:
+        for row_number, row in enumerate(reader, start=2):
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError(f"Malformed CSV row at line {row_number}: unexpected column count")
             month, series = row["date"], row["series"]
             if series not in SERIES:
                 raise ValueError(f"Unexpected series: {series}")
