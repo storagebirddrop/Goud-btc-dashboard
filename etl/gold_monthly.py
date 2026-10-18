@@ -96,7 +96,7 @@ def main():
     homes=parse_housing(housing_raw);coverage=classify_coverage(gold,fx,homes)
     print("COVERAGE",json.dumps({"counts":{status:sum(row["status"]==status for row in coverage) for status in ("complete","missing_historical","pending_publication")},"noncomplete":[row for row in coverage if row["status"]!="complete"]}))
     if any(row["status"]=="missing_historical" for row in coverage):raise ValueError("Historical source month gap")
-    out=compute(gold,fx,homes,counts)
+    candidate=build_candidate(gold,fx,homes,counts)\n    out=candidate["data"]
     selected=["2000-01","2002-01","2004-01","2006-01","2008-09","2010-01","2012-01","2015-03","2018-01","2020-04","2025-01","2025-09"]
     print("SUMMARY",json.dumps({"worldbank_months":len(gold),"ecb_daily_rows":days,"ecb_months":len(fx),"cbs_months":len(homes),"joined_months":len(out),"joined_first":out[0]["month"] if out else None,"joined_last":out[-1]["month"] if out else None,"missing_fx":sorted(set(gold)-set(fx)),"missing_cbs":sorted(set(gold)-set(homes)),"method":"ratio of monthly arithmetic gold USD mean to monthly arithmetic USD-per-EUR FX mean; provisional","publication_authorized":False}))
     for row in out:
