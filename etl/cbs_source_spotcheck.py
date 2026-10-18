@@ -174,7 +174,9 @@ def main():
         report["source_period_dimension"] = period
         report.update(compare_history(committed, live))
         report["status"] = "PASS" if report["all_match"] and report["complete"] else "DIFFERENCES"
-        # Differences are audit findings, not an execution failure.\n        # INCOMPLETE remains a failing result.\n        exit_code = 0
+        # Differences are audit findings, not transport failures.
+        # INCOMPLETE still exits nonzero.
+        exit_code = 0
     except Exception as exc:
         # Explicitly fail closed; a network/contract failure must not be a PASS.
         report["status"] = "INCOMPLETE"
