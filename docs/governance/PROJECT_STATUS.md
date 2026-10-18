@@ -71,3 +71,8 @@
 - `VERIFIED_RUN`: PR CI [39122777887](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39122777887) success (124 passed, 3 skipped; frontend build success); live CBS smoke [39122777891](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39122777891) success. Post-merge CI [39123914206](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39123914206) en static update [39123914043](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39123914043) success op mergecommit.
 - `IN_PROGRESS`: onafhankelijke CBS-bronsteekproeven in afzonderlijke PR #43. Een geslaagde CBS-smoke bewijst contract/dekking, **niet** dat historische committed waarden overeenkomen met live CBS. Resultaten van echte spotchecks blijven `UNVERIFIED` totdat de handmatige read-only auditworkflow daadwerkelijk is uitgevoerd.
 - `BLOCKED`: publicatiegoedkeuring voor goud, BTC, FX- en maandmethoden ongewijzigd.
+
+## Historische CBS-dekkingsaudit — 2026-10-18 (PR #43)
+- `VERIFIED_RUN`: [full-history CBS run 39124817771](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39124817771) geslaagd op `3aa3994b2aa04d002c429e9365f6d5481b27ef52`. Vergelijking huidige officiële CBS OData 85773NED met committed CSV: januari 2000–augustus 2026, 320 maanden, 640 observaties, 640 exact gelijk; geen ontbrekende maanden of verschillen in dit venster.
+- `VERIFIED_RUN`: [CI 39124817780](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39124817780) geslaagd op dezelfde commit.
+- `UNVERIFIED`: CBS-publicatiesnapshots uit eerdere jaren ontbreken voor bewezen historische revisiedatering; de live bronvergelijking is geen onafhankelijke tweede statistische bron. Geen automatische revisie- of publicatiebesluiten.
