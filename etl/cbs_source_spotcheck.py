@@ -131,14 +131,6 @@ def compare_samples(committed, live, months=SAMPLE_MONTHS):
             for m in months for s in SERIES]
 
 
-def _legacy_compare_samples_not_used(committed, live, months):
-    result = compare_history(committed, live, min(months), max(months))
-    lookup = {(d["month"], d["series"]): d for d in result["differences"]}
-    live_map = {(m, s): v for m, s, v in live}
-    return [{"month": m, "series": s, "status": lookup.get((m, s), {}).get("classification", "MATCH"),
-             "committed": committed.get((m, s)), "live": live_map.get((m, s))}
-            for m in months for s in SERIES]
-
 
 def fetch_live_history(session):
     fields = resolve_fields(fetch_pages(session, "MeasureCodes"))
