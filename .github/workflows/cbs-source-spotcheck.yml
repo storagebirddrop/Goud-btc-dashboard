@@ -25,5 +25,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cbs-history-audit
-          path: cbs-source-spotcheck.json
-          if-no-files-found: warn
+          path: cbs-history-audit.json
+          if-no-files-found: error
