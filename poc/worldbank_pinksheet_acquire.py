@@ -46,7 +46,7 @@ def parse_xlsx(raw):
         for n,r in enumerate(rows[header+1:],header+2):
             rawdate=str(r.get(datecol,"")).strip()
             rawvalue=str(r.get(goldcol,"")).strip()
-            if not rawdate and not rawvalue:continue
+            if not rawdate:continue  # header/metadata rows without observation date
             try:
                 if rawdate.replace(".","",1).isdigit():
                     d=(datetime(1899,12,30)+timedelta(days=float(rawdate))).date()
