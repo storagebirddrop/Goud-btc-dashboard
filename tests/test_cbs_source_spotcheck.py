@@ -79,5 +79,5 @@ def test_coverage_month_order_and_gaps():
 def test_out_of_order_committed_rows_rejected(tmp_path):
     path = tmp_path / "source.csv"
     path.write_text("date,series,value\n2000-02,nl_hpi,81\n2000-01,nl_hpi,80\n")
-    with pytest.raises(ValueError, match="Nonchronological"):
+    with pytest.raises(ValueError, match="Non-chronological"):
         read_committed(path)
