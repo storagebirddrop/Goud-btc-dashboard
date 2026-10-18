@@ -24,3 +24,9 @@ Bij nieuwe sessie: verifieer branch, HEAD, CI en open PR's; neem dit document ni
 - Nog `UNVERIFIED`: echte historische bronvergelijkingen, eventuele revisies, artifact en PR #43 CI.
 - Volgende stap: controleer CI op definitieve PR #43 HEAD, voer handmatige bronsteekproefworkflow uit, analyseer verschillen; geen stille data-update.
 - Geen autorisatie om PR #43 te mergen; PR #40 buiten scope.
+
+## Auditvoortgang — 2026-10-18 (PR #43)
+- `VERIFIED_RUN`: historische CBS-bronvergelijking 39124817771 en CI 39124817780 geslaagd op `3aa3994b2aa04d002c429e9365f6d5481b27ef52`.
+- Diagnose: 320 maanden (2000-01–2026-08), 640/640 exacte matches met actuele officiële CBS OData; geen gaps in gecontroleerd venster.
+- Audit bewijst geen historisch revisieverloop zonder oudere CBS-snapshots. Geen productiebronwaarden gewijzigd.
+- Volgende stap: einddiff en CI na deze documentatiecommit verifiëren; PR #43 ter review aanbieden, niet mergen zonder aparte autorisatie.
