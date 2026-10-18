@@ -21,7 +21,7 @@ def parse_ecb(raw):
     for row in reader:
         if row.get("CURRENCY") not in (None,"USD") or row.get("CURRENCY_DENOM") not in (None,"EUR"):raise ValueError("Unexpected ECB FX direction")
         dt=row.get("TIME_PERIOD","");value=row.get("OBS_VALUE","")
-        if not value:continue
+        if not value:\n            if dt: print("ECB_MISSING_OBSERVATION",dt)\n            continue
         try:
             day=date.fromisoformat(dt);rate=Decimal(value)
             if not rate.is_finite() or rate<=0:raise ValueError("invalid rate")
@@ -45,7 +45,7 @@ def parse_housing(raw):
         houses[month]=value
     return houses
 def compute(gold,fx,homes,counts):
-    common=sorted(set(gold)&set(fx)&set(homes))
+    if "2000-01" not in gold or "2000-01" not in fx or "2000-01" not in homes:\n        raise ValueError("Incomplete 2000-01 index basis")\n    if any(not v.is_finite() or v<=0 for source in (gold,fx,homes) for v in source.values()):\n        raise ValueError("Invalid nonpositive/nonfinite source value")\n    common=sorted(set(gold)&set(fx)&set(homes))
     base=gold["2000-01"]/fx["2000-01"] if "2000-01" in fx else None
     if base is None:raise ValueError("No 2000-01 FX basis")
     output=[]
@@ -55,7 +55,7 @@ def compute(gold,fx,homes,counts):
     return output
 def main():
     wb=acquire(URL);sheet,col,gold,invalid,dup,header=parse_xlsx(wb)
-    if invalid or dup or min(gold)!="2000-01":raise ValueError("World Bank invalid")
+    if not gold or invalid or dup or min(gold)!="2000-01":raise ValueError("World Bank invalid")
     fxraw=acquire(ECB);fx,counts,days=parse_ecb(fxraw)
     housing_raw=Path("data/cbs-housing.csv").read_bytes()
     print("CBS_INPUT",json.dumps({"path":"data/cbs-housing.csv","sha256":hashlib.sha256(housing_raw).hexdigest(),"bytes":len(housing_raw)}))
