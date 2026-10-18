@@ -21,7 +21,7 @@ def parse_ecb(raw):
     for row in reader:
         if row.get("CURRENCY") not in (None,"USD") or row.get("CURRENCY_DENOM") not in (None,"EUR"):raise ValueError("Unexpected ECB FX direction")
         dt=row.get("TIME_PERIOD","");value=row.get("OBS_VALUE","")
-        if not value:\n            if dt: print("ECB_MISSING_OBSERVATION",dt)\n            continue
+        if not value:continue
         try:
             day=date.fromisoformat(dt);rate=Decimal(value)
             if not rate.is_finite() or rate<=0:raise ValueError("invalid rate")
