@@ -78,6 +78,15 @@ def compute(gold,fx,homes,counts):
         eur=gold[month]/fx[month];gram=eur/GRAMS
         output.append({"month":month,"gold_usd_oz":str(gold[month]),"usd_per_eur":str(fx[month]),"fx_days":counts[month],"house_eur":str(homes[month]),"gold_eur_oz":str(eur),"gold_eur_gram":str(gram),"gold_grams_per_house":str(homes[month]/gram),"gold_index":str(100*eur/base)})
     return output
+def build_candidate(gold,fx,homes,counts):
+    """Fail closed on historical gaps; keep trailing publication lag explicit."""
+    coverage=classify_coverage(gold,fx,homes)
+    historic=[row for row in coverage if row["status"]=="missing_historical"]
+    if historic:raise ValueError("Historical source month gap: "+json.dumps(historic[:12]))
+    rows=compute(gold,fx,homes,counts)
+    if len(rows)!=sum(row["status"]=="complete" for row in coverage):
+        raise ValueError("Complete month count differs from joined calculations")
+    return {"data":rows,"coverage":coverage,"publication_authorized":False}
 def main():
     wb=acquire(URL);sheet,col,gold,invalid,dup,header=parse_xlsx(wb)
     if not gold or invalid or dup or min(gold)!="2000-01":raise ValueError("World Bank invalid")
