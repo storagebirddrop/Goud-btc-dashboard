@@ -23,7 +23,7 @@ jobs:
       - name: Print diagnostic summary
         if: always()
         run: cat cbs-history-audit.json || true
-      - name: Print diagnostic summary\n        if: always()\n        run: |\n          python - <<'PY'\n          import json, pathlib\n          p = pathlib.Path('cbs-history-audit.json')\n          if p.exists():\n              r = json.loads(p.read_text())\n              print(json.dumps({k: r.get(k) for k in ('status', 'checked_months', 'checked_observations', 'counts', 'complete', 'error')}, indent=2))\n              print('first_differences:', json.dumps(r.get('differences', [])[:12]))\n          PY\n      - name: Preserve diagnostic report
+      - name: Preserve diagnostic report
         if: always()
         uses: actions/upload-artifact@v4
         with:
