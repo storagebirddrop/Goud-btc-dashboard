@@ -12,7 +12,7 @@ Een besluit krijgt `ID`, `status`, `datum`, `vraag`, `opties`, `keuze`, `argumen
 | ADR-001 | `DECIDED` (eerder projectgesprek) | Runtime | GitHub Actions + statische JSON + Cloudflare Pages; geen D1 als productiedatabase |
 | ADR-002 | `DECIDED` (eerder projectgesprek) | Rekeneenheden | Nominale EUR, reële EUR, gram goud, BTC/sats als vergelijkingsdimensies; reële EUR vereist CPI |
 | ADR-003 | `PROPOSED` | Woningmaat | Gemiddelde CBS-transactieprijs voor absolute ratio; HPI uitsluitend voor prijsontwikkeling |
-| ADR-004 | `DECIDED` / `ACCEPTED` (goud, 2026-10-18) | Maandelijkse goudwaardering | World Bank maandgemiddelde USD/oz ÷ maandgemiddelde ECB USD/EUR; vaste basis 2000-01; geen imputatie. Uitsluitend goud; geen BTC-besluit of publicatieautorisatie |
+| ADR-004 | `ACCEPTED` (goud, 2026-10-18); `PROPOSED` (BTC) | Maandelijkse goudwaardering | World Bank maandgemiddelde USD/oz ÷ maandgemiddelde ECB USD/EUR; vaste basis 2000-01; geen imputatie. Uitsluitend goud; geen BTC-besluit of publicatieautorisatie |
 | ADR-005 | `PROPOSED` | Revisies | Laatst herziene CBS/CPI-data, met raw snapshots per release |
 | ADR-006 | `PROPOSED` | Publicatie | Immutable releases + atomische current-pointer |
 | ADR-007 | `PROPOSED` | BTC-bron | Coin Metrics testen; CoinGecko vergelijken; alleen na licentie- en kwaliteitsgoedkeuring |
