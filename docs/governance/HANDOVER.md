@@ -16,3 +16,11 @@ Dit is een invulbaar sjabloon, **geen actuele projectstatus**. Ververs na elke r
 - Status: `IN_PROGRESS` / `BLOCKED` / `READY_FOR_REVIEW` / `DONE`
 
 Bij nieuwe sessie: verifieer branch, HEAD, CI en open PR's; neem dit document niet klakkeloos als actuele waarheid over.
+
+## Sessieoverdracht — 2026-10-18 (audit PR #43)
+- `VERIFIED_REPO`: PR #42 merged naar main `e6b5a3b20109683ced7fdc380d1a4b02598a9e7a`.
+- `VERIFIED_RUN`: post-merge CI 39123914206 en update-static 39123914043 success.
+- Actieve taak: PR #43 read-only CBS live bronsteekproeven, gescheiden van PR #42.
+- Nog `UNVERIFIED`: echte historische bronvergelijkingen, eventuele revisies, artifact en PR #43 CI.
+- Volgende stap: controleer CI op definitieve PR #43 HEAD, voer handmatige bronsteekproefworkflow uit, analyseer verschillen; geen stille data-update.
+- Geen autorisatie om PR #43 te mergen; PR #40 buiten scope.
