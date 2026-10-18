@@ -1,6 +1,11 @@
 name: CBS independent source spot-check
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'etl/cbs_source_spotcheck.py'
+      - 'tests/test_cbs_source_spotcheck.py'
+      - '.github/workflows/cbs-source-spotcheck.yml'
 permissions:
   contents: read
 jobs:
