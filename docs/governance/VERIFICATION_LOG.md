@@ -82,3 +82,11 @@ Via verbonden GitHub-connector zijn repository en onderstaande bestanden op de s
 - `VERIFIED_RUN`: [39057761181](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39057761181) `success` voor v3.0, **niet** voor v3.1.
 - `UNVERIFIED_ACCESS`: beschermingdetail-API 403; zichtbare `protected=false`/lege rulesets geen alomvattende garantie.
 - `PENDING`: nieuwe definitieve GitHub Actions-resultaten, expliciete mergeautorisatie en resource-sync na merge.
+
+## V-401–V-404 — PR #42 afronding en CBS-bronauditstart (2026-10-18)
+| ID | Direct bewijs | Resultaat / grens |
+|---|---|---|
+| V-401 | [PR #42](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/42), GitHub PR/commit API | `merged=true`, `closed`, squashcommit `e6b5a3b20109683ced7fdc380d1a4b02598a9e7a`; parent `483b06d3f4246372534aa0e9d8821591a14c35b8`; uitsluitend twee CSV-validatie-/testbestanden |
+| V-402 | [CI 39122777887](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39122777887) en [smoke 39122777891](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39122777891) | Beide `success` op `3e63aa7e3f19aab7303c85624198023db741725b`; pytest `124 passed, 3 skipped`; frontend geslaagd; drie parametrische CSV-gevallen in code aanwezig; CI toont geen afzonderlijke testnamen |
+| V-403 | [Post-merge CI 39123914206](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39123914206), [static update 39123914043](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39123914043) | Beide `success` op `e6b5a3b20109683ced7fdc380d1a4b02598a9e7a`; geen live externe bronsteekproef aangetoond |
+| V-404 | [PR #43](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/43) | Aparte read-only CBS-bronaudit in ontwikkeling. Onafhankelijke historische live steekproeven `UNVERIFIED` tot uitvoering workflow en inspectie artifact; geen datawijziging of publicatieautorisatie |
