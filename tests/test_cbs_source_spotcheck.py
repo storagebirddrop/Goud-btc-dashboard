@@ -114,7 +114,7 @@ def test_cli_never_passes_incomplete_or_mismatched_audit(tmp_path, monkeypatch, 
     import etl.cbs_source_spotcheck as audit
 
     source = tmp_path / "cbs.csv"
-    source.write_text("date,series,value\n2000-01,nl_hpi,80\n2000-01,nl_house_avg_eur,150000\n")
+    source.write_text("date,series,value\n2000-01,nl_house_avg_eur,150000\n2000-01,nl_hpi,80\n")
     report_path = tmp_path / "report.json"
     monkeypatch.setattr(sys, "argv", ["audit", "--csv", str(source), "--output", str(report_path)])
     monkeypatch.setattr(audit, "make_session", lambda: object())
