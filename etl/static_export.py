@@ -9,10 +9,8 @@ from pathlib import Path
 SERIES = {"nl_hpi": "hpi", "nl_house_avg_eur": "house_eur"}
 
 def build(csv_path, *, gold_candidate=None, gold_publication_approved=False):
-    if gold_candidate is not None and not gold_publication_approved:
-        raise PermissionError("Gold publication blocked pending explicit rights and methodology approval")
-    if gold_publication_approved:
-        raise PermissionError("Gold activation requires a separately reviewed implementation; no automatic bypass")
+    if gold_candidate is not None or gold_publication_approved:
+        raise PermissionError("Gold publication blocked until separate approval")
     observations = {}
     with Path(csv_path).open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -72,8 +70,7 @@ def main():
     payload = build(args.input)
     destination = Path(args.output)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "
-", encoding="utf-8")
+    destination.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n", encoding="utf-8")
     print(f"Built {len(payload['data'])} monthly records in {destination}")
 
 if __name__ == "__main__":
