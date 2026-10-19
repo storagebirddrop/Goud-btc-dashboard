@@ -1,0 +1,73 @@
+name: DATA-01B source evidence offline replay (review only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Verify offline fixture replay and negative cases
+        run: python -m pytest -q tests/test_data_01_source_pin.py
+      - name: Full Python regression
+        run: python -m pytest -q
+      - name: Verify branch diff against DATA-01B allowlist
+        env:
+          BASE_SHA: 61e35a1eaed1de2428939d3b39822b390e1c4212
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          python - <<'PY'
+          import os, subprocess
+          allowed = {'tools/data_01_source_pin.py', 'tests/test_data_01_source_pin.py',
+                     'docs/governance/DATA_01B_SOURCE_PINNING.md',
+                     '.github/workflows/data-01b-source-evidence.yml'}
+          changed = set(subprocess.check_output(
+              ['git','diff','--name-only',os.environ['BASE_SHA'],'HEAD'],
+              text=True).splitlines())
+          if changed - allowed:
+              raise SystemExit('UNAUTHORIZED_BRANCH_DIFF: ' + repr(sorted(changed-allowed)))
+          print('Authorized DATA-01B diff:', sorted(changed))
+          PY
+      - name: Verify PR base-to-HEAD protected inputs unchanged
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git diff --exit-code "$(git merge-base HEAD origin/main)" HEAD -- \\
+            data/cbs-housing.csv frontend/public/data/monthly.json \\
+            etl .github/workflows/update-static-data.yml \\
+            .github/workflows/cbs-full-history.yml \\
+            .github/workflows/cbs-source-spotcheck.yml \\
+            docs/governance/DECISIONS.md docs/governance/METHODOLOGY.md
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
+      - name: Report review-only execution (no raw external bytes)
+        run: |
+          mkdir -p "$RUNNER_TEMP/data-01b"
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "data-01b" / "status.json"
+          p.write_text(json.dumps({
+            "status":"OFFLINE_FIXTURE_REPLAY_ONLY",
+            "publication_authorized":False,
+            "durable_raw_storage":"NOT_CONFIGURED",
+            "external_source_fetch":"NOT_PERFORMED",
+            "raw_source_bytes_uploaded":False,
+            "repository_commit":os.environ["GITHUB_SHA"],
+            "github_actions_run_id":os.environ["GITHUB_RUN_ID"]
+          }, sort_keys=True, indent=2)+"\n")
+          PY
+      - name: Upload metadata-only audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-01b-offline-evidence-review-only
+          path: ${{ runner.temp }}/data-01b/status.json
+          if-no-files-found: error
+          retention-days: 14
