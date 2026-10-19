@@ -112,7 +112,7 @@ def main(argv=None):
     fx = {m: v for m, v in fx.items() if m <= end}
     counts = {m: v for m, v in counts.items() if m <= end}
     candidate = build_candidate(gold, fx, homes, counts)
-    commit = os.environ.get("GITHUB_SHA", "LOCAL_UNPINNED")
+    commit = os.environ.get("GOLD02_SOURCE_SHA") or os.environ.get("GITHUB_SHA", "LOCAL_UNPINNED")
     run_id = os.environ.get("GITHUB_RUN_ID")
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     bundle = make_bundle(args.housing, args.baseline_json, candidate,
