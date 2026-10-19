@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'etl/gold_02_release.py'
+      - 'tools/verify_gold_02_independent.py'
       - 'tests/test_gold_02_release.py'
       - 'docs/governance/GOLD_02_RELEASE_CHECKLIST.md'
       - '.github/workflows/gold-02-review.yml'
@@ -26,7 +27,7 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Syntax and complete Python regression suite
         run: |
-          python -m py_compile etl/gold_02_release.py etl/gold_publication_candidate.py etl/gold_monthly.py etl/static_export.py
+          python -m py_compile tools/verify_gold_02_independent.py etl/gold_02_release.py etl/gold_publication_candidate.py etl/gold_monthly.py etl/static_export.py
           python -m pytest -q
       - name: Frontend build
         working-directory: frontend
@@ -37,7 +38,7 @@ jobs:
         env:
           GOLD02_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          python -m etl.gold_02_release --output-dir "${RUNNER_TEMP}/gold-02-review"
+          python -m tools.verify_gold_02_independent --output-dir "${RUNNER_TEMP}/gold-02-review"
           sha256sum "${RUNNER_TEMP}/gold-02-review/"*
           git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
       - name: Upload review-only release bundle
