@@ -10,6 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: feat/cbs-02-i2a-isolated-merge
           fetch-depth: 0
           persist-credentials: false
       - name: Verify pinned code and baseline
