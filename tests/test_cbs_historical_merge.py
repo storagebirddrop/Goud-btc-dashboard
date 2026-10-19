@@ -70,7 +70,7 @@ def test_t01_t13_candidate_integrity_determinism_and_rollback(tmp_path):
     (lambda a,b,c,d: (a,b,c.replace(b"150000.0",b"150001.0"),d), "2000\\+ JSON records changed"),
     (lambda a,b,c,d: (a,b,c.replace(b"80.0",b"81.0"),d), "2000\\+ JSON records changed"),
     (lambda a,b,c,d: (a,b,c,d.replace(b"100.0",b"101.0")), "2000\\+ JSON records changed"),
-    (lambda a,b,c,d: (a,b,c.replace(b"2000-01",b"1999-12"),d), "2000\\+ JSON records changed"),
+    (lambda a,b,c,d: (a,b,c.replace(b"2000-01",b"1999-12"),d), "Baseline already extended"),
 ])
 def test_negative_hash_provenance_and_existing_data(mutation, reason):
     with pytest.raises((ValueError, json.JSONDecodeError), match=reason):
