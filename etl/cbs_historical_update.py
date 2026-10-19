@@ -32,6 +32,10 @@ FIELDS = {"period", "gold_eur_oz", "house_eur", "hpi",
 class SourceRevision(ValueError):
     """An otherwise well-formed CBS observation differs from approved history."""
 
+    def __init__(self, report):
+        self.report = report
+        super().__init__("CBS_REVISION_REVIEW_REQUIRED: " + json.dumps(report, sort_keys=True, separators=(",", ":")))
+
 
 class IntegrityError(ValueError):
     """Missing, malformed, inconsistent or unauthorized input."""
@@ -105,8 +109,12 @@ def generate(fixture_raw, provenance_raw, baseline_csv_raw, baseline_json_raw, l
         if old[(month, series)] != live[(month, series)]
     ]
     if revisions:
-        raise SourceRevision("CBS source revision requires separate approval: " +
-                             json.dumps(revisions, separators=(",", ":")))
+        raise SourceRevision({"status": "CBS_REVISION_REVIEW_REQUIRED",
+                              "source": "CBS StatLine 85773NED",
+                              "reason": "Approved observation changed; separate source revision review required",
+                              "approved_csv_sha256": digest(baseline_csv_raw),
+                              "live_csv_sha256": digest(live_csv_raw),
+                              "revisions": revisions})
     if live_dates != months_between("2000-01", live_dates[-1]):
         raise IntegrityError("Live CBS calendar gap")
     try:
@@ -211,9 +219,21 @@ def main(argv=None):
     parser.add_argument("--live-csv", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args(argv)
-    files = generate(args.fixture.read_bytes(), args.provenance.read_bytes(),
-                     args.baseline_csv.read_bytes(), args.baseline_json.read_bytes(),
-                     args.live_csv.read_bytes())
+    try:
+        files = generate(args.fixture.read_bytes(), args.provenance.read_bytes(),
+                         args.baseline_csv.read_bytes(), args.baseline_json.read_bytes(),
+                         args.live_csv.read_bytes())
+    except SourceRevision as exc:
+        # Fail closed: only a deterministic diagnostic, never a candidate.
+        report_path = Path(str(args.output_dir) + "-revision-review")
+        if report_path.exists():
+            raise IntegrityError("Revision review directory already exists") from exc
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=report_path.parent) as tmp:
+            (Path(tmp) / "revision-report.json").write_text(
+                json.dumps(exc.report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            os.rename(tmp, report_path)
+        raise
     write_review(args.output_dir, files)
     print("Validated review-only CBS candidate:", args.output_dir)
 
