@@ -5,7 +5,7 @@ on:
       - 'frontend/package.json'
       - '.github/workflows/react19-lockfile-probe.yml'
 permissions:
-  contents: write
+  contents: read
 jobs:
   resolve-and-test:
     runs-on: ubuntu-latest
@@ -15,8 +15,6 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -36,16 +34,3 @@ jobs:
           name: react19-lockfile-candidate
           path: frontend/package-lock.json
           if-no-files-found: error
-      - name: Commit validated lockfile to isolated PR branch
-        if: github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add frontend/package-lock.json
-          if git diff --cached --quiet; then
-            echo 'Lockfile already committed'
-          else
-            git commit -m 'chore(frontend): commit validated React 19 lockfile'
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
-        working-directory: .
