@@ -1,0 +1,49 @@
+name: DATA-01B source evidence offline replay (review only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Verify offline fixture replay and negative cases
+        run: python -m pytest -q tests/test_data_01_source_pin.py
+      - name: Full Python regression
+        run: python -m pytest -q
+      - name: Verify protected public inputs unchanged
+        run: |
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
+          git diff --exit-code --cached -- data/cbs-housing.csv frontend/public/data/monthly.json
+      - name: Report review-only execution (no raw external bytes)
+        run: |
+          mkdir -p "$RUNNER_TEMP/data-01b"
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "data-01b" / "status.json"
+          p.write_text(json.dumps({
+            "status":"OFFLINE_FIXTURE_REPLAY_ONLY",
+            "publication_authorized":False,
+            "durable_raw_storage":"NOT_CONFIGURED",
+            "external_source_fetch":"NOT_PERFORMED",
+            "raw_source_bytes_uploaded":False,
+            "repository_commit":os.environ["GITHUB_SHA"],
+            "github_actions_run_id":os.environ["GITHUB_RUN_ID"]
+          }, sort_keys=True, indent=2)+"\n")
+          PY
+      - name: Upload metadata-only audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-01b-offline-evidence-review-only
+          path: ${{ runner.temp }}/data-01b/status.json
+          if-no-files-found: error
+          retention-days: 14
