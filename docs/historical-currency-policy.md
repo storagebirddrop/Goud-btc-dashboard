@@ -24,3 +24,13 @@ Per observatie: `period`, `series`, `original_value`, `original_currency` (indie
 
 ## Huidige status
 De huidige statische JSON bevat CBS-HPI en gemiddelde woningverkoopprijs, met nog lege goudvelden. Dit document specificeert de toekomstige historische uitbreiding; het verandert geen bestaande gepubliceerde waarden.
+
+## Governance-afbakening (2026-10-19; onderzoeksdocument, niet normatief)
+
+- `DECIDED / ACCEPTED`: ADR-004 geldt uitsluitend voor de bestaande maandelijkse goudreeks: World Bank GOLD (maandgemiddelde USD/troy oz) gedeeld door het rekenkundig gemiddelde van geldige dagelijkse ECB USD-per-EUR-koersen in dezelfde kalendermaand; goudindexbasis 2000-01 = 100; geen imputatie. De eerder genoemde EUR/troy-oz-eenheid is **geen alternatieve prijs- of FX-methodologie**.
+- `DECIDED`: ADR-011 kiest betrouwbare, vergelijkbare landelijke gemiddelde Nederlandse woningverkoopprijzen als bepalende historische horizon; circa 1900 is onderzoeksambitie, geen goedgekeurde import.
+- `PROPOSED`: historische NLG/EUR-, USD/NLG-, CPI-, jaargemiddelde- en bronkoppelingsregels hierboven zijn ontwerp- en onderzoekscriteria, geen wijzigingen aan ADR-004. Voor andere activaprijzen, historische goudregimes of een nieuwe indexbasis is een afzonderlijk besluit vereist.
+- `UNVERIFIED`: vergelijkbaarheid NVM/Vastgoedmarkt circa 1975–1994 met CBS/Kadaster, eerdere landelijke woningprijzen en vroege goud/FX-bronnen.
+- `BLOCKED`: publieke goudpublicatie blijft HOLD; BTC-maandmethodologie en publieke BTC-publicatie zijn niet goedgekeurd. Geen wijziging aan productie-export of data.
+
+Bij tegenspraak prevaleren `DECISIONS.md` (ADR-004/ADR-011), `METHODOLOGY.md` en `DATA_SOURCES.md` volgens de projectdocumenthiërarchie.
