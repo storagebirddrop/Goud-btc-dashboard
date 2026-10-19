@@ -99,7 +99,7 @@ def test_fail_closed_live_inputs(tmp_path, monkeypatch, change, extra, reason):
 def test_missing_or_modified_fixture_rejected(tmp_path):
     parts = synthetic(tmp_path)
     with pytest.raises(ValueError, match="fixture SHA"):
-        generate(*parts, parts[2], baseline_csv_hash=sha(parts[2]), baseline_json_hash=sha(parts[3]), fixture_hash=sha(parts[0]))
+        generate(parts[0] + b"tampered", parts[1], parts[2], parts[3], parts[2], baseline_csv_hash=sha(parts[2]), baseline_json_hash=sha(parts[3]), fixture_hash=sha(parts[0]))
 
 
 def test_actual_pinned_fixture_in_repository():
@@ -141,7 +141,7 @@ def test_baseline_hash_mismatch(tmp_path, monkeypatch):
     import etl.cbs_historical_update as module
     monkeypatch.setattr(module, "FIXTURE_SHA256", sha(parts[0]))
     with pytest.raises(ValueError, match="Approved production baseline SHA-256 mismatch"):
-        generate(*parts, parts[2])
+        generate(*parts, parts[2], fixture_hash=sha(parts[0]))
 
 
 def test_unknown_series_rejected(tmp_path, monkeypatch):
