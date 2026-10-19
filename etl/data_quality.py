@@ -28,6 +28,8 @@ def validate(csv_path, json_path):
     for row in rows:
         for key in ("house_eur", "hpi", "hpi_index"):
             value = row[key]
+            if row["period"] < "2000-01" and key in ("hpi", "hpi_index") and value is None:
+                continue
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"Invalid numeric type for {key}")
             if not math.isfinite(value) or value <= 0:
