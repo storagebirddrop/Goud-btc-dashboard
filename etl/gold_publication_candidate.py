@@ -116,6 +116,11 @@ def main(argv=None):
     fx_raw = acquire(ECB)
     fx, counts, _ = parse_ecb(fx_raw)
     houses = parse_housing(housing_raw)
+    last_cbs = max(houses)
+    # Only months already present in the approved CBS public baseline are in scope.
+    gold = {month: value for month, value in gold.items() if month <= last_cbs}
+    fx = {month: value for month, value in fx.items() if month <= last_cbs}
+    counts = {month: value for month, value in counts.items() if month <= last_cbs}
     candidate = build_candidate(gold, fx, houses, counts)
     payload, manifest = render(housing_raw, baseline_raw, candidate,
         housing_path=args.housing, gold_source_sha256=sha(wb), ecb_source_sha256=sha(fx_raw))
