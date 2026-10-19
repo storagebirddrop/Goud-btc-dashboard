@@ -1,0 +1,92 @@
+name: CBS-02-I2A isolated E2E verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/cbs-02-i2a-isolated-merge
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify pinned code and baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 478b95f8658eb73bcc0167365126b914a0f3049a HEAD
+          git merge-base --is-ancestor 8a05b2be442c529031f4d3da88cca21aacd5668f HEAD
+          git diff --quiet 478b95f8658eb73bcc0167365126b914a0f3049a HEAD -- etl/ tests/ data/ frontend/public/data/
+      - name: Restore CBS originals and check hashes
+        env:
+          CBS_85773_B64: ${{ secrets.CBS_I2A_85773_B64 }}
+          CBS_83906_B64: ${{ secrets.CBS_I2A_83906_B64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CBS_85773_B64" && test -n "$CBS_83906_B64" || { echo "Missing CBS source secrets"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/cbs/source"
+          printf %s "$CBS_85773_B64" | base64 -d > "$RUNNER_TEMP/cbs/source/85773NED_SelectieZonderStatSymbol_20261019112844(1).csv"
+          printf %s "$CBS_83906_B64" | base64 -d > "$RUNNER_TEMP/cbs/source/83906NED_SelectieZonderStatSymbol_20261019113553.csv"
+          echo "e621f1828f759c6cd04453eba21ecf76748b3354956fc594cd40527f7d6b40e5  $RUNNER_TEMP/cbs/source/85773NED_SelectieZonderStatSymbol_20261019112844(1).csv" | sha256sum -c
+          echo "e13e13f9969f03944ee93eef417b640447eb7f70230688b29eb04b1eba572338  $RUNNER_TEMP/cbs/source/83906NED_SelectieZonderStatSymbol_20261019113553.csv" | sha256sum -c
+      - name: Build I1 fixture and retrieve exact baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/cbs"
+          python -m etl.cbs_historical_fixture --primary "$R/source/85773NED_SelectieZonderStatSymbol_20261019112844(1).csv" --comparison "$R/source/83906NED_SelectieZonderStatSymbol_20261019113553.csv" --output "$R/fixture.json" --manifest "$R/provenance.json"
+          echo "0a557dd16fe85e40952dd97edd492d5b3f985f64930d19d960b14307d725c543  $R/fixture.json" | sha256sum -c
+          git show 8a05b2be442c529031f4d3da88cca21aacd5668f:data/cbs-housing.csv > "$R/baseline.csv"
+          git show 8a05b2be442c529031f4d3da88cca21aacd5668f:frontend/public/data/monthly.json > "$R/baseline.json"
+          echo "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6  $R/baseline.csv" | sha256sum -c
+          echo "bc15f3bd1c2101df6fd6a8e18b60f62ff2fc3032eb0b71009bb6b44704c5c78e  $R/baseline.json" | sha256sum -c
+      - name: Generate and validate candidates twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$RUNNER_TEMP/cbs"
+          for i in 1 2; do
+            mkdir "$R/run$i"
+            python -m etl.cbs_historical_merge --fixture "$R/fixture.json" --provenance "$R/provenance.json" --baseline-csv "$R/baseline.csv" --baseline-json "$R/baseline.json" --output-csv "$R/run$i/candidate.csv" --output-json "$R/run$i/candidate.json" --manifest "$R/run$i/manifest.json"
+            python -m etl.data_quality --input "$R/run$i/candidate.csv" --output "$R/run$i/candidate.json"
+          done
+          cmp "$R/run1/candidate.csv" "$R/run2/candidate.csv"
+          cmp "$R/run1/candidate.json" "$R/run2/candidate.json"
+          cmp "$R/run1/manifest.json" "$R/run2/manifest.json"
+          python - <<'PY'
+          import json,hashlib,os,pathlib
+          R=pathlib.Path(os.environ["RUNNER_TEMP"])/"cbs"
+          raw=lambda name:(R/name).read_bytes()
+          old=json.loads(raw("baseline.json"))["data"]
+          new=json.loads(raw("run1/candidate.json"))["data"]
+          fixture=json.loads(raw("fixture.json"))["data"]
+          assert len(old)==320 and len(new)==380 and len(fixture)==60
+          assert new[60:]==old
+          months=[f"{y:04d}-{m:02d}" for y in range(1995,2027) for m in range(1,13)][:380]
+          assert [r["period"] for r in new]==months
+          assert [r["house_eur"] for r in new[:60]]==[r["value"] for r in fixture]
+          assert new[59]["house_eur"]==155389 and new[60]["house_eur"]==157270
+          assert new[60]["hpi_index"]==100
+          assert all(r["hpi"] is None and r["hpi_index"] is None for r in new[:60])
+          assert all(r["gold_eur_oz"] is None and r["gold_grams_per_house"] is None and r["gold_index"] is None for r in new)
+          header=b"date,series,value\r\n"
+          assert raw("run1/candidate.csv").endswith(raw("baseline.csv")[len(header):])
+          manifest=json.loads(raw("run1/manifest.json"))
+          assert manifest["historical_months"]==60 and manifest["preserved_months"]==320 and manifest["publication_authorized"] is False
+          for key,path in [("candidate_csv_sha256","run1/candidate.csv"),("candidate_json_sha256","run1/candidate.json")]:
+              assert manifest[key]==hashlib.sha256(raw(path)).hexdigest()
+          report={"status":"E2E_VERIFIED_READY_FOR_GOVERNANCE_REVIEW","months":380,"preserved":320,"historical":60,"candidate_csv_sha256":manifest["candidate_csv_sha256"],"candidate_json_sha256":manifest["candidate_json_sha256"],"manifest_sha256":hashlib.sha256(raw("run1/manifest.json")).hexdigest(),"deterministic":True,"published":False}
+          (R/"E2E-RESULT.json").write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Upload verification report only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbs-02-i2a-e2e-report
+          path: ${{ runner.temp }}/cbs/E2E-RESULT.json
+          retention-days: 7
