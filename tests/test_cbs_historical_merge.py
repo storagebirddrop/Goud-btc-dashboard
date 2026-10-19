@@ -66,11 +66,11 @@ def test_t01_t13_candidate_integrity_determinism_and_rollback(tmp_path):
 
 @pytest.mark.parametrize("mutation,reason", [
     (lambda a,b,c,d: (a, b"", c, d), "Expecting value"),
-    (lambda a,b,c,d: (a.replace(b"90000", b"90001"),b,c,d), "fixture SHA"),
-    (lambda a,b,c,d: (a,b,c.replace(b"150000.0",b"150001.0"),d), "baseline SHA"),
-    (lambda a,b,c,d: (a,b,c.replace(b"80.0",b"81.0"),d), "baseline SHA"),
-    (lambda a,b,c,d: (a,b,c,d.replace(b"100.0",b"101.0")), "baseline SHA"),
-    (lambda a,b,c,d: (a,b,c.replace(b"2000-01",b"1999-12"),d), "baseline SHA"),
+    (lambda a,b,c,d: (a.replace(b"90000", b"90001"),b,c,d), "provenance"),
+    (lambda a,b,c,d: (a,b,c.replace(b"150000.0",b"150001.0"),d), "2000\\+ JSON records changed"),
+    (lambda a,b,c,d: (a,b,c.replace(b"80.0",b"81.0"),d), "2000\\+ JSON records changed"),
+    (lambda a,b,c,d: (a,b,c,d.replace(b"100.0",b"101.0")), "2000\\+ JSON records changed"),
+    (lambda a,b,c,d: (a,b,c.replace(b"2000-01",b"1999-12"),d), "2000\\+ JSON records changed"),
 ])
 def test_negative_hash_provenance_and_existing_data(mutation, reason):
     with pytest.raises((ValueError, json.JSONDecodeError), match=reason):
@@ -139,3 +139,11 @@ def test_pinned_production_hashes_and_i1_fixture():
     assert BASELINE_CSV_SHA256 == "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6"
     assert BASELINE_JSON_SHA256 == "bc15f3bd1c2101df6fd6a8e18b60f62ff2fc3032eb0b71009bb6b44704c5c78e"
     assert FIXTURE_SHA256 == "0a557dd16fe85e40952dd97edd492d5b3f985f64930d19d960b14307d725c543"
+
+
+def test_pinned_hash_rejects_synthetic_or_tampered_inputs():
+    a,b,c,d = inputs()
+    with pytest.raises(ValueError, match="fixture SHA-256"):
+        make_candidate(a,b,c,d)
+    with pytest.raises(ValueError, match="Pinned baseline SHA-256"):
+        make_candidate(a,b,c,d,fixture_hash=digest(a))
