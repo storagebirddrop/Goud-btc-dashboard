@@ -6,7 +6,7 @@ on:
       - 'etl/static_export.py'
       - 'etl/data_quality.py'
       - 'etl/sources/cbs.py'
-      - 'etl/cbs_safe_update.py'
+      - 'etl/cbs_historical_update.py'
       - 'data/fixtures/cbs-1995-1999-i1.json'
       - 'data/fixtures/cbs-1995-1999-i1.provenance.json'
       - '.github/workflows/update-static-data.yml'
@@ -36,7 +36,7 @@ jobs:
           python -m etl.sources.cbs --output "${RUNNER_TEMP}/cbs-source/live.csv"
       - name: Build fail-closed candidate, without modifying public files
         run: |
-          python -m etl.cbs_safe_update --live-csv "${RUNNER_TEMP}/cbs-source/live.csv" --output-dir "${RUNNER_TEMP}/cbs-review"
+          python -m etl.cbs_historical_update --live-csv "${RUNNER_TEMP}/cbs-source/live.csv" --output-dir "${RUNNER_TEMP}/cbs-review"
       - name: Upload blocked revision report for governance review
         if: failure()
         uses: actions/upload-artifact@v4
