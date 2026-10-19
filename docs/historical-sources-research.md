@@ -58,3 +58,17 @@ Geen. Huidige CBS-data, GitHub Actions en Cloudflare Pages blijven ongewijzigd.
 - **BlockHorizon**: officiële chartsite https://charts.blockhorizon.io/ is bereikbaar en heet 'Bitcoin Analytics Platform', maar de publiek uitleesbare pagina documenteert geen verifieerbare export/API of redistributielicentie. Status: nog niet gevalideerd.
 - **Voorlopige voorkeursroute**: onderzoek Coin Metrics eerst voor reproduceerbare dagelijkse referentieprijzen; vergelijk steekproefsgewijs met Checkonchain/BlockHorizon. Geen chart-scraping als productiebron zonder toestemming.
 - **Acceptatietest**: controleer eerste en laatste datum, dagfrequentie, gaten, prijsdefinitie (UTC-slot vs daggemiddelde), USD/EUR dekking, API-toegang zonder sleutel, rate limiting en schriftelijk toegestane openbare distributie van afgeleide maandwaarden.
+
+## Governance-actualisatie en onderzoeksscope (2026-10-19)
+
+Dit document is een **niet-normatieve bronneninventarisatie**. De oorspronkelijke tabel en bronclaims hierboven zijn onderzoeksnotities en niet automatisch opnieuw gevalideerd.
+
+- `DECIDED / ACCEPTED` — ADR-004: bestaande maandelijkse goudmethodologie gebruikt World Bank GOLD USD/oz maandgemiddelde ÷ ECB USD/EUR maandgemiddelde, indexbasis 2000-01; geen imputatie. Dit document wijzigt die methode niet.
+- `DECIDED` — ADR-011: de oudste voldoende betrouwbare, vergelijkbare **landelijke gemiddelde Nederlandse woningverkoopprijs** bepaalt de historische start; circa 1900 blijft een onderzoeksambitie, geen goedgekeurde historische reeks. Jaar- en maandreeksen blijven onderscheidbaar.
+- `PROPOSED` — prioriteit 1: NVM/Vastgoedmarkt historische **jaarlijkse gemiddelde verkoopprijzen circa 1975–1994**; controleer landelijke dekking, transactiepopulatie, definities, jaar-/ultimo-karakter, licentie en overlap met CBS/Kadaster. De eerdere claim 'vanaf januari 1995 biedt CBS landelijke maandelijkse HPI en gemiddelde verkoopprijzen' blijft een bronclaim die per tabel en veld moet worden gecontroleerd; niet gelijkstellen aan de momenteel gevalideerde publicatiereeks vanaf 2000.
+- `PROPOSED` — prioriteit 2: oudere landelijke woningverkoopprijzen vóór circa 1975. JST/Herengracht-indexen zijn niet zonder anker of representativiteitstoets uitwisselbaar met gemiddelde verkoopprijzen.
+- `PROPOSED / UNVERIFIED` — World Bank Pink Sheet GOLD kan volgens bronbeschrijvingen maandhistorie vanaf circa 1960 bevatten; de vroege officiële GOLD-kolom, methodologische breuken en gebruiksrechten zijn nog niet end-to-end gecontroleerd. Historische vaste goudprijsregimes en overgang naar vrije prijsvorming annoteren.
+- `DECIDED` — voor BTC-bronprioriteit is de bestaande `script-trading-anlytics/data/history.csv` BTC-USD dagreeks vanaf 2014-09-17 de primaire historische **kandidaat**; Coin Metrics, CoinGecko, Checkonchain en BlockHorizon blijven onafhankelijke onderzoeks-/vergelijkingsbronnen. Geen BTC-methodologie of productiebron goedgekeurd.
+- `BLOCKED` — publieke goudpublicatie blijft HOLD; geen historische datasetimport, publieke goud/BTC-activatie of bronwissel op basis van deze onderzoeksnotitie.
+
+Voor besluitstatus en bronverificatie prevaleren `DECISIONS.md`, `METHODOLOGY.md` en `DATA_SOURCES.md`; dit rapport introduceert geen tweede normatieve methodologie.
