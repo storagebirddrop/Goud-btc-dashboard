@@ -41,15 +41,15 @@ def run(tmp_path, *, extra=b"", change=None):
     live = parts[2]
     if change:
         live = live.replace(*change)
-    return generate(*parts, live + extra)
+    return generate(*parts, live + extra, approved_csv_hash=sha(parts[2]), approved_json_hash=sha(parts[3]))
 
 
 def test_historical_retention_and_determinism(tmp_path, monkeypatch):
     fixture, provenance, baseline_csv, baseline_json = synthetic(tmp_path)
     import etl.cbs_safe_update as module
     monkeypatch.setattr(module, "FIXTURE_SHA256", sha(fixture))
-    first = generate(fixture, provenance, baseline_csv, baseline_json, baseline_csv)
-    assert first == generate(fixture, provenance, baseline_csv, baseline_json, baseline_csv)
+    first = generate(fixture, provenance, baseline_csv, baseline_json, baseline_csv, approved_csv_hash=sha(baseline_csv), approved_json_hash=sha(baseline_json))
+    assert first == generate(fixture, provenance, baseline_csv, baseline_json, baseline_csv, approved_csv_hash=sha(baseline_csv), approved_json_hash=sha(baseline_json))
     c, j, m = first
     rows = json.loads(j)["data"]
     assert len(rows) == 62
@@ -70,7 +70,7 @@ def test_new_month_is_appended_without_revising_existing(tmp_path, monkeypatch):
     import etl.cbs_safe_update as module
     monkeypatch.setattr(module, "FIXTURE_SHA256", sha(parts[0]))
     live = parts[2] + b"2000-03,nl_house_avg_eur,159000.0\r\n2000-03,nl_hpi,90.0\r\n"
-    c, j, m = generate(*parts, live)
+    c, j, m = generate(*parts, live, approved_csv_hash=sha(parts[2]), approved_json_hash=sha(parts[3]))
     rows = json.loads(j)["data"]
     assert len(rows) == 63 and rows[-1]["period"] == "2000-03"
     assert rows[60:62] == json.loads(parts[3])["data"]
@@ -90,13 +90,13 @@ def test_fail_closed_live_inputs(tmp_path, monkeypatch, change, extra, reason):
     monkeypatch.setattr(module, "FIXTURE_SHA256", sha(parts[0]))
     live = parts[2].replace(*change) if change else parts[2]
     with pytest.raises(ValueError, match=reason):
-        generate(*parts, live + extra)
+        generate(*parts, live + extra, approved_csv_hash=sha(parts[2]), approved_json_hash=sha(parts[3]))
 
 
 def test_missing_or_modified_fixture_rejected(tmp_path):
     parts = synthetic(tmp_path)
     with pytest.raises(ValueError, match="fixture SHA"):
-        generate(*parts, parts[2])
+        generate(*parts, parts[2], approved_csv_hash=sha(parts[2]), approved_json_hash=sha(parts[3]))
 
 
 def test_actual_pinned_fixture_in_repository():
