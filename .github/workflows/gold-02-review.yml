@@ -5,6 +5,7 @@ on:
     paths:
       - 'etl/gold_02_release.py'
       - 'tests/test_gold_02_release.py'
+      - 'docs/governance/GOLD_02_RELEASE_CHECKLIST.md'
       - '.github/workflows/gold-02-review.yml'
 permissions:
   contents: read
