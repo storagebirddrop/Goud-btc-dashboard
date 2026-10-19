@@ -131,3 +131,34 @@ def test_e2e_real_fixture_against_committed_baseline():
     assert manifest["candidate_csv_sha256"] == sha(c)
     assert manifest["candidate_json_sha256"] == sha(j)
     assert (c, j, manifest_raw) == generate(fixture, provenance, csv_raw, json_raw, csv_raw)
+
+
+def test_baseline_hash_mismatch(tmp_path, monkeypatch):
+    parts = synthetic(tmp_path)
+    import etl.cbs_safe_update as module
+    monkeypatch.setattr(module, "FIXTURE_SHA256", sha(parts[0]))
+    with pytest.raises(ValueError, match="APPROVED_BASELINE_HASH_MISMATCH"):
+        generate(*parts, parts[2])
+
+
+def test_unknown_series_rejected(tmp_path, monkeypatch):
+    parts = synthetic(tmp_path)
+    import etl.cbs_safe_update as module
+    monkeypatch.setattr(module, "FIXTURE_SHA256", sha(parts[0]))
+    live = parts[2] + b"2000-02,unknown,4.0\r\n"
+    with pytest.raises(ValueError, match="UNEXPECTED_CBS_SERIES"):
+        generate(*parts, live, approved_csv_hash=sha(parts[2]), approved_json_hash=sha(parts[3]))
+
+
+def test_revision_report_deterministic(tmp_path, monkeypatch):
+    parts = synthetic(tmp_path)
+    import etl.cbs_safe_update as module
+    monkeypatch.setattr(module, "FIXTURE_SHA256", sha(parts[0]))
+    live = parts[2].replace(b"157270.0", b"157271.0")
+    reports = []
+    for _ in range(2):
+        with pytest.raises(module.CBSRevisionRequired) as exc:
+            generate(*parts, live, approved_csv_hash=sha(parts[2]), approved_json_hash=sha(parts[3]))
+        reports.append(json.dumps(exc.value.report, sort_keys=True))
+    assert reports[0] == reports[1]
+    assert json.loads(reports[0])["revisions"][0]["period"] == "2000-01"
