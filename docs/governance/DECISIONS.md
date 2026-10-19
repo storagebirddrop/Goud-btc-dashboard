@@ -77,3 +77,11 @@ De opname van dit register in GitHub op 2026-10-17 was **geen nieuw economisch b
 - **Impact:** goudspecifieke ADR-004 blijft `ACCEPTED` voor de huidige World Bank/ECB-definitie; BTC-maandmethodologie blijft `PROPOSED`. Een andere bron/prijsdefinitie kan een beperkte ADR-amendering vereisen. Geen productiecode-, JSON-, flag- of publicatieaanpassing; het bestaande HOLD-besluit blijft gelden totdat het uitdrukkelijk wordt herzien.
 - **Bewijs:** [PR #51](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/51), [PR #52](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/52), [PR #53](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/53) en projecteigenaarbesluit van 2026-10-19.
 - **Vervangt:** geen bestaande ADR; verandert alleen de onderzoeksprioriteit.
+
+## ADR-011 — historische reikwijdte volgt betrouwbare woningdata (2026-10-19)
+- **Status:** `DECIDED` voor projectvisie en onderzoeksprioriteit; **niet** voor productie-implementatie of publicatie. **Beslisser:** projecteigenaar, expliciet akkoord in gesprek.
+- **Vraag:** is januari 2000 de projectstartdatum of slechts een bestaande technische grens?
+- **Besluit:** de historische vergelijking begint waar de oudste voldoende betrouwbare en vergelijkbare **landelijke gemiddelde Nederlandse woningverkoopprijzen** beschikbaar zijn; streef naar circa 1900 als onderzoekshorizon. Ondersteun in de doelarchitectuur verschillende jaar- en maandfrequenties en data-gedreven bronvensters. Januari 2000 blijft voorlopig de huidige technische grens en ADR-004-indexbasis, **niet** de historische projectambitie.
+- **Onderzoeksprioriteit:** toets NVM/Vastgoedmarkt circa 1975–1994 op landelijke dekking, definitie en CBS-overlap; zoek oudere landelijke gemiddelden. World Bank GOLD vanaf 1960 is kandidaat voor oudere goudhistorie; oude goudprijsregimes zichtbaar annoteren.
+- **Impact:** documentatiecorrectie; geen wijziging aan ADR-004, bronadapter, publicatiegate of JSON. Bestaande goud-HOLD blijft van kracht.
+- **Bewijs:** projecteigenaarbesluit 2026-10-19; codegrenzen `etl/sources/worldbank_gold.py` en `etl/static_export.py`; historische bronreeksen vereisen afzonderlijke validatie.
