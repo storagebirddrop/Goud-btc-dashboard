@@ -1,0 +1,43 @@
+name: GOLD-01 isolated publication candidate
+on:
+  pull_request:
+    paths:
+      - 'etl/gold_publication_candidate.py'
+      - 'etl/static_export.py'
+      - 'etl/gold_monthly.py'
+      - 'etl/sources/worldbank_gold.py'
+      - 'tests/test_gold_01_publication.py'
+      - '.github/workflows/gold-01-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  review-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Compile and test gold publication gate
+        run: |
+          python -m py_compile etl/gold_publication_candidate.py etl/static_export.py etl/gold_monthly.py
+          python -m pytest -q tests/test_gold_01_publication.py tests/test_gold_export_integration.py tests/test_gold_publication_gate.py
+      - name: Acquire and build isolated live source candidate
+        run: |
+          python -m etl.gold_publication_candidate --output-dir "${RUNNER_TEMP}/gold-01-review"
+          sha256sum "${RUNNER_TEMP}/gold-01-review/"*
+      - name: Confirm no public changes
+        run: |
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
+      - name: Upload approved-field-only review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-01-review-only-derived-indicators
+          path: ${{ runner.temp }}/gold-01-review/
+          if-no-files-found: error
+          retention-days: 14
