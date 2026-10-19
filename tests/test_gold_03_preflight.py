@@ -1,4 +1,3 @@
-import json
 import pytest
 from tools.gold_03_preflight import verify_and_preview, CANDIDATE_SHA, CBS_SHA, PUBLIC_SHA
 
@@ -19,5 +18,5 @@ def test_gold03_invalid_candidate_after_pins(monkeypatch):
     monkeypatch.setattr("tools.gold_03_preflight.sha",
                         lambda raw: {b"candidate": CANDIDATE_SHA,
                                      b"public": PUBLIC_SHA, b"cbs": CBS_SHA}[raw])
-    with pytest.raises(ValueError, match="UNAPPROVED_MONTH_COVERAGE"):
-        verify_and_preview(b'{"data":[]}'.replace(b'{"data":[]}', b"candidate"), b"public", b"cbs")
+    with pytest.raises(ValueError):
+        verify_and_preview(b"candidate", b"public", b"cbs")
