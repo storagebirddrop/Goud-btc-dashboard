@@ -58,3 +58,12 @@ Vereiste bronvermelding bij een eventuele afzonderlijk goedgekeurde activatie, z
 - **Technische status:** PR #51 MERGED; 320 maanden eerder gevalideerd. **Economische methodologie:** ADR-004 goud ACCEPTED via PR #52. **Rechten:** deels bevestigd (ECB/CBS), **World Bank GOLD/derdepartij-afleiding OPEN**.
 - **Dashboard publicatieadvies:** **HOLD** totdat de hierboven gespecificeerde schriftelijke rechtenbevestiging (of specifieke toepasselijke licentie) beschikbaar is én de eigenaar daarna expliciet publieke activatie autoriseert. Bij positieve clearance is de **twee-indicatorvariant CONDITIONAL GO** onder bronvermelding, zichtbare juni-2025-annotatie en technische verificatie van de beperkte export.
 - **Dit document:** `PROPOSED`, uitsluitend reviewbaar advies. Geen wijziging van ADR-004, productie-ETL, publieke JSON, featureflags of publicatieconfiguratie. Geen merge- of publicatieautorisatie.
+
+## Eigenaarbesluit GOLD-01 — beperkte opheffing HOLD (2026-10-19)
+
+- **Status:** DECIDED door projecteigenaar op 2026-10-19; **technische release:** PR-only / niet gemerged / niet live.
+- **Besluit:** de eerdere goudpublicatie-HOLD wordt **uitsluitend voor** de afgeleide indicatoren `gold_index` en `gold_grams_per_house` opgeheven, voor maanden vanaf 2000-01 en alleen na gecontroleerde implementatie en afzonderlijke merge-/deploytoestemming.
+- **Uitdrukkelijk uitgesloten:** `gold_eur_oz`, ruwe GOLD USD/oz-prijzen, bronworkbooks, bron-CSV's en goudwaarden vóór 2000; deze blijven niet publiek respectievelijk `null`.
+- **Rechten:** het eerdere World Bank/derdepartij-/IBA-onderzoek blijft ongewijzigd als **historische risicoanalyse**. Dit eigenaarbesluit is een bewuste, beperkte publicatierisicoacceptatie, **geen juridisch bewijs** van onbeperkte rechten, sublicenties of benchmarkhergebruik.
+- **Methodologie:** ADR-004 blijft ongewijzigd en leidend. Zichtbare bronvermelding World Bank Pink Sheet GOLD, ECB EXR.D.USD.EUR.SP00.A en CBS StatLine 85773NED; vermelding eigen transformaties en definitiebreuk per juni 2025.
+- **Publicatiepoort:** geen merge, deploy of live datasetwijziging zonder afzonderlijke expliciete toestemming. Fail-closed controles en de bestaande CBS-publicatie blijven leidend.
