@@ -108,7 +108,7 @@ def test_acquire_single_fetch_and_replay_offline():
         headers={"Content-Type":"text/csv"}
         def __enter__(self):return self
         def __exit__(self,*a):return False
-        def read(self):return raw
+        def read(self, size=-1):return raw if size < 0 else raw[:size]
     calls=[]
     def opener(req,timeout):
         calls.append(req.full_url)
@@ -118,3 +118,59 @@ def test_acquire_single_fetch_and_replay_offline():
     data,m=acquire(opener=opener,**args)
     assert len(calls)==1
     assert replay(data,m)["status"]=="PASS"
+
+from tools.data_01_source_pin import MAX_SOURCE_BYTES, _RestrictedRedirect
+from urllib.request import Request
+
+def _mock_acquire(raw, headers=None, final_url=ECB):
+    class Response:
+        status=200
+        def __init__(self):self.headers=headers or {}
+        def __enter__(self):return self
+        def __exit__(self,*args):return False
+        def geturl(self):return final_url
+        def read(self,limit):
+            assert limit==MAX_SOURCE_BYTES+1
+            return raw[:limit]
+    return acquire(opener=lambda req,timeout:Response(),
+                   source_id="ecb-usd-per-eur",source_version="v1",url=ECB,
+                   params={"format":"csvdata"},parser_version="parser-v1",
+                   transform_version="commit-abc")
+
+@pytest.mark.parametrize("size,ok",[(15_000_000,True),(15_000_001,False)])
+def test_download_boundary(size,ok):
+    raw=b"TIME_PERIOD,OBS_VALUE\n"+b" "*(size-22)
+    if ok:
+        data,manifest=_mock_acquire(raw)
+        assert len(data)==size
+        assert replay(data,manifest)["status"]=="PASS"
+    else:
+        with pytest.raises(PinError,match="SOURCE_TOO_LARGE"):
+            _mock_acquire(raw)
+
+@pytest.mark.parametrize("length,actual,error",[
+    (None,50,None),("1",50,None),("15000001",50,"SOURCE_TOO_LARGE"),
+    ("50",15_000_001,"SOURCE_TOO_LARGE"),("not-a-number",50,"INVALID_CONTENT_LENGTH")
+])
+def test_content_length_untrusted(length,actual,error):
+    raw=b"TIME_PERIOD,OBS_VALUE\n"+b" "*(actual-22)
+    headers={} if length is None else {"Content-Length":length}
+    if error:
+        with pytest.raises(PinError,match=error):
+            _mock_acquire(raw,headers)
+    else:
+        data,_=_mock_acquire(raw,headers)
+        assert len(data)==actual
+
+@pytest.mark.parametrize("destination",[
+    "https://unapproved.example/resource",
+    "http://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A",
+])
+def test_redirect_blocked(destination):
+    with pytest.raises(PinError,match="UNAUTHORIZED_REDIRECT"):
+        _RestrictedRedirect("ecb-usd-per-eur").redirect_request(
+            Request(ECB),None,302,"Found",{},destination)
+
+def test_final_url_checked_before_read():
+    with pytest.raises(PinError,match="UNAUTHORIZED_REDIRECT"):
+        _mock_acquire(b"TIME_PERIOD,OBS_VALUE\n",final_url="https://unapproved.example/")
