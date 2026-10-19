@@ -24,3 +24,9 @@ Er wordt niets naar de bestaande publieke CSV/JSON geschreven. Verwijder de kand
 ## Open beslissingen
 
 Revisieacceptatie vereist een afzonderlijk governancebesluit met bronvergelijking en nieuwe baseline. De voorwaarden voor publieke herdistributie van de genormaliseerde CBS-prijsfixture vereisen bevestiging. Geen goud- of BTC-publicatiebesluit.
+
+## Consolidatiebesluit (2026-10-19)
+
+`etl/cbs_historical_update.py` is de canonieke updater. Deze bevat unieke strengere controles uit de parallelle variant: `Decimal` voor numerieke CBS-waarden, strikte maand/series-allowlist, JSON-schema- en goud-HOLD-validatie, pinned CSV/JSON-baselinehashes, integriteitsfouten versus bronrevisies en atomisch wegschrijven. De deterministische revisierapportage uit `etl/cbs_safe_update.py` is naar de canonieke module overgebracht. De workflow en regressietests verwijzen uitsluitend naar `etl/cbs_historical_update.py`. Het oude bestand blijft tijdelijk aanwezig en ongebruikt totdat uitgevoerde regressietests de verwijdering rechtvaardigen; het is geen toegestane productieroute. Een latere cleanup verwijdert het na groene CI, zonder de workflow te wijzigen.
+
+Runneronderzoek: de eerdere CI- en smoke-jobs staan op `queued` en tonen nog geen toegewezen runner; dit bewijst niet dat een concurrency-deadlock bestaat. De jobs gebruiken GitHub-hosted `ubuntu-latest`. Zonder account-/organisatie-inzicht in Actions-capaciteit kan runner- of billingbeperking niet worden uitgesloten. Er worden geen nieuwe workflow-dispatches gestart.
