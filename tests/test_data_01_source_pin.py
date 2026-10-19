@@ -196,8 +196,8 @@ def test_bounded_acquisition_and_redirect_rejection():
             self.read_sizes.append(size)
             return self.raw[:size]
     # Valid full-size ECB fixture: syntactically valid CSV, padded within a quoted field.
-    prefix=b"TIME_PERIOD,OBS_VALUE,COMMENT\\n2026-09-01,1.1,"
-    raw=prefix+b'"'+b"x"*(MAX_SOURCE_BYTES-len(prefix)-3)+b'"\\n'
+    prefix=b"TIME_PERIOD,OBS_VALUE,COMMENT\n2026-09-01,1.1,"
+    raw=prefix+b'"'+b"x"*(MAX_SOURCE_BYTES-len(prefix)-3)+b'"\n'
     assert len(raw)==MAX_SOURCE_BYTES
     response=Response(raw,{"Content-Length":str(MAX_SOURCE_BYTES)})
     got,manifest=acquire(opener=lambda req,timeout:response,**args)
