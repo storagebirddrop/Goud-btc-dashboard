@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
+      - name: Compile canonical CBS updater
+        run: python -m py_compile etl/cbs_historical_update.py
       - run: python -m pytest -q
       - name: Verify committed source and public JSON
         run: python -m etl.data_quality
