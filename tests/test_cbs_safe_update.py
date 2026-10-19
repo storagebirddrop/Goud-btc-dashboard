@@ -84,7 +84,7 @@ def test_new_month_is_appended_without_revising_existing(tmp_path, monkeypatch):
     ((b"157270.0", b"157271.0"), b"", "CBS_REVISION_REVIEW_REQUIRED"),
     ((b"80.0", b"81.0"), b"", "CBS_REVISION_REVIEW_REQUIRED"),
     (None, b"2000-02,nl_hpi,88.0\r\n", "Duplicate"),
-    (None, b"2000-04,nl_house_avg_eur,160000.0\r\n2000-04,nl_hpi,91.0\r\n", "missing"),
+    (None, b"2000-04,nl_house_avg_eur,160000.0\r\n2000-04,nl_hpi,91.0\r\n", "Missing"),
     (None, b"2000-03,nl_house_avg_eur,0\r\n2000-03,nl_hpi,90.0\r\n", "Invalid"),
 ])
 def test_fail_closed_live_inputs(tmp_path, monkeypatch, change, extra, reason):
