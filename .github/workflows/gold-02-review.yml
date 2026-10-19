@@ -1,0 +1,46 @@
+name: GOLD-02 review-only release candidate
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'etl/gold_02_release.py'
+      - 'tests/test_gold_02_release.py'
+      - '.github/workflows/gold-02-review.yml'
+permissions:
+  contents: read
+jobs:
+  release-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - name: Syntax and complete Python regression suite
+        run: |
+          python -m py_compile etl/gold_02_release.py etl/gold_publication_candidate.py etl/gold_monthly.py etl/static_export.py
+          python -m pytest -q
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Isolated GOLD-02 candidate
+        run: |
+          python -m etl.gold_02_release --output-dir "${RUNNER_TEMP}/gold-02-review"
+          sha256sum "${RUNNER_TEMP}/gold-02-review/"*
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
+      - name: Upload review-only release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-02-release-candidate-review-only
+          path: ${{ runner.temp }}/gold-02-review/
+          if-no-files-found: error
+          retention-days: 30
