@@ -49,3 +49,12 @@ De repo bevat `data/cbs-housing.csv` en `frontend/public/data/monthly.json`. Hun
 - **Selectiecriteria:** 2000-01 tot laatste complete maand; maandgemiddelde versus maandultimo expliciet; USD/oz of goed gedocumenteerde EUR-prijs; volledige dekking, stabiele herhaalbare toegang, onafhankelijke ankervergelijkingen; expliciete rechten voor publieke interactieve grafieken **én** maandelijkse JSON-distributie. Een vrij toegankelijke API of secundair openlicentielabel volstaat niet als bewijs.
 - **Geen impliciete bronwissel:** bronselectie, mogelijke aanpassing van prijsdefinitie/ADR-004 en publieke activatie vereisen afzonderlijke expliciete besluiten. Tot die tijd blijven productie-export en publicatieflags ongewijzigd.
 - Eerdere registerregels zijn historische snapshots; dit is de actuele goudstatus, geen retroactieve wijziging van BTC/CPI-bronstatus.
+
+## Historische woning- en gouddekking — onderzoeksnotitie 2026-10-19
+- **CBS/Kadaster**: bestaande maandelijkse gemiddelde verkoopprijzen vanaf 1995 volgens brononderzoek; controleer exacte tabel, velddefinitie en eventuele bronbreuken voordat oudere jaren worden opgenomen.
+- **NVM via Vastgoedmarkt, Kerncijfers 1974–2024**: kandidaat met jaarlijkse historische gemiddelde verkoopprijzen vanaf circa 1975. `UNVERIFIED` voor een naadloze landelijke CBS-koppeling; controleer 'per ultimo', transactiepopulatie en overlapping 1995–2023.
+- **World Bank Pink Sheet GOLD**: bronbeschrijvingen duiden op maandhistorie vanaf 1960; de bestaande adapter filtert vóór 2000. De volledige officiële Excel-kolom en notities vóór 2000 zijn nog niet rechtstreeks geverifieerd. Datasetlicentie CC BY 4.0 is aangetroffen; mogelijke specifieke derdepartijvoorwaarden blijven te controleren. Publicatie-HOLD blijft geldig.
+- **Goudprijsregime**: vóór circa 1968 sterk officieel gestuurd; 1968–1973 overgang; vanaf circa 1973 vrijer marktgeprijsd. Interpreteer oude goudvergelijkingen met expliciete regimeannotaties.
+- **ECB USD/EUR**: directe referentiereeks begint in 1999; voor eerdere jaren zijn expliciete historische valuta-/guldenmethoden nodig.
+- **1900–1974**: geen gevalideerde landelijke reeks gemiddelde Nederlandse woningverkoopprijzen aangetoond; academische regionale indices zijn niet gelijkwaardig aan landelijke gemiddelde koopsommen.
+Dit is brononderzoek, geen goedkeuring voor backfill, datasplicing of publieke export.
