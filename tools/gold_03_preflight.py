@@ -94,7 +94,7 @@ def main(argv=None):
         "schema": "GOLD-03-preflight-v1",
         "status": "PREPARED / NOT_DEPLOYED",
         "release_authorized": False,
-        "repository_commit": os.environ.get("GITHUB_SHA", "LOCAL_UNPINNED"),
+        "repository_commit": os.environ.get("GOLD03_SOURCE_SHA") or os.environ.get("GITHUB_SHA", "LOCAL_UNPINNED"),
         "github_actions_run_id": os.environ.get("GITHUB_RUN_ID"),
         "verified_at_utc": datetime.now(timezone.utc).isoformat(),
         "candidate_sha256": sha(candidate_bytes),
