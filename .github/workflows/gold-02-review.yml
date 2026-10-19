@@ -33,6 +33,8 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
       - name: Isolated GOLD-02 candidate
+        env:
+          GOLD02_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python -m etl.gold_02_release --output-dir "${RUNNER_TEMP}/gold-02-review"
           sha256sum "${RUNNER_TEMP}/gold-02-review/"*
