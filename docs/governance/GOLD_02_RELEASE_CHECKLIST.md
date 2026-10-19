@@ -19,3 +19,11 @@ Status: PREPARATION ONLY. No live publication or deployment authorized.
 Before deployment record the existing public JSON SHA-256 and deployed commit. Roll back to that exact reviewed public JSON and commit if live verification fails; do not recalculate a replacement from newly fetched sources during rollback.
 
 The GOLD-01 owner decision permits the limited indicators but is not a GOLD-02 deployment authorization. ADR-004 and CBS fail-closed controls remain unchanged.
+
+## GOLD-02 rollback runbook (review only)
+
+Before any separately authorized release, record the **deployed** immutable commit, exact public `frontend/public/data/monthly.json` bytes and SHA-256, deployment identifier, and rollback operator approval. Keep the approved backup in controlled release storage (not a live source fetch).
+
+If deployment verification fails, halt promotion, restore the **exact previously approved JSON bytes** and deployment commit from that immutable backup, redeploy the pinned commit using the normal protected release path, then verify its SHA-256 equals the pre-release approved checksum. Confirm the CBS CSV, HPI and JSON-v1 schema remain unchanged. Do not fetch World Bank, ECB or CBS during rollback; do not re-run ETL to reconstruct the prior JSON. Record incident, before/after hashes, deployment ID and reviewer sign-off. If the prior artifact/commit is missing or its hash differs, **BLOCKED**; do not substitute newly generated data.
+
+GOLD-02 review bundle: `monthly.gold-release-review.json`, `manifest.json`, `diff.json` in an isolated Actions artifact. The artifact ID is allocated by GitHub **after** manifest generation and is therefore established by the workflow artifact record, not prefilled in the manifest. A PR-triggered Actions checkout uses a synthetic merge SHA; the manifest records the actual PR head through `GOLD02_SOURCE_SHA`.
