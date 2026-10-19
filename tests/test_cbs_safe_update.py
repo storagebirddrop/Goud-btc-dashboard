@@ -165,3 +165,28 @@ def test_revision_report_deterministic(tmp_path, monkeypatch):
         reports.append(json.dumps(exc.value.report, sort_keys=True))
     assert reports[0] == reports[1]
     assert json.loads(reports[0])["revisions"][0]["period"] == "2000-01"
+
+
+def test_revision_cli_retains_only_deterministic_review_artifact(tmp_path):
+    from etl.cbs_historical_update import main, SourceRevision
+    baseline = Path("data/cbs-housing.csv").read_bytes()
+    changed = baseline.replace(b"2000-01,nl_house_avg_eur,157270", b"2000-01,nl_house_avg_eur,157271", 1)
+    assert changed != baseline
+    live = tmp_path / "revised-live.csv"
+    live.write_bytes(changed)
+    reports = []
+    for index in range(2):
+        output = tmp_path / ("candidate-" + str(index))
+        with pytest.raises(SourceRevision, match="CBS_REVISION_REVIEW_REQUIRED"):
+            main(["--live-csv", str(live), "--output-dir", str(output)])
+        assert not output.exists()
+        review = Path(str(output) + "-revision-review")
+        assert sorted(p.name for p in review.iterdir()) == ["revision-report.json"]
+        report = (review / "revision-report.json").read_bytes()
+        parsed = json.loads(report)
+        assert parsed["status"] == "CBS_REVISION_REVIEW_REQUIRED"
+        assert parsed["source"] == "CBS StatLine 85773NED"
+        assert parsed["revisions"][0]["period"] == "2000-01"
+        assert parsed["revisions"][0]["series"] == "nl_house_avg_eur"
+        reports.append(report)
+    assert reports[0] == reports[1]
