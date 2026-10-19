@@ -145,7 +145,9 @@ def validate(approved, candidate, *, approved_through, as_of_period,
             raise ObservationError("INVALID_METHODOLOGY_POLICY")
         if metric in BTC_RESEARCH and method != "RESEARCH_ONLY":
             raise ObservationError("BTC_NOT_APPROVED")
-    if not isinstance(manifest_evidence, (dict, type(None))):\n        raise ObservationError("INVALID_MANIFEST_EVIDENCE")\n    if permitted_future is not False:
+    if not isinstance(manifest_evidence, (dict, type(None))):
+        raise ObservationError("INVALID_MANIFEST_EVIDENCE")
+    if permitted_future is not False:
         raise ObservationError("FUTURE_POLICY_NOT_APPROVED")
     # The last approved month is an explicit review boundary, not inferred from candidate dates.
     if today < boundary:\n        raise ObservationError("AS_OF_BEFORE_APPROVED_BOUNDARY")\n    if any(month_number(p) > boundary for p, m in old):
