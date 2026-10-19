@@ -23,5 +23,5 @@ def test_cbs_updater_runs_validation_before_artifact_upload():
         "Upload review-only candidate and provenance manifest"
     )
     assert content.index("Assert no public file changes") < content.index(
-        "Upload validated CBS candidate for manual review"
+        "Upload review-only candidate and provenance manifest"
     )
