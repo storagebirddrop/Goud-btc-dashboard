@@ -11,6 +11,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -37,10 +38,16 @@ jobs:
               raise SystemExit('UNAUTHORIZED_BRANCH_DIFF: ' + repr(sorted(changed-allowed)))
           print('Authorized DATA-01B diff:', sorted(changed))
           PY
-      - name: Verify protected public inputs unchanged
+      - name: Verify PR base-to-HEAD protected inputs unchanged
         run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git diff --exit-code "$(git merge-base HEAD origin/main)" HEAD -- \\
+            data/cbs-housing.csv frontend/public/data/monthly.json \\
+            etl .github/workflows/update-static-data.yml \\
+            .github/workflows/cbs-full-history.yml \\
+            .github/workflows/cbs-source-spotcheck.yml \\
+            docs/governance/DECISIONS.md docs/governance/METHODOLOGY.md
           git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
-          git diff --exit-code --cached -- data/cbs-housing.csv frontend/public/data/monthly.json
       - name: Report review-only execution (no raw external bytes)
         run: |
           mkdir -p "$RUNNER_TEMP/data-01b"
