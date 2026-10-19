@@ -84,3 +84,11 @@
 - `BLOCKED`: publicatie van goudindicatoren onder de huidige World Bank-gebaseerde implementatie blijft HOLD; `gold_eur_oz`, `gold_index` en `gold_grams_per_house` blijven publiek `null` totdat bronkeuze, eventuele ADR-aanpassing en afzonderlijke activatie zijn goedgekeurd.
 - `NEXT`: eerst read-only brononderzoek en validatie; daarna expliciet bronselectiebesluit. Geen nieuwe backfill, productiecode, publieke JSON, publicatieflags of automatisch implementatie-PR in deze documentatiesynchronisatie.
 - Eerdere secties zijn historische momentopnamen. Deze update vervangt hun inmiddels achterhaalde goudstatusclaims, maar wijzigt geen BTC-, CPI- of Cloudflare-besluiten.
+
+## Historische dekking — update 2026-10-19 (`DECIDED` ambitie, uitvoering open)
+- `DECIDED`: streef naar de oudste betrouwbaar vergelijkbare landelijke gemiddelde Nederlandse woningverkoopprijzen, idealiter vanaf circa 1900; januari 2000 is geen projectgrens.
+- `VERIFIED_REPO`: de huidige World Bank GOLD-adapter en statische export bevatten een 2000-01 filter/grens; huidige productiedata blijven onveranderd.
+- `PROPOSED/UNVERIFIED`: NVM/Vastgoedmarkt-jaarreeks circa 1975–1994 als historische uitbreiding; toets definitie en overlap met CBS/Kadaster 1995–heden.
+- `DOCUMENTED/UNVERIFIED`: World Bank GOLD heeft volgens bronbeschrijvingen historie vanaf 1960; GOLD-specifieke Excel-notities en volledige vroege data nog niet end-to-end gecontroleerd.
+- `OPEN`: landelijke gemiddelde woningprijzen vóór 1975, historische valutaomrekening, verschillende aggregatiefrequenties en goudprijsregimes.
+- `BLOCKED`: publieke goudactivatie blijft uit; geen code, dataset of ADR gewijzigd door dit documentatiebesluit.

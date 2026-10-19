@@ -42,3 +42,6 @@ Een fase is gereed als: (a) beslissingen geregistreerd, (b) bronlicentie en data
 
 ## Update v2.1 — BTC-tijddekking
 De tradingrepository is nu een **geverifieerde kandidaat** voor dagelijkse BTC/USD-slotkoersen van **2014-09-17 t/m 2026-10-12** (4.409 opeenvolgende kalenderdagen, auditrun 39050246824). Dit is de bewezen dekking van **die bron**, niet de economische startdatum van Bitcoin en niet de dekkingsgarantie voor een publieke BTC/EUR-maandreeks. De periode vóór 2014-09-17 en de 1.267 BTC-dagen zonder dezelfde-dag FX vereisen expliciete methodologische keuzes. M2 blijft `BLOCKED` voor publicatie wegens FX, licentie en onafhankelijke broncontrole.
+
+## Historische reikwijdte v2.4 (`DECIDED`, 2026-10-19)
+Het project streeft naar een zo lang mogelijke vergelijking, idealiter vanaf circa 1900, **afhankelijk van de oudste aantoonbaar betrouwbare gemiddelde Nederlandse woningverkoopprijs**. De huidige 2000-01 grens is uitsluitend technisch. Onderzoek jaarlijkse historie naast recente maanddata; presenteer perioden zonder vergelijkbare woningprijzen niet als gram-goud-per-woning. De gevonden NVM/Vastgoedmarkt-reeks vanaf circa 1975 is `PROPOSED/UNVERIFIED` als aansluitende landelijke reeks; CBS/Kadaster vanaf 1995 is de bestaande operationele bron. Historische bron- en frequentieverschillen vereisen expliciete validatie.

@@ -34,3 +34,6 @@ Onderzoekers, geïnteresseerden in de woningmarkt, monetaire geschiedenis, finan
 
 ## Verantwoordelijkheid
 Deze documenten zijn een toetsingskader. Feitelijke implementatie en gepubliceerde resultaten worden afzonderlijk gecontroleerd; een geslaagde unit-test is geen economische bronverificatie.
+
+## Historische ambitie v2.4 (`DECIDED`, 2026-10-19)
+De onderzoeksambitie is een zo lang mogelijke historisch verantwoorde vergelijking van Nederlandse gemiddelde woningverkoopprijzen met goud en, vanaf beschikbare marktgeschiedenis, bitcoin. Onderzoek idealiter vanaf circa **1900**, maar begin de gezamenlijke vergelijking bij het oudste jaar waarvoor voldoende betrouwbare en vergelijkbare landelijke gemiddelde woningprijzen aantoonbaar beschikbaar zijn. **Januari 2000 is een huidige implementatie- en indexbasis, geen grens van de projectvisie.** Historische dekking volgt uit bronbewijs en mag niet door een hardcoded technische startdatum worden bepaald. Jaar- en maandreeksen mogen afzonderlijk worden getoond met expliciete frequentie en bronbreuken. Dit besluit autoriseert geen bronmigratie of publicatie.
