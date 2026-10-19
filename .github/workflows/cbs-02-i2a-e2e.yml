@@ -1,0 +1,16 @@
+name: CBS-02-I2A isolated E2E verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required source inputs
+        env:
+          CBS_85773_B64: ${{ secrets.CBS_I2A_85773_B64 }}
+          CBS_83906_B64: ${{ secrets.CBS_I2A_83906_B64 }}
+        run: |
+          test -n "$CBS_85773_B64" && test -n "$CBS_83906_B64"
