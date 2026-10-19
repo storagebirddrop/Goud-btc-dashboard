@@ -6,7 +6,9 @@ on:
       - 'etl/static_export.py'
       - 'etl/data_quality.py'
       - 'etl/sources/cbs.py'
-      - 'etl/asset_quality.py'
+      - 'etl/cbs_historical_update.py'
+      - 'data/fixtures/cbs-1995-1999-i1.json'
+      - 'data/fixtures/cbs-1995-1999-i1.provenance.json'
       - '.github/workflows/update-static-data.yml'
   schedule:
     - cron: '20 8 * * 1'
@@ -23,42 +25,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
-      - name: Download CBS OData v4
-        run: python -m etl.sources.cbs --output data/cbs-housing.csv
-      - name: Validate and generate public JSON
-        run: python -m etl.static_export --input data/cbs-housing.csv --output frontend/public/data/monthly.json
-      - name: Validate generated payload
-        run: python -m pytest -q tests/test_static_export.py
-      - name: Verify generated source and public JSON parity
-        run: python -m etl.data_quality
-      - name: Inspect generated data changes
-        id: changes
-        shell: bash
+      - name: Download live CBS into isolated input
         run: |
-          if git diff --quiet -- data/cbs-housing.csv frontend/public/data/monthly.json; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No CBS data changes"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff --stat -- data/cbs-housing.csv frontend/public/data/monthly.json
-          fi
-      - name: Upload validated CBS candidate for manual review
-        if: steps.changes.outputs.changed == 'true'
+          mkdir -p "${RUNNER_TEMP}/cbs-source"
+          python -m etl.sources.cbs --output "${RUNNER_TEMP}/cbs-source/live.csv"
+      - name: Build fail-closed candidate, without modifying public files
+        run: |
+          python -m etl.cbs_historical_update --live-csv "${RUNNER_TEMP}/cbs-source/live.csv" --output-dir "${RUNNER_TEMP}/cbs-review"
+      - name: Upload blocked revision report for governance review
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: cbs-validated-candidate
-          path: |
-            data/cbs-housing.csv
-            frontend/public/data/monthly.json
+          name: cbs-revision-blocked-review-only
+          path: ${{ runner.temp }}/cbs-review-revision-review/revision-report.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Verify candidate data quality
+        run: |
+          python -m etl.data_quality --input "${RUNNER_TEMP}/cbs-review/candidate.csv" --output "${RUNNER_TEMP}/cbs-review/candidate.json"
+          python -m pytest -q tests/test_cbs_safe_update.py
+      - name: Assert no public file changes
+        run: |
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
+      - name: Upload review-only candidate and provenance manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbs-validated-review-only
+          path: ${{ runner.temp }}/cbs-review/
           if-no-files-found: error
           retention-days: 14
-      - name: Confirm review gate
-        if: steps.changes.outputs.changed == 'true'
+      - name: Confirm manual approval gate
         run: |
-          echo "::notice::Candidate uploaded; review and merge via a separate pull request."
-          echo "This workflow cannot commit or push to main."
+          echo "::notice::REVIEW ONLY. No commit, deploy, publication, or CBS revision acceptance."

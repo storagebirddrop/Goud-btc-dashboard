@@ -1,0 +1,24 @@
+{
+  "converter_version": "CBS-02-I1/1",
+  "verification": "CBS-01 RESEARCH DATA-GO; CBS-02-I1 OFFLINE VALIDATED; NOT PUBLISHED",
+  "period_start": "1995-01",
+  "period_end": "1999-12",
+  "observations": 60,
+  "output_sha256": "0a557dd16fe85e40952dd97edd492d5b3f985f64930d19d960b14307d725c543",
+  "sources": [
+    {
+      "table_id": "85773NED",
+      "filename": "85773NED_SelectieZonderStatSymbol_20261019112844(1).csv",
+      "sha256": "e621f1828f759c6cd04453eba21ecf76748b3354956fc594cd40527f7d6b40e5",
+      "period_column": "Perioden",
+      "price_column": "Gemiddelde verkoopprijs (euro)"
+    },
+    {
+      "table_id": "83906NED",
+      "filename": "83906NED_SelectieZonderStatSymbol_20261019113553.csv",
+      "sha256": "e13e13f9969f03944ee93eef417b640447eb7f70230688b29eb04b1eba572338",
+      "period_column": "Perioden",
+      "price_column": "Gemiddelde verkoopprijs (euro)"
+    }
+  ]
+}
