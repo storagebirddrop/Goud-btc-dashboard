@@ -150,7 +150,9 @@ def validate(approved, candidate, *, approved_through, as_of_period,
     if permitted_future is not False:
         raise ObservationError("FUTURE_POLICY_NOT_APPROVED")
     # The last approved month is an explicit review boundary, not inferred from candidate dates.
-    if today < boundary:\n        raise ObservationError("AS_OF_BEFORE_APPROVED_BOUNDARY")\n    if any(month_number(p) > boundary for p, m in old):
+    if today < boundary:
+        raise ObservationError("AS_OF_BEFORE_APPROVED_BOUNDARY")
+    if any(month_number(p) > boundary for p, m in old):
         raise ObservationError("APPROVED_BEYOND_BOUNDARY")
     all_keys = sorted(set(old) | set(new))
     items = []
