@@ -42,6 +42,8 @@ jobs:
           gh run download 39315816446 --repo "${GITHUB_REPOSITORY}" --name gold-02-release-candidate-review-only --dir "${RUNNER_TEMP}/gold-03-input"
           echo "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd  ${RUNNER_TEMP}/gold-03-input/monthly.gold-release-review.json" | sha256sum -c -
       - name: Fail-closed isolated preview and rollback
+        env:
+          GOLD03_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python -m tools.gold_03_preflight --candidate "${RUNNER_TEMP}/gold-03-input/monthly.gold-release-review.json" --output-dir "${RUNNER_TEMP}/gold-03-preflight"
           sha256sum "${RUNNER_TEMP}/gold-03-preflight/"*
