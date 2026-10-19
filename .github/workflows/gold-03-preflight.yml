@@ -1,0 +1,55 @@
+name: GOLD-03 review-only release preflight
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/gold_03_preflight.py'
+      - 'tests/test_gold_03_preflight.py'
+      - '.github/workflows/gold-03-preflight.yml'
+      - 'docs/governance/GOLD_03_RELEASE_RUNBOOK.md'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - name: Python syntax and regression suite
+        run: |
+          python -m py_compile tools/gold_03_preflight.py
+          python -m pytest -q
+      - name: Frontend production build
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Fetch exactly validated GOLD-02B artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/gold-03-input"
+          gh run download 39315816446 --repo "${GITHUB_REPOSITORY}" --name gold-02-release-candidate-review-only --dir "${RUNNER_TEMP}/gold-03-input"
+          echo "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd  ${RUNNER_TEMP}/gold-03-input/monthly.gold-release-review.json" | sha256sum -c -
+      - name: Fail-closed isolated preview and rollback
+        run: |
+          python -m tools.gold_03_preflight --candidate "${RUNNER_TEMP}/gold-03-input/monthly.gold-release-review.json" --output-dir "${RUNNER_TEMP}/gold-03-preflight"
+          sha256sum "${RUNNER_TEMP}/gold-03-preflight/"*
+          git diff --exit-code -- frontend/public/data/monthly.json data/cbs-housing.csv
+      - name: Upload review-only preflight artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-03-preflight-review-only
+          path: ${{ runner.temp }}/gold-03-preflight/
+          if-no-files-found: error
+          retention-days: 30
