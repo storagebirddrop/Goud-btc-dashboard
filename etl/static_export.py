@@ -60,8 +60,7 @@ def validate_gold(candidate, public_rows):
         if not all((close(eur, usd/fx), close(gram, eur/GRAMS),
                     close(grams, house/gram), close(idx, Decimal(100)*eur/base))):
             raise ValueError("Candidate formula mismatch")
-        result[month] = {"gold_eur_oz": float(eur),
-                         "gold_grams_per_house": float(grams),
+        result[month] = {"gold_grams_per_house": float(grams),
                          "gold_index": float(idx)}
     if result["2000-01"]["gold_index"] != 100:
         raise ValueError("Incorrect index basis")

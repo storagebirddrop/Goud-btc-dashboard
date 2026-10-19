@@ -34,9 +34,9 @@ def test_authorized_values_and_other_fields_unchanged(monkeypatch):
     monkeypatch.setenv("GOLD_PUBLICATION_APPROVAL","APPROVED")
     before=build("data/cbs-housing.csv")
     after=build("data/cbs-housing.csv",gold_candidate=fixture_candidate(),gold_publication_approved=True)
-    assert after["data"][0]["gold_eur_oz"]==250
+    assert after["data"][0]["gold_eur_oz"] is None
     assert after["data"][0]["gold_index"]==100
-    assert after["data"][1]["gold_eur_oz"]==256
+    assert after["data"][1]["gold_eur_oz"] is None
     assert after["data"][1]["gold_index"]==102.4
     assert after["data"][0]["gold_grams_per_house"]==float(D(str(before["data"][0]["house_eur"]))/(D("250")/D("31.1034768")))
     for a,b in zip(after["data"],before["data"]):
