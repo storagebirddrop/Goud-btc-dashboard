@@ -78,9 +78,9 @@ def validate_observation(row):
             raise ObservationError("INVALID_SOURCE_HASH_REFERENCE")
     if not isinstance(row["methodology_version"], str) or not VERSION.fullmatch(row["methodology_version"]):
         raise ObservationError("INVALID_METHODOLOGY_VERSION")
-    if row["completeness_status"] not in ALLOWED_COMPLETENESS:
+    if not isinstance(row["completeness_status"], str) or row["completeness_status"] not in ALLOWED_COMPLETENESS:
         raise ObservationError("INVALID_COMPLETENESS_STATUS")
-    if row["observation_status"] not in ALLOWED_STATUS:
+    if not isinstance(row["observation_status"], str) or row["observation_status"] not in ALLOWED_STATUS:
         raise ObservationError("INVALID_OBSERVATION_STATUS")
     if row["value"] is None:
         if row["completeness_status"] == "COMPLETE":
@@ -136,7 +136,7 @@ def validate(approved, candidate, *, approved_through, as_of_period,
     today = month_number(as_of_period)
     if not isinstance(approved_metrics, (list, tuple)) or not approved_metrics:
         raise ObservationError("INVALID_METRIC_POLICY")
-    if len(approved_metrics) != len(set(approved_metrics)) or not set(approved_metrics) <= METRICS:
+    if any(not isinstance(m, str) for m in approved_metrics) or len(approved_metrics) != len(set(approved_metrics)) or not set(approved_metrics) <= METRICS:
         raise ObservationError("INVALID_METRIC_POLICY")
     if not isinstance(methodology_by_metric, dict) or set(methodology_by_metric) != set(approved_metrics):
         raise ObservationError("INVALID_METHODOLOGY_POLICY")
@@ -145,10 +145,10 @@ def validate(approved, candidate, *, approved_through, as_of_period,
             raise ObservationError("INVALID_METHODOLOGY_POLICY")
         if metric in BTC_RESEARCH and method != "RESEARCH_ONLY":
             raise ObservationError("BTC_NOT_APPROVED")
-    if permitted_future is not False:
+    if not isinstance(manifest_evidence, (dict, type(None))):\n        raise ObservationError("INVALID_MANIFEST_EVIDENCE")\n    if permitted_future is not False:
         raise ObservationError("FUTURE_POLICY_NOT_APPROVED")
     # The last approved month is an explicit review boundary, not inferred from candidate dates.
-    if any(month_number(p) > boundary for p, m in old):
+    if today < boundary:\n        raise ObservationError("AS_OF_BEFORE_APPROVED_BOUNDARY")\n    if any(month_number(p) > boundary for p, m in old):
         raise ObservationError("APPROVED_BEYOND_BOUNDARY")
     all_keys = sorted(set(old) | set(new))
     items = []
