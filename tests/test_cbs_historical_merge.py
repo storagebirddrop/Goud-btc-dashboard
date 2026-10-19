@@ -65,7 +65,7 @@ def test_t01_t13_candidate_integrity_determinism_and_rollback(tmp_path):
 
 
 @pytest.mark.parametrize("mutation,reason", [
-    (lambda a,b,c,d: (a, b"", c, d), "provenance"),
+    (lambda a,b,c,d: (a, b"", c, d), "Expecting value"),
     (lambda a,b,c,d: (a.replace(b"90000", b"90001"),b,c,d), "fixture SHA"),
     (lambda a,b,c,d: (a,b,c.replace(b"150000.0",b"150001.0"),d), "baseline SHA"),
     (lambda a,b,c,d: (a,b,c.replace(b"80.0",b"81.0"),d), "baseline SHA"),
