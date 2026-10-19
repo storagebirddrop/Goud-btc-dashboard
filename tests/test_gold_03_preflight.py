@@ -23,7 +23,7 @@ def test_gold03_invalid_candidate_after_pins(monkeypatch):
 
 def test_gold03_rejects_missing_gold_months_with_pinned_hash(monkeypatch):
     candidate = b'{"data":[]}'
-    public = b'{"data":[]}'
+    public = b'{"data": []}'
     cbs = b"baseline"
     def pinned(raw):
         return CANDIDATE_SHA if raw is candidate else PUBLIC_SHA if raw is public else CBS_SHA
