@@ -37,6 +37,14 @@ jobs:
       - name: Build fail-closed candidate, without modifying public files
         run: |
           python -m etl.cbs_safe_update --live-csv "${RUNNER_TEMP}/cbs-source/live.csv" --output-dir "${RUNNER_TEMP}/cbs-review"
+      - name: Upload blocked revision report for governance review
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbs-revision-blocked-review-only
+          path: ${{ runner.temp }}/cbs-review-revision-review/revision-report.json
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Verify candidate data quality
         run: |
           python -m etl.data_quality --input "${RUNNER_TEMP}/cbs-review/candidate.csv" --output "${RUNNER_TEMP}/cbs-review/candidate.json"
