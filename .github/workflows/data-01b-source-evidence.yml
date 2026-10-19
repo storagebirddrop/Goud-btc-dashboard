@@ -20,6 +20,23 @@ jobs:
         run: python -m pytest -q tests/test_data_01_source_pin.py
       - name: Full Python regression
         run: python -m pytest -q
+      - name: Verify branch diff against DATA-01B allowlist
+        env:
+          BASE_SHA: 61e35a1eaed1de2428939d3b39822b390e1c4212
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          python - <<'PY'
+          import os, subprocess
+          allowed = {'tools/data_01_source_pin.py', 'tests/test_data_01_source_pin.py',
+                     'docs/governance/DATA_01B_SOURCE_PINNING.md',
+                     '.github/workflows/data-01b-source-evidence.yml'}
+          changed = set(subprocess.check_output(
+              ['git','diff','--name-only',os.environ['BASE_SHA'],'HEAD'],
+              text=True).splitlines())
+          if changed - allowed:
+              raise SystemExit('UNAUTHORIZED_BRANCH_DIFF: ' + repr(sorted(changed-allowed)))
+          print('Authorized DATA-01B diff:', sorted(changed))
+          PY
       - name: Verify protected public inputs unchanged
         run: |
           git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
