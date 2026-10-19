@@ -8,8 +8,10 @@ def row(p, v=100, *, currency="EUR", fx="USD_PER_EUR"):
     return dict(period=p, metric="gold_index", value=v, currency=currency, fx_direction=fx)
 
 def check(old, new, **kwargs):
-    return inspect(old, new, source_id="approved", approved_source_id="approved",
-                   raw_bytes=RAW, expected_sha=SHA, complete_through="2026-09", **kwargs)
+    args = dict(source_id="approved", approved_source_id="approved",
+                raw_bytes=RAW, expected_sha=SHA, complete_through="2026-09")
+    args.update(kwargs)
+    return inspect(old, new, **args)
 
 def test_valid_append():
     assert check([row("2026-08")], [row("2026-08"), row("2026-09", 101)])["append_count"] == 1
