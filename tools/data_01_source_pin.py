@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
 HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -22,7 +22,36 @@ ALLOWED = {
     "coinmetrics-btc-research": ("community-api.coinmetrics.io", "/v4/timeseries/asset-metrics", "json"),
 }
 METADATA = ("content-type", "etag", "last-modified")
-PROTECTED = ("frontend/public/data", "data/cbs-housing.csv", "data/fixtures")
+MAX_SOURCE_BYTES = 15_000_000
+
+
+class _RestrictedRedirect(HTTPRedirectHandler):
+    def __init__(self, source_id):
+        self.source_id = source_id
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Revalidate every redirect hop, not only the initial URL.
+        _validate_location(self.source_id, newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _validate_location(source_id, url):
+    u = urlsplit(url)
+    host, prefix, _ = ALLOWED[source_id]
+    if (u.scheme != "https" or u.hostname != host or u.port is not None or
+            u.username is not None or u.password is not None or
+            not u.path.startswith(prefix) or u.fragment):
+        raise PinError("UNAUTHORIZED_REDIRECT")
+
+
+def _content_length(headers):
+    value = next((v for k, v in headers.items() if k.lower() == "content-length"), None)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
+        raise PinError("INVALID_CONTENT_LENGTH")
+    return int(value)
+
 
 
 class PinError(ValueError):
@@ -132,7 +161,7 @@ def pin(raw: bytes, *, source_id: str, source_version: str, url: str,
             "operations": operations}
 
 
-def acquire(*, opener=urlopen, timeout=30, **kwargs):
+def acquire(*, opener=None, timeout=30, **kwargs):
     """Explicit one-time fetch. Never used by replay; no retry/fallback."""
     if "raw" in kwargs or "http_status" in kwargs or "response_headers" in kwargs:
         raise PinError("INVALID_ACQUISITION_ARGUMENTS")
@@ -145,11 +174,20 @@ def acquire(*, opener=urlopen, timeout=30, **kwargs):
     if cfg["request_parameters"]:
         url += "?" + urlencode(cfg["request_parameters"])
     req = Request(url, headers={"User-Agent": "goud-btc-dashboard/data-01b research"})
+    if opener is None:
+        opener = build_opener(_RestrictedRedirect(cfg["source_id"])).open
     try:
         with opener(req, timeout=timeout) as response:
+            if hasattr(response, "geturl"):
+                _validate_location(cfg["source_id"], response.geturl())
             status = response.status
             headers = dict(response.headers.items())
-            raw = response.read()
+            length = _content_length(headers)
+            if length is not None and length > MAX_SOURCE_BYTES:
+                raise PinError("SOURCE_TOO_LARGE")
+            raw = response.read(MAX_SOURCE_BYTES + 1)
+            if len(raw) > MAX_SOURCE_BYTES:
+                raise PinError("SOURCE_TOO_LARGE")
     except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise PinError("SOURCE_ACQUISITION_FAILED") from exc
     manifest = pin(raw, http_status=status, response_headers=headers,
