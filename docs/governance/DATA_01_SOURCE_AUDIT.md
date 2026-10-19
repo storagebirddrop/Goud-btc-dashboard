@@ -1,0 +1,19 @@
+# DATA-01A — repository and source audit
+**Status: VERIFIED_REPO where explicitly indicated; audit base main `2069a4fea4b528300916967719a21ea15683c9b8` (2026-10-19).** Design-only; no production authorization.
+
+## GitHub-first publication state
+- **VERIFIED_REPO** `.github/workflows/update-static-data.yml` schedules Monday 08:20 UTC, plus manual dispatch and selected main pushes. It downloads CBS, calls `etl.cbs_historical_update` in an isolated runner directory, runs data quality and CBS tests, checks git diff, and uploads 14-day review artifacts. `permissions: contents: read`; **no commit, PR, merge or deployment**. Schedule does not mean approved dataset automatically updates.
+- **VERIFIED_REPO** `etl/cbs_historical_update.py` checks pinned baseline CSV/JSON and fixture hashes, unique complete month/metric coverage and historical overlap. Changed approved observations raise `CBS_REVISION_REVIEW_REQUIRED` with deterministic review report; candidate is not approved. New months remain review-only.
+- **VERIFIED_REPO** `gold-01-review.yml`, `gold-02-review.yml` implement limited gold review flows; `etl/gold_monthly.py`, `etl/sources/worldbank_gold.py`, `etl/sources/ecb.py`, `etl/gold_publication_candidate.py`, `etl/gold_02_release.py` implement ADR-004 World Bank monthly USD/oz and ECB daily USD/EUR monthly arithmetic average; June 2025 benchmark definition change is documented. GOLD-02B source-pinning and independent replay evidence is historical, **not** a recurring gold publisher.
+- **VERIFIED_REPO** `bitcoin-backfill.yml` manual Coin Metrics validation, `coingecko-smoke.yml` manual recent CoinGecko access, `trading-btc-audit.yml` manual/push read-only audit of `storagebirddrop/script-trading-anlytics` at **mutable master**, `bitcoin-backfill.yml` outputs metadata only. No approved BTC publication job.
+- **VERIFIED_REPO** `frontend/public/data/monthly.json` and `data/cbs-housing.csv` are versioned in Git. They are the committed public *build inputs*, not proof that any given Cloudflare Pages deployment serves that exact commit. `frontend/wrangler.toml` declares Pages project; `docs/cloudflare-setup.md` is a setup plan. Actual deployed commit, live served JSON hash and rollback mechanism **NOT VERIFIED**.
+- **VERIFIED_REPO** GOLD-03 review/preflight and byte-identical rollback code exists on separate Draft PR #67, **not on this main audit base**. Do not treat it as deployed or merged. GitHub Actions artifacts expire; durable immutable storage **BLOCKED** absent an approved mechanism.
+- **VERIFIED_REPO** existing public JSON is v1 `{"data":[...]}`; `docs/governance/DATA_CONTRACT.md` JSON-v2 is **PROPOSED** only. Public gold and BTC activation is not authorized by this audit.
+
+## Risk and verification boundaries
+- Git history offers commit-addressed snapshots of **committed derived public files**; it does **not** automatically retain original external response bytes, prove licensing, guarantee artifact retention, or prove live deployment state.
+- **PROPOSED** Git-first monthly review: read-only scheduled fetch → isolated raw-byte hashing → schema/coverage/revision gate → immutable review evidence → human-approved protected PR → separate release gate and live hash verification. No bot bypass.
+- **BLOCKED** Bitcoin source/methodology/reuse permission; production deployment identity; durable controlled raw-source custody; automated approval policy.
+- **NOT VERIFIED** current live source coverage, current external API entitlement/quotas, actual Cloudflare deployment, and successful DATA-01A CI until run results exist.
+
+References: `AGENTS.md`, `docs/governance/DECISIONS.md` (ADR-004, ADR-007, ADR-010), `docs/governance/DATA_CONTRACT.md`, `docs/governance/GOLD_PUBLICATION_DECISION.md`, `docs/cbs-02-i2b-safe-update.md`, `docs/btc-source-validation-2026-10.md`, `docs/btc-trading-history-audit-2026-10-17.md`.
