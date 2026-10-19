@@ -174,3 +174,52 @@ def test_redirect_blocked(destination):
 def test_final_url_checked_before_read():
     with pytest.raises(PinError,match="UNAUTHORIZED_REDIRECT"):
         _mock_acquire(b"TIME_PERIOD,OBS_VALUE\n",final_url="https://unapproved.example/")
+
+def test_bounded_acquisition_and_redirect_rejection():
+    from tools.data_01_source_pin import MAX_SOURCE_BYTES, _RestrictedRedirect
+    from urllib.request import Request
+    from unittest.mock import patch
+    from tools.data_01_source_pin import _validate_location
+    args=dict(source_id="ecb-usd-per-eur",source_version="v1",url=ECB,
+              params={"format":"csvdata"},parser_version="parser-v1",transform_version="commit-abc")
+    class Response:
+        status=200
+        def __init__(self,raw,headers=None,url=ECB):
+            self.raw=raw
+            self.headers=headers or {}
+            self.url=url
+            self.read_sizes=[]
+        def __enter__(self):return self
+        def __exit__(self,*a):return False
+        def geturl(self):return self.url
+        def read(self,size=-1):
+            self.read_sizes.append(size)
+            return self.raw[:size]
+    # Valid full-size ECB fixture: syntactically valid CSV, padded within a quoted field.
+    prefix=b"TIME_PERIOD,OBS_VALUE,COMMENT\\n2026-09-01,1.1,"
+    raw=prefix+b'"'+b"x"*(MAX_SOURCE_BYTES-len(prefix)-3)+b'"\\n'
+    assert len(raw)==MAX_SOURCE_BYTES
+    response=Response(raw,{"Content-Length":str(MAX_SOURCE_BYTES)})
+    got,manifest=acquire(opener=lambda req,timeout:response,**args)
+    assert len(got)==MAX_SOURCE_BYTES
+    assert response.read_sizes==[MAX_SOURCE_BYTES+1]
+    assert manifest["identity"]["byte_size"]==MAX_SOURCE_BYTES
+    assert replay(got,manifest)["status"]=="PASS"
+    for headers in ({},{"Content-Length":"2"}):
+        response=Response(raw+b"!",headers)
+        with pytest.raises(PinError,match="SOURCE_TOO_LARGE"):
+            acquire(opener=lambda req,timeout:response,**args)
+        assert response.read_sizes==[MAX_SOURCE_BYTES+1]
+    response=Response(raw,{"Content-Length":str(MAX_SOURCE_BYTES+1)})
+    with pytest.raises(PinError,match="SOURCE_TOO_LARGE"):
+        acquire(opener=lambda req,timeout:response,**args)
+    assert response.read_sizes==[]
+    for target in ("https://attacker.example/steal",
+                   "http://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A"):
+        with pytest.raises(PinError,match="UNAUTHORIZED_REDIRECT"):
+            _RestrictedRedirect("ecb-usd-per-eur").redirect_request(
+                Request(ECB),None,302,"Found",{},target)
+        response=Response(b"TIME_PERIOD,OBS_VALUE\\n2026-09-01,1.1\\n",url=target)
+        with pytest.raises(PinError,match="UNAUTHORIZED_REDIRECT"):
+            acquire(opener=lambda req,timeout:response,**args)
+        assert response.read_sizes==[]
