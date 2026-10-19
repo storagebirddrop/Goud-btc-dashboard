@@ -84,7 +84,7 @@ def build(csv_path, *, gold_candidate=None, gold_publication_approved=False):
                 parsed = date.fromisoformat(month + "-01")
             except ValueError as exc:
                 raise ValueError(f"Invalid monthly period: {month}") from exc
-            if parsed.strftime("%Y-%m") != month or month < "2000-01":
+            if parsed.strftime("%Y-%m") != month or month < "1995-01":
                 raise ValueError(f"Invalid monthly period: {month}")
             value = float(row["value"])
             if not math.isfinite(value) or value <= 0:
@@ -94,10 +94,10 @@ def build(csv_path, *, gold_candidate=None, gold_publication_approved=False):
                 raise ValueError(f"Duplicate observation: {series}/{month}")
             observations[key] = value
     months = sorted({m for m, _ in observations})
-    if not months or months[0] != "2000-01":
+    if not months or months[0] not in ("1995-01", "2000-01"):
         raise ValueError("Housing data must start in 2000-01")
     expected = []
-    year, month = 2000, 1
+    year, month = map(int, months[0].split("-"))
     while (year, month) <= tuple(map(int, months[-1].split("-"))):
         expected.append(f"{year:04d}-{month:02d}")
         month += 1
@@ -107,16 +107,16 @@ def build(csv_path, *, gold_candidate=None, gold_publication_approved=False):
         raise ValueError("Gaps in monthly coverage")
     output = []
     for period in months:
-        if any((period, series) not in observations for series in SERIES):
+        if (period, "nl_house_avg_eur") not in observations or (period >= "2000-01" and (period, "nl_hpi") not in observations) or (period < "2000-01" and (period, "nl_hpi") in observations):
             raise ValueError(f"Missing housing series in {period}")
         output.append({
             "period": period,
             "gold_eur_oz": None,
             "house_eur": observations[(period, "nl_house_avg_eur")],
-            "hpi": observations[(period, "nl_hpi")],
+            "hpi": observations.get((period, "nl_hpi")),
             "gold_grams_per_house": None,
             "gold_index": None,
-            "hpi_index": round(100 * observations[(period, "nl_hpi")] / observations[("2000-01", "nl_hpi")], 10),
+            "hpi_index": (round(100 * observations[(period, "nl_hpi")] / observations[("2000-01", "nl_hpi")], 10) if period >= "2000-01" else None),
         })
     if authorized:
         if gold_candidate is None:
