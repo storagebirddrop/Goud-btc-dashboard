@@ -105,3 +105,29 @@ def test_actual_pinned_fixture_in_repository():
     from etl.cbs_historical_merge import verify_fixture
     assert sha(fixture) == FIXTURE_SHA256
     assert len(verify_fixture(fixture, provenance)) == 60
+
+
+def test_e2e_real_fixture_against_committed_baseline():
+    fixture = Path("data/fixtures/cbs-1995-1999-i1.json").read_bytes()
+    provenance = Path("data/fixtures/cbs-1995-1999-i1.provenance.json").read_bytes()
+    csv_raw = Path("data/cbs-housing.csv").read_bytes()
+    json_raw = Path("frontend/public/data/monthly.json").read_bytes()
+    c, j, manifest_raw = generate(fixture, provenance, csv_raw, json_raw, csv_raw)
+    rows = json.loads(j)["data"]
+    assert len(rows) == 380
+    assert len(json.loads(json_raw)["data"]) == 320
+    assert rows[59]["period"] == "1999-12"
+    assert rows[59]["house_eur"] == 155389
+    assert rows[60]["period"] == "2000-01"
+    assert rows[60]["house_eur"] == 157270
+    assert rows[60]["hpi_index"] == 100
+    assert rows[60:] == json.loads(json_raw)["data"]
+    assert c.endswith(csv_raw[len(HEADER):])
+    assert all(r["hpi"] is None and r["hpi_index"] is None for r in rows[:60])
+    manifest = json.loads(manifest_raw)
+    assert manifest["historical_months"] == 60
+    assert manifest["retained_months"] == 320
+    assert manifest["new_months"] == 0
+    assert manifest["candidate_csv_sha256"] == sha(c)
+    assert manifest["candidate_json_sha256"] == sha(j)
+    assert (c, j, manifest_raw) == generate(fixture, provenance, csv_raw, json_raw, csv_raw)
