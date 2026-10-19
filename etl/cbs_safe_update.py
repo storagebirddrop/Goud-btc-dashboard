@@ -12,7 +12,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from etl.cbs_historical_merge import verify_fixture, FIXTURE_SHA256
+from etl.cbs_historical_merge import verify_fixture, FIXTURE_SHA256, BASELINE_CSV_SHA256, BASELINE_JSON_SHA256
 from etl.static_export import build
 from etl.data_quality import validate
 
@@ -60,8 +60,8 @@ def _months(start, end):
     return result
 
 
-def generate(fixture, provenance, baseline_csv, baseline_json, live_csv):
-    history = verify_fixture(fixture, provenance, expected_fixture_hash=FIXTURE_SHA256)
+class CBSRevisionRequired(ValueError):\n    def __init__(self, report):\n        self.report = report\n        super().__init__("CBS_REVISION_REVIEW_REQUIRED: " + json.dumps(report, sort_keys=True, separators=(",", ":")))\n\n\ndef generate(fixture, provenance, baseline_csv, baseline_json, live_csv, *,\n             approved_csv_hash=BASELINE_CSV_SHA256, approved_json_hash=BASELINE_JSON_SHA256):
+    history = verify_fixture(fixture, provenance, expected_fixture_hash=FIXTURE_SHA256)\n    if sha(baseline_csv) != approved_csv_hash or sha(baseline_json) != approved_json_hash:\n        raise ValueError("APPROVED_BASELINE_HASH_MISMATCH: governance approval required")
     if not baseline_csv.startswith(HEADER):
         raise ValueError("Unexpected approved CSV encoding/newline contract")
     baseline = json.loads(baseline_json)
@@ -78,7 +78,7 @@ def generate(fixture, provenance, baseline_csv, baseline_json, live_csv):
     old_periods = [row["period"] for row in old_rows]
     if old_periods != _months("2000-01", old_periods[-1]):
         raise ValueError("Approved baseline has calendar gaps or duplicates")
-    if periods != _months("2000-01", periods[-1]) or periods[:len(old_periods)] != old_periods:
+    if not periods or periods != _months("2000-01", periods[-1]) or periods[:len(old_periods)] != old_periods:
         raise ValueError("Live CBS missing, duplicated or reordered months")
     for month in periods:
         if (month, "nl_house_avg_eur") not in new or (month, "nl_hpi") not in new:
