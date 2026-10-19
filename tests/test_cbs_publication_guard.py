@@ -10,7 +10,7 @@ def test_cbs_updater_is_read_only_and_review_gated():
     assert "contents: read" in content
     assert "contents: write" not in content
     assert "actions/upload-artifact@v4" in content
-    assert "cbs-validated-candidate" in content
+    assert "cbs-validated-review-only" in content
     assert "if-no-files-found: error" in content
     assert "git push" not in content
     assert "git commit" not in content
@@ -19,9 +19,9 @@ def test_cbs_updater_is_read_only_and_review_gated():
 
 def test_cbs_updater_runs_validation_before_artifact_upload():
     content = WORKFLOW.read_text(encoding="utf-8")
-    assert content.index("Verify generated source and public JSON parity") < content.index(
-        "Upload validated CBS candidate for manual review"
+    assert content.index("Verify candidate data quality") < content.index(
+        "Upload review-only candidate and provenance manifest"
     )
-    assert content.index("Validate generated payload") < content.index(
+    assert content.index("Assert no public file changes") < content.index(
         "Upload validated CBS candidate for manual review"
     )
