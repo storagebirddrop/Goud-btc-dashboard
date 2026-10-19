@@ -45,9 +45,17 @@ def render(housing_raw, baseline_json_raw, gold_candidate, *, housing_path,
             raise ValueError("Non-trailing gold publication gap")
     if not gold_candidate["data"] or gold_candidate["data"][0]["month"] != "2000-01":
         raise ValueError("Gold index basis missing")
-    os.environ["GOLD_PUBLICATION_ENABLED"] = "true"
-    os.environ["GOLD_PUBLICATION_APPROVAL"] = "APPROVED"
-    payload = build(housing_path, gold_candidate=gold_candidate, gold_publication_approved=True)
+    previous_flags = {k: os.environ.get(k) for k in ("GOLD_PUBLICATION_ENABLED", "GOLD_PUBLICATION_APPROVAL")}
+    try:
+        os.environ["GOLD_PUBLICATION_ENABLED"] = "true"
+        os.environ["GOLD_PUBLICATION_APPROVAL"] = "APPROVED"
+        payload = build(housing_path, gold_candidate=gold_candidate, gold_publication_approved=True)
+    finally:
+        for key, old in previous_flags.items():
+            if old is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old
     rows = payload["data"]
     if len(rows) != len(previous) or [r["period"] for r in rows] != periods:
         raise ValueError("Gold candidate changed CBS month coverage")
