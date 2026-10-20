@@ -92,3 +92,19 @@ def test_diagnostic_dns_failure():
     result = diagnose("fred-exneus-history", resolver=failed)
     assert result["dns"] == "DNS_ERROR"
     assert result["tls"] == "NOT_VERIFIED"
+
+
+def test_run_restricted_to_selected_source(monkeypatch, tmp_path):
+    import json
+    import tools.hist_02_acquire as acq
+    seen = []
+    def fake_fetch(source):
+        seen.append(source)
+        raise AcquisitionError("NETWORK_TIMEOUT source=%s phase=response_headers" % source)
+    monkeypatch.setattr(acq, "fetch", fake_fetch)
+    monkeypatch.setattr(acq, "diagnose", lambda source: {"source_id": source, "dns": "PASS", "tls": "PASS"})
+    with pytest.raises(AcquisitionError, match="ACQUISITION_INCOMPLETE"):
+        acq.run(tmp_path / "out", ["fred-exneus-history"])
+    assert seen == ["fred-exneus-history"]
+    manifest = json.loads((tmp_path / "out" / "manifest.json").read_text())
+    assert manifest["status"] == "ACQUISITION_INCOMPLETE" and manifest["sources"] == []

@@ -7,8 +7,7 @@ series itself. Output is metadata only (no series values).
 import io
 from decimal import Decimal
 
-from tools.hist_03_worldbank_validate import (END, SHEET, START, UNIT_RE, _period, canonical_sha256,
-                                              expected_months, parse)
+from tools.hist_03_worldbank_validate import END, SHEET, START, _period, fingerprint, parse
 
 FIELDS = ("count_in_range", "first_in_range", "last_in_range", "gold_column", "header_text",
           "unit_accepted", "sheet_period_count", "sheet_first_period", "sheet_last_period",
@@ -50,21 +49,6 @@ def parse_openpyxl(raw, start=START, end=END):
                 series[period] = v
     return {"gold_column": get_column_letter(gi + 1), "header_text": str(rows[header][gi]),
             "unit_texts": unit_texts, "series": series, "all_periods": periods}
-
-
-def fingerprint(p, start=START, end=END):
-    s = p["series"]
-    months = [m for m in expected_months(start, end) if m in s]
-    ap = p["all_periods"]
-    return {
-        "count_in_range": len(s), "first_in_range": min(s) if s else None, "last_in_range": max(s) if s else None,
-        "gold_column": p["gold_column"], "header_text": p["header_text"],
-        "unit_accepted": next((u for u in p["unit_texts"] if UNIT_RE.search(u)), None),
-        "sheet_period_count": len(ap), "sheet_first_period": ap[0] if ap else None,
-        "sheet_last_period": ap[-1] if ap else None,
-        "canonical_series_sha256": canonical_sha256(s, months),
-        "non_integer_count_in_range": sum(1 for v in s.values() if v != v.to_integral_value()),
-    }
 
 
 def compare(a, b):

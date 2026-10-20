@@ -7,8 +7,18 @@ from decimal import Decimal, InvalidOperation
 class CoverageError(ValueError):
     pass
 
+def month_range(start, end):
+    """All 'YYYY-MM' months from start..end inclusive (single month enumerator for HIST-02/03)."""
+    y, m = map(int, start.split("-"))
+    ey, em = map(int, end.split("-"))
+    out = []
+    while (y, m) <= (ey, em):
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
 def validate_monthly_rows(rows, value_column, *, date_column="DATE", start=1975, end=1999):
-    expected = {f"{y}-{m:02d}" for y in range(start, end + 1) for m in range(1, 13)}
+    expected = set(month_range(f"{start}-01", f"{end}-12"))
     seen = {}
     duplicates = []
     for row in rows:
