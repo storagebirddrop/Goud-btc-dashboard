@@ -1,0 +1,37 @@
+name: HIST-04 gold outliers WB vs BoE (research only)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'research/hist-04-gold-fx-consolidated'
+    paths:
+      - '.github/workflows/hist-04-gold-outliers.yml'
+      - 'tools/hist_04_gold_outliers.py'
+      - 'tests/test_hist_04_gold_outliers.py'
+permissions:
+  contents: read
+jobs:
+  outliers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_04_gold_outliers.py tests/test_hist_03_second_source.py tests/test_hist_02_acquire.py
+      - name: Analyse outlier months (aggregates only, raw stays in memory)
+        run: python -m tools.hist_04_gold_outliers --summary-out "$RUNNER_TEMP/hist-04-gold-outliers.json"
+      - name: Metadata-only review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-04-gold-outliers-summary-review-only
+          path: ${{ runner.temp }}/hist-04-gold-outliers.json
+          if-no-files-found: warn
+          retention-days: 14
