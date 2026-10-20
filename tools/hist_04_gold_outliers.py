@@ -52,7 +52,7 @@ def discover_codes(raw):
     return found
 
 
-def notes_facts(raw, limit=14, width=260):
+def notes_facts(raw, limit=14, width=600):
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", raw.decode("utf-8", "replace")))
     out = []
     for s in re.split(r"(?<=[.!?])\s+", text):
@@ -129,9 +129,30 @@ def combined_daily(a, b):
 VARIANT_NAMES = ("mean_all", "mean_weekdays", "mean_fridays", "last_day", "first_day", "median", "min", "max")
 
 
+def elsewhere_months(wb_v, series, month, limit=12):
+    """Months (other than `month`) whose value is within TOLERANCE of wb_v: tests a copy/mix-up from another
+    period. Coincidence-prone (many months), so informational only, never a proof by itself."""
+    return [m for m, v in sorted(series.items()) if m != month and abs(wb_v - v) <= TOLERANCE][:limit]
+
+
+def monthly_vs_daily_consistency(boe_monthly, daily):
+    """Does the BoE monthly average equal the arithmetic mean of the BoE daily values per month?"""
+    diffs = []
+    for m in sorted(boe_monthly):
+        var = daily_variants(daily, m)
+        if var:
+            diffs.append((abs(var["mean_all"] - boe_monthly[m]), m))
+    if not diffs:
+        return {"months": 0}
+    worst = max(diffs)
+    return {"months": len(diffs), "max_abs_diff": str(worst[0].quantize(Decimal("0.0001"))), "worst_month": worst[1],
+            "months_over_0_01": sum(1 for d, _ in diffs if d > Decimal("0.01"))}
+
+
 def variant_report(wb_v, var):
     out = {"n_days": var["n_days"], "first_date": var["first_date"], "last_date": var["last_date"],
-           "n_fridays": var["n_fridays"], "variants": {}}
+           "n_fridays": var["n_fridays"], "daily_min": str(var["min"]), "daily_max": str(var["max"]),
+           "wb_outside_daily_range": not (var["min"] <= wb_v <= var["max"]), "variants": {}}
     for name in VARIANT_NAMES:
         v = var[name]
         out["variants"][name] = None if v is None else compare(wb_v, v)
@@ -196,6 +217,7 @@ def analyse_month(month, wb, boe, dailies):
             "boe_monthly": boe_cmp, "rounding_explains": bool(boe_cmp and boe_cmp["within_half_usd"]),
             "context": context_rows(wb, boe, month), "month_shift": shift, "daily": variants,
             "excluded_series": excluded,
+            "wb_value_elsewhere_in_boe_monthly": None if wb_v is None else elsewhere_months(wb_v, boe, month),
             "classification": classify(wb_v, boe_cmp, shift, variants)}
 
 
@@ -221,6 +243,7 @@ def report_lines(s):
     L.append("REPORT daily_series=" + json.dumps(s["daily_series"], sort_keys=True))
     L.append("REPORT notes=" + json.dumps(s.get("boe_notes_facts", {}).get("sentences")))
     L.append("REPORT ranking=" + json.dumps(s.get("deviation_ranking")))
+    L.append("REPORT monthly_vs_daily=" + json.dumps(s.get("monthly_vs_daily")))
     for r in s["results"]:
         L.append("MONTH %s wb=%s class=%s %s repro=%s" % (r["month"], r["wb"], r["classification"]["class"],
                  r["classification"]["reason"], r["classification"]["reproductions"]))
@@ -235,6 +258,10 @@ def report_lines(s):
             for name, c in rep["variants"].items():
                 L.append("    %s other=%s diff=%s within=%s" % (name, c["other"], c["diff"], c["within_half_usd"]))
         L.append("  excluded=" + json.dumps(r["excluded_series"]))
+        L.append("  wb_value_elsewhere_in_boe_monthly=" + json.dumps(r["wb_value_elsewhere_in_boe_monthly"]))
+        for code, rep in r["daily"].items():
+            L.append("  range %s: min=%s max=%s wb_outside=%s" % (code, rep["daily_min"], rep["daily_max"],
+                                                                 rep["wb_outside_daily_range"]))
     return L
 
 
@@ -287,6 +314,7 @@ def main(argv=None):
         if info["daily"]:
             dailies[code] = pts
     s["deviation_ranking"] = deviation_ranking(wb, boe) if boe else None
+    s["monthly_vs_daily"] = {c: monthly_vs_daily_consistency(boe, d) for c, d in dailies.items()} if boe else None
     s["results"] = [analyse_month(m, wb, boe, dailies) for m in OUTLIER_MONTHS]
     s["status"] = "ANALYSED" if boe else "NO_BOE_MONTHLY"
     out.write_text(json.dumps(s, indent=2, sort_keys=True, default=str) + "\n")
