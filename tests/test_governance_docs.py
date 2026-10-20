@@ -21,7 +21,7 @@ def test_governance_checker_rejects_broken_links_and_approval_drift(tmp_path, mo
     )
     shutil.copyfile(original / "README.md", tmp_path / "README.md")
     shutil.copyfile(original / "docs/next-phase.md", tmp_path / "docs/next-phase.md")
-    for extra in ("data/README.md", "docs/methodology.md", "docs/static-pipeline.md", "CONTRIBUTING.md", "SECURITY.md"):
+    for extra in ("data/README.md", "docs/methodology.md", "docs/static-pipeline.md", "CONTRIBUTING.md", "SECURITY.md", "CLAUDE.md"):
         destination = tmp_path / extra
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(original / extra, destination)
