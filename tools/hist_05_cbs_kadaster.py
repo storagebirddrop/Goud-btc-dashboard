@@ -37,9 +37,10 @@ FIXTURE_PATH = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "cbs-
 FIXED_TABLES = ["85773NED", "83906NED", "83913NED", "81884NED", "82101NED"]
 V4_TABLES = ["85773NED", "83906NED"]
 CATALOG_KEYWORDS = ["woning", "koopwoning", "verkoopprijs", "prijsindex", "woningprijs", "huizenprijs",
-                    "historisch", "eeuw", "dwelling", "house"]
+                    "historisch", "eeuw", "dwelling", "house", "prijs", "grond", "onroerend", "koopsom", "woz", "vastgoed", "hypotheek"]
 HOUSING_TITLE = re.compile(r"woning|woon|huis|koop|verkoop|onroerend|vastgoed|eigen|hypotheek|dwelling|house|housing|real estate|purchase", re.I)
-MAX_DISCOVERED = 12
+PRICE_TITLE = re.compile(r"prijs|koop|verkoop|transactie|waarde|index|indices|vastgoed|onroerend|hypotheek|price|value|purchase|sale", re.I)
+MAX_DISCOVERED = 30
 TABLE_ID_RE = re.compile(r"[0-9A-Za-z]{4,10}")
 
 # id -> (url, format, group); groups: page, catalog, table
@@ -144,7 +145,7 @@ def to_value(v, where):
     if v is None or v == "":
         return None
     if isinstance(v, bool) or isinstance(v, str):
-        raise Hist05Error(f"INVALID_NUMERIC {where}")
+        raise Hist05Error(f"INVALID_NUMERIC {where} type={type(v).__name__} sample={str(v)[:8]!r}")
     try:
         d = v if isinstance(v, Decimal) else Decimal(str(v))
     except InvalidOperation as exc:
@@ -349,6 +350,10 @@ RIGHTS_RE = re.compile(r"CC[ -]?BY|Creative Commons|CC0|bronvermelding|source|li
 LINK_RE = re.compile(r"kadaster|prijs|woning|woningmarkt|koopwoning|historisch|reeks|tijdreeks|eeuw|jaarboek|statline|opendata|odata", re.I)
 
 
+ASSET_RE = re.compile(r"\.(css|js|png|jpe?g|gif|ico|svg|woff2?)(\?|$)|/combo|/o/", re.I)
+KEYWORD_RE = re.compile(r"woningprijs|koopwoning|verkoopprijs|huizenprijs|prijsindex|woningmarkt|historisch|tijdreeks|vanaf 19|sinds 19|1995", re.I)
+
+
 def page_facts(raw, max_quotes=6, max_links=25):
     text = raw.decode("utf-8", "replace")
     title = re.search(r"(?is)<title[^>]*>(.*?)</title>", text)
@@ -359,10 +364,11 @@ def page_facts(raw, max_quotes=6, max_links=25):
             quotes.append(s[:300])
     links = []
     for h in re.findall(r"""(?i)href\s*=\s*["']([^"'#\s]+)""", text):
-        if LINK_RE.search(h) and h not in links:
+        if LINK_RE.search(h.split("?")[0]) and not ASSET_RE.search(h) and h not in links:
             links.append(h[:170])
+    kw = [s[:260] for s in re.split(r"(?<=[.!?])\s+", plain) if KEYWORD_RE.search(s) and 40 <= len(s)][:max_quotes]
     return {"html_title": strip_tags(title.group(1))[:120] if title else None, "text_chars": len(plain), "rights_quotes": quotes,
-            "matching_links": links[:max_links], "matching_link_count": len(links)}
+            "matching_links": links[:max_links], "matching_link_count": len(links), "keyword_sentences": kw}
 
 
 def rights_level(entry):
@@ -391,7 +397,8 @@ def pick_discovered(rows, exclude, limit=MAX_DISCOVERED):
     """Housing-related tables with a start year before 2000 that are not already fixed candidates (oldest first)."""
     seen, picked = set(exclude), []
     for r in sorted(rows, key=lambda r: (r["start_year"] or 9999, r["id"])):
-        if r["id"] in seen or r["start_year"] is None or r["start_year"] >= 2000 or not HOUSING_TITLE.search(r["title"]):
+        if (r["id"] in seen or r["start_year"] is None or r["start_year"] >= 2000 or not HOUSING_TITLE.search(r["title"])
+                or not PRICE_TITLE.search(r["title"])):
             continue
         seen.add(r["id"])
         picked.append(r)
@@ -439,9 +446,11 @@ def run_tables(tids, results, defects, missing, parsed_store):
             msg = str(exc)
             if msg in ("NOT_JSON", "MISSING_VALUE_ARRAY", "NO_PERIOD_OR_TOPICS"):  # wrong shape/endpoint: finding
                 res, parsed = {"table_id": tid, "status": "FORMAT_NOT_USABLE", "reason": msg}, None
-            else:  # duplicates, invalid numerics, non-positive levels: real integrity defects
+            elif tid in FIXED_TABLES:  # duplicates, invalid numerics, non-positive levels in a core table: real integrity defects
                 res, parsed = {"table_id": tid, "status": "DEFECT", "defect": msg[:200]}, None
                 defects.append(f"{tid}:{msg[:80]}")
+            else:  # exploratory, catalogue-discovered table with an unexpected value convention: finding, not a pipeline defect
+                res, parsed = {"table_id": tid, "status": "DISCOVERED_TABLE_NOT_PARSEABLE", "reason": msg[:200]}, None
         results.append({"table_analysis": res})
         if parsed:
             parsed_store[tid] = parsed
@@ -505,10 +514,48 @@ def run_v4(tid, results, missing, defects, v4_store, props3=None):
         v4_store[tid] = single_series(series, key, "M")
 
 
+def report_lines(summary):
+    """Compact one-line-per-fact rendering of a summary (aggregates only), for CI logs."""
+    out = []
+    for key in ("catalog_housing_tables_start_before_2000", "catalog_other_tables_start_before_2000"):
+        for r in summary.get(key, []):
+            out.append(f"CAT {key[8:13]} {r['id']}|{r['start_year']}-{r['end_year']}|{r['frequency']}|{r['language']}|{r['title'][:100]}")
+    for r in summary["results"]:
+        if "table_analysis" in r:
+            t = r["table_analysis"]
+            info = t.get("info", {})
+            out.append(f"TAB {t['table_id']} {t.get('route', 'v3')} {t['status']} | {info.get('Title', '')[:90]} | {info.get('Period', '')} | {info.get('Frequency', '')} | dims={t.get('dimensions')} | {info.get('Source', '')}")
+            shown = [(k, mm) for k, mm in ((t.get("summary") or {}).get("measures") or {}).items()
+                     if mm["kind"] in ("PRICE_LEVEL", "INDEX") or PRICE_TITLE.search(mm["title"] or "")][:14]
+            for k, mm in shown:
+                for combo in mm["shown"][:2]:
+                    fr = ";".join(f"{f}:{v.get('first')}..{v.get('last')} n={v.get('observations')} gaps={v.get('gap_count')} nulls={v.get('null_values')}" for f, v in combo["frequencies"].items())
+                    out.append(f"  M {k}|{mm['title'][:45]}|{mm['unit']}|{mm['kind']}|{mm['base']}|{mm['currency']}|dim={combo['dimensions']}/{mm['dimension_combinations']}| {fr}")
+        elif "page" in r:
+            p = r["page"]
+            out.append(f"PAGE {r['source_id']} http={r['http_status']} bytes={r['bytes']} sha={r['sha256'][:16]} title={p['html_title']!r} rights={r['rights_evidence']}")
+            out += [f"  Q {q[:260]}" for q in p["rights_quotes"][:4]]
+            out += [f"  K {q[:240]}" for q in p.get("keyword_sentences", [])[:5]]
+            out += [f"  L {link}" for link in p["matching_links"][:14]]
+        else:
+            out.append(f"SRC {r['source_id']} {r['status']} http={r.get('http_status')} bytes={r.get('bytes')} sha={(r.get('sha256') or '')[:16]} rows={r.get('catalog_rows')}")
+    out.append("CMP " + json.dumps(summary.get("comparisons"), sort_keys=True, separators=(",", ":")))
+    out.append("MISSING " + json.dumps(summary.get("missing_sources")))
+    out.append("DEFECTS " + json.dumps(summary.get("defects")))
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--summary-out")
+    ap.add_argument("--report", help="print a compact aggregates-only report of an existing summary file and exit")
     args = ap.parse_args(argv)
+    if args.report:
+        for line in report_lines(json.loads(Path(args.report).read_text())):
+            print(line)
+        return 0
+    if not args.summary_out:
+        ap.error("--summary-out is required")
     results, missing, defects, parsed_store, v4_store = [], [], [], {}, {}
     catalog_found = {}
     for sid, (url, fmt, group) in sorted(CANDIDATES.items()):
@@ -546,7 +593,10 @@ def main(argv=None):
     cmp_ = comparisons(parsed_store, v4_store, fixture) if not defects else {}
     summary = {"status": "DONE", "nothing_approved": True, "rights_status": "UNVERIFIED", "publication_authorized": False,
                "source_approved": False, "catalog_distinct_tables": len(catalog_found),
-               "catalog_housing_tables_start_before_2000": pre2000[:60], "discovered_fetched": [r["id"] for r in discovered],
+               "catalog_housing_tables_start_before_2000": pre2000[:80],
+               "catalog_other_tables_start_before_2000": sorted((r for r in catalog_found.values() if r["start_year"] is not None and r["start_year"] < 2000
+                                                                 and not HOUSING_TITLE.search(r["title"])), key=lambda r: (r["start_year"], r["id"]))[:80],
+               "discovered_fetched": [r["id"] for r in discovered],
                "results": results, "comparisons": cmp_, "missing_sources": sorted(missing), "defects": defects}
     out = Path(args.summary_out)
     out.parent.mkdir(parents=True, exist_ok=True)

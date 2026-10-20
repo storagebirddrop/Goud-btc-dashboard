@@ -31,7 +31,7 @@ jobs:
         if: always()
         run: |
           if [ -f "$RUNNER_TEMP/hist-05-cbs-kadaster.json" ]; then
-            python -c "import json,sys; d=json.load(open(sys.argv[1])); [print('RESULT', json.dumps(r, sort_keys=True, separators=(',',':'))[:1800]) for r in d['results'] if 'table_analysis' not in r]; [print('TABLE', json.dumps(r['table_analysis'], sort_keys=True, separators=(',',':'))[:3500]) for r in d['results'] if 'table_analysis' in r]; [print('SUMMARY', k, json.dumps(d[k], sort_keys=True, separators=(',',':'))[:6000]) for k in ('catalog_housing_tables_start_before_2000','discovered_fetched','comparisons','missing_sources','defects')]" "$RUNNER_TEMP/hist-05-cbs-kadaster.json"
+            python -m tools.hist_05_cbs_kadaster --report "$RUNNER_TEMP/hist-05-cbs-kadaster.json"
           fi
       - name: Metadata-only review artifact
         if: always()

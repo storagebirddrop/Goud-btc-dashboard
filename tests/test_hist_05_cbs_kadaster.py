@@ -182,8 +182,8 @@ def test_catalog_rows_and_discovery_filter():
     assert [r["id"] for r in rows_] == ["70001NED", "70002NED", "70003NED", "85773NED", "80004NED"]
     assert rows_[2]["start_year"] == 1965 and rows_[2]["end_year"] == 1999
     picked = m.pick_discovered(rows_, exclude=["85773NED"])
-    assert [r["id"] for r in picked] == ["70003NED", "70001NED"]  # oldest first; CPI and post-2000 excluded
-    assert m.pick_discovered(rows_, [], limit=1) and len(m.pick_discovered(rows_, [], limit=1)) == 1
+    assert [r["id"] for r in picked] == ["70003NED"]  # price-related housing only; stock, CPI and post-2000 excluded
+    assert len(m.pick_discovered(rows_, [], limit=1)) == 1
 
 
 def test_register_table_validates_and_allowlists():
@@ -292,3 +292,30 @@ def test_main_html_instead_of_json_is_a_finding_not_a_defect(tmp_path, monkeypat
     s = json.loads(out.read_text())
     t = [r["table_analysis"] for r in s["results"] if "table_analysis" in r and r["table_analysis"]["table_id"] == "85773NED"][0]
     assert t["status"] == "FORMAT_NOT_USABLE"
+
+
+def test_report_lines_compact_and_report_cli(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(m, "fetch_status", _routes())
+    out = tmp_path / "s.json"
+    assert m.main(["--summary-out", str(out)]) == 0
+    lines = m.report_lines(json.loads(out.read_text()))
+    assert any(l.startswith("TAB 85773NED v3 OBTAINED") for l in lines) and any(l.startswith("  M Prijs_1|") for l in lines)
+    assert any(l.startswith("CMP ") for l in lines) and lines[-1] == "DEFECTS []"
+    assert m.main(["--report", str(out)]) == 0
+    assert "TAB 85773NED" in capsys.readouterr().out
+
+
+def test_discovered_table_with_odd_values_is_finding_not_defect(tmp_path, monkeypatch):
+    m.register_table("70003NED")
+    base = _routes()
+    odd = json.dumps({"value": [{"Perioden": "1995MM01", "Prijs_1": "."}]}).encode()
+
+    def fake(sid, opener=None):
+        if sid.startswith("cbs3-70003NED-"):
+            return base(sid.replace("70003NED", "85773NED"), opener) if not sid.endswith("data") else (odd, {"source_id": sid, "status": "FETCHED", "http_status": 200, "bytes": len(odd), "sha256": "0" * 64})
+        return base(sid, opener)
+    monkeypatch.setattr(m, "fetch_status", fake)
+    results, defects, missing, store = [], [], [], {}
+    m.run_tables(["70003NED"], results, defects, missing, store)
+    t = [r["table_analysis"] for r in results if "table_analysis" in r][0]
+    assert t["status"] == "DISCOVERED_TABLE_NOT_PARSEABLE" and "INVALID_NUMERIC" in t["reason"] and defects == []
