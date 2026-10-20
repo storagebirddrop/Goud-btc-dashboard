@@ -1,0 +1,44 @@
+name: HIST-02 FRED endpoint probe (manual, research only, non-fatal)
+# Manual probe of the FRED EXNEUS candidate endpoint. The World Bank workbook is
+# acquired and validated ONLY in hist-03-worldbank-validation.yml (no second download path).
+# FRED has timed out in every run so far (response headers after 30 s); the probe step is
+# continue-on-error so the result is reported as evidence, not as a red PR check.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fred-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline acquisition security tests
+        run: python -m pytest -q tests/test_hist_02_acquire.py tests/test_hist_02_annual_research.py tests/test_hist_02_coverage.py
+      - name: FRED probe (non-fatal, no raw upload)
+        id: probe
+        continue-on-error: true
+        env:
+          HIST02_TMP: ${{ runner.temp }}/hist-02-inputs
+        run: |
+          umask 077
+          trap 'if [ -f "$HIST02_TMP/manifest.json" ]; then cp "$HIST02_TMP/manifest.json" "$RUNNER_TEMP/hist-02-manifest.json"; fi' EXIT
+          python -m tools.hist_02_acquire --ephemeral-directory "$HIST02_TMP" --source fred-exneus-history
+      - name: Report probe outcome
+        if: always()
+        run: echo "FRED probe outcome=${{ steps.probe.outcome }} (non-fatal; evidence only)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Metadata-only review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-02-source-metadata-review-only
+          path: ${{ runner.temp }}/hist-02-manifest.json
+          if-no-files-found: warn
+          retention-days: 14
