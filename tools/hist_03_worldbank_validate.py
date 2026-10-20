@@ -208,17 +208,51 @@ def validate(raw, start=START, end=END):
     return summary
 
 
+KNOWN_WORKBOOK_SHA256 = "ea1c350827878ea3bbe30e3cda16a13fd3bd5b409b8458940dc94a36b5a33154"
+KNOWN_CANONICAL_SERIES_SHA256 = "283901356b716b4fa455be4e06a3145675f9464385c778b692ee1f3e437c4cf7"
+
+
+def load_workbook(path=None):
+    """Return (raw, record) for the World Bank workbook.
+
+    path None: the hardened tools.hist_02_acquire.fetch path (allowlist, https, size limit).
+    path given (--workbook): local bytes, e.g. downloaded once by hist_02_acquire in the
+    same CI job; same size limit, sha256 computed from those bytes. Reports (does not
+    enforce) whether sha256 equals the known value: a different hash is a source revision
+    for human review, not a silent failure or success.
+    """
+    from tools.hist_02_acquire import fetch, AcquisitionError, MAX_BYTES, SOURCES
+    if path is None:
+        raw, record = fetch("world-bank-gold-history")
+        record = dict(record, origin="fetch")
+    else:
+        try:
+            raw = Path(path).read_bytes()
+        except OSError as exc:
+            raise AcquisitionError(f"LOCAL_WORKBOOK_UNREADABLE {type(exc).__name__}") from exc
+        if not raw:
+            raise AcquisitionError("EMPTY_SOURCE")
+        if len(raw) > MAX_BYTES:
+            raise AcquisitionError("SOURCE_TOO_LARGE")
+        record = {"source_id": "world-bank-gold-history", "url": SOURCES["world-bank-gold-history"][0],
+                  "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
+                  "http_status": "LOCAL_FILE", "origin": "local-file"}
+    record["matches_known_workbook_sha256"] = record["sha256"] == KNOWN_WORKBOOK_SHA256
+    return raw, record
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--workbook", help="read this local workbook instead of downloading it")
     ap.add_argument("--independent-parser", choices=["openpyxl"],
                     help="re-parse the same bytes with a second parser; any difference fails the run")
     args = ap.parse_args(argv)
-    from tools.hist_02_acquire import fetch, AcquisitionError
+    from tools.hist_02_acquire import AcquisitionError
     out = Path(args.summary_out)
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        raw, record = fetch("world-bank-gold-history")
+        raw, record = load_workbook(args.workbook)
     except AcquisitionError as exc:
         out.write_text(json.dumps({"status": "ACQUISITION_FAILED", "error": str(exc)}, indent=2) + "\n")
         print("ACQUISITION_FAILED", exc)
@@ -234,6 +268,9 @@ def main(argv=None):
         if summary["independent_parser"]["status"] != "MATCH":
             summary["status"] = "CROSSCHECK_FAILED"
     summary["fetch"] = {k: record[k] for k in ("url", "sha256", "bytes", "http_status")}
+    summary["workbook_sha256_matches_known"] = record["matches_known_workbook_sha256"]
+    summary["canonical_series_sha256_matches_known"] = (
+        summary.get("canonical_series_sha256") == KNOWN_CANONICAL_SERIES_SHA256)
     out.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0 if summary["status"] == "VALIDATED" else 2
