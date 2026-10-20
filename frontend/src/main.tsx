@@ -3,27 +3,9 @@ import {createRoot} from 'react-dom/client';
 import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer} from 'recharts';
 import './style.css';
 
-type SeriesKey='house_eur'|'hpi'|'hpi_index'|'gold_index'|'gold_grams_per_house';
-type Point={period:string;gold_eur_oz:number|null;house_eur:number|null;hpi:number|null;gold_grams_per_house:number|null;gold_index:number|null;hpi_index:number|null};
-type Kind='eur'|'index'|'gram';
-type SeriesDef={label:string;short:string;kind:Kind;unit:string;light:string;dark:string;dash?:string;source:string;gold?:boolean};
+import {SERIES,CATEGORIES,LEVEL_KEYS,CARD_KEYS,BASES,visibleKeys,ok} from './series';
+import type {SeriesKey,Point,Kind} from './series';
 
-// Registry: a series is only offered when the loaded data holds at least one finite value for it.
-// New datasets (real EUR, gold, BTC) join by adding an entry here; nothing else has to change.
-// Raw gold_eur_oz is deliberately not part of the registry: it is never shown.
-const SERIES:Record<SeriesKey,SeriesDef>={
- house_eur:{label:'Gemiddelde verkoopprijs',short:'Verkoopprijs',kind:'eur',unit:'EUR',light:'#2a78d6',dark:'#3987e5',source:'CBS StatLine 85773NED'},
- hpi:{label:'CBS-huizenprijsindex',short:'Prijsindex',kind:'index',unit:'indexpunten, 2020 = 100',light:'#0e8a5f',dark:'#2fbf8c',source:'CBS StatLine 85773NED'},
- hpi_index:{label:'CBS-huizenprijsindex',short:'Prijsindex',kind:'index',unit:'indexpunten, januari 2000 = 100',light:'#0e8a5f',dark:'#2fbf8c',source:'CBS StatLine 85773NED, eigen herbasering'},
- gold_index:{label:'Goudprijsindex',short:'Goudprijs',kind:'index',unit:'indexpunten, januari 2000 = 100',light:'#a87400',dark:'#eda100',dash:'6 3',source:'World Bank / ECB, eigen berekening',gold:true},
- gold_grams_per_house:{label:'Gram goud per woning',short:'Goud per woning',kind:'gram',unit:'gram',light:'#6250d6',dark:'#9085e9',dash:'6 3',source:'World Bank / ECB / CBS, eigen berekening',gold:true}
-};
-const LEVEL_KEYS:SeriesKey[]=['house_eur','hpi','gold_grams_per_house'];
-const CARD_KEYS:SeriesKey[]=['house_eur','hpi','gold_index','gold_grams_per_house'];
-const BASES:{id:string;label:string;caption:string;keys:SeriesKey[]}[]=[
- {id:'2000',label:'Januari 2000 = 100',caption:'januari 2000 = 100',keys:['hpi_index','gold_index']},
- {id:'2020',label:'2020 = 100 (CBS)',caption:'2020 = 100 (CBS-basis)',keys:['hpi']}
-];
 const PRESETS=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}] as const;
 type Preset=typeof PRESETS[number]['id'];
 const WARNING='De reeks toont de prijs van een gemiddeld verkochte bestaande koopwoning uitgedrukt in de gekozen rekeneenheid. De mix van verkochte woningen kan veranderen; de reeks meet geen constante woningkwaliteit of algemene betaalbaarheid. Dit is geen beleggingsadvies.';
@@ -33,9 +15,8 @@ const nf0=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:0});
 const nf1=new Intl.NumberFormat('nl-NL',{minimumFractionDigits:1,maximumFractionDigits:1});
 const euro=new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',maximumFractionDigits:0});
 const pct=new Intl.NumberFormat('nl-NL',{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1,signDisplay:'exceptZero'});
-function fmt(kind:Kind,v:number){return kind==='eur'?euro.format(v):kind==='gram'?`${nf0.format(v)} g`:nf1.format(v)}
+function fmt(kind:Kind,v:number){return kind==='eur'?euro.format(v):kind==='gram'?`${nf0.format(v)} g`:kind==='sat'?`${nf0.format(v)} sat`:nf1.format(v)}
 function month(p:string){const [y,m]=p.split('-').map(Number);return new Date(Date.UTC(y,m-1,1)).toLocaleDateString('nl-NL',{month:'long',year:'numeric',timeZone:'UTC'})}
-const ok=(v:number|null|undefined):v is number=>typeof v==='number'&&Number.isFinite(v);
 function useDark(){
  const q='(prefers-color-scheme: dark)';
  const [d,setD]=React.useState(()=>window.matchMedia?.(q).matches??false);
@@ -54,7 +35,7 @@ function Card({k,rows}:{k:SeriesKey;rows:Point[]}){
  const first=vals[0],last=vals[vals.length-1];
  const a=first[k] as number,b=last[k] as number;const ch=vals.length>1&&a!==0?b/a-1:null;
  return <article className="card" aria-labelledby={`c-${k}`}>
-  <h3><span id={`c-${k}`}>{s.label}</span>{k==='house_eur'&&<InfoHint id="hint-card"/>}</h3>
+  <h4><span id={`c-${k}`}>{s.label}</span>{k==='house_eur'&&<InfoHint id="hint-card"/>}</h4>
   <p className="big">{fmt(s.kind,b)}</p>
   <p className="sub">{month(last.period)} · {s.kind==='eur'?'EUR, nominaal':s.unit}</p>
   <dl>
@@ -116,7 +97,7 @@ function App(){
  const dark=useDark();
  React.useEffect(()=>{fetch('/data/monthly.json').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}).then((j:{data:Point[]}|null)=>{if(!j||!Array.isArray(j.data))throw Error('Ongeldig dataformaat');const rows=j.data.filter(p=>p&&typeof p.period==='string'&&/^\d{4}-\d{2}$/.test(p.period));if(rows.length!==j.data.length)throw Error('Ongeldig dataformaat (periode)');setData(rows)}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
 
- const avail=React.useMemo(()=>{const a=new Set<SeriesKey>();(Object.keys(SERIES) as SeriesKey[]).forEach(k=>{if(data.some(p=>ok(p[k])))a.add(k)});return a},[data]);
+ const avail=React.useMemo(()=>new Set<SeriesKey>(visibleKeys(data)),[data]);
  const levelKeys=LEVEL_KEYS.filter(k=>avail.has(k));
  const bases=BASES.map(b=>({...b,keys:b.keys.filter(k=>avail.has(k))})).filter(b=>b.keys.length);
  const curLevel=levelKeys.includes(level)?level:levelKeys[0];
@@ -142,7 +123,7 @@ function App(){
    <span className="muted">{month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} maanden)</span>
   </div>
 
-  <section aria-labelledby="h-cards"><h2 id="h-cards" className="sec-h">Prijsontwikkeling in de gekozen periode</h2><p className="cap">Nominale waarden en procentuele verandering tussen de eerste en laatste maand met gegevens. Dit is geen maat voor betaalbaarheid of koopkracht.</p><div className="cards">{cardKeys.map(k=><Card key={k} k={k} rows={rows}/>)}</div></section>
+  <section aria-labelledby="h-cards"><h2 id="h-cards" className="sec-h">Prijsontwikkeling in de gekozen periode</h2><p className="cap">Nominale waarden en procentuele verandering tussen de eerste en laatste maand met gegevens. Dit is geen maat voor betaalbaarheid of koopkracht.</p>{CATEGORIES.map(c=>{const ks=cardKeys.filter(k=>SERIES[k].category===c.id);return ks.length?<div className="card-group" key={c.id}><h3 className="grp-h">{c.label}</h3><p className="cap">{c.caption}</p><div className="cards">{ks.map(k=><Card key={k} k={k} rows={rows}/>)}</div></div>:null})}</section>
 
   <aside className="warn" role="note"><strong>Let op bij interpretatie.</strong> {WARNING}</aside>
 

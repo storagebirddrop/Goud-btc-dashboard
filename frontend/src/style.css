@@ -20,7 +20,9 @@ button{font:inherit;color:inherit}
 .sec-h{margin-top:24px}
 .cards{margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
-.card h3{font-size:.95rem;color:var(--ink2);font-weight:600}
+.card h4{font-size:.95rem;margin:0;color:var(--ink2);font-weight:600}
+.card-group{margin-top:16px}
+.grp-h{font-size:1rem}
 .big{font-size:1.9rem;font-weight:700;margin:4px 0 0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 dl{margin:12px 0 8px}
 dl div{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--line);padding:6px 0;font-size:.92rem}
