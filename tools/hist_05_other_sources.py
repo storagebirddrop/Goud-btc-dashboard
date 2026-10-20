@@ -38,10 +38,11 @@ DALLAS = "https://www.dallasfed.org/-/media/Documents/institute/houseprice/"
 # id -> (url, format, group, kind). kind: data (machine-readable) | page (documentation / licence text).
 CANDIDATES = {
     # (a) NVM and Dutch compilations
-    "nvm-marktinformatie": ("https://www.nvm.nl/wonen/marktinformatie/", "html", "nvm", "page"),
-    "nvm-disclaimer": ("https://www.nvm.nl/disclaimer/", "html", "nvm", "page"),
+    "nvm-marktinformatie": ("https://www.nvm.nl/marktinformatie/marktinformatie-koopwoningen/", "html", "nvm", "page"),
+    "nvm-copyright": ("https://www.nvm.nl/special-pages/copyright/", "html", "nvm", "page"),
     "nvm-home": ("https://www.nvm.nl/", "html", "nvm", "page"),
     "vastgoedmarkt-kerncijfers-pdf": ("https://vmn-vastgoedmarkt.imgix.net/uploads/2024/07/kerncijfers-vastgoedmarkt-1974-2024.pdf", "pdf", "compilation", "pdf_table"),
+    "esb-copyright": ("https://esb.nu/copyright-statement/", "html", "compilation", "page"),
     "esb-nvm-median": ("https://esb.nu/vast-aanbod-flexibele-vraag/", "html", "compilation", "page"),
     # (b) BIS residential property prices
     "bis-spp-q-nl": (BIS_API + "WS_SPP/1.0/Q.NL?format=csv", "csv", "bis", "sdmx_csv"),
@@ -53,20 +54,24 @@ CANDIDATES = {
     "bis-pp-page": ("https://www.bis.org/statistics/pp.htm", "html", "bis", "page"),
     "bis-pp-selected-page": ("https://www.bis.org/statistics/pp_selected.htm", "html", "bis", "page"),
     "bis-pp-long-page": ("https://www.bis.org/statistics/pp_long.htm", "html", "bis", "page"),
-    "bis-terms": ("https://www.bis.org/terms_conditions.htm", "html", "bis", "page"),
+    "bis-terms": ("https://www.bis.org/about/terms-conditions", "html", "bis", "page"),
+    "bis-data-portal-rpp": ("https://data.bis.org/topics/RPP", "html", "bis", "page"),
     # (c) OECD
     "oecd-hp-nld": (OECD + "NLD.....?format=csv", "csv", "oecd", "sdmx_csv"),
     "oecd-hp-all": (OECD + "all?format=csv", "csv", "oecd", "sdmx_csv"),
     "oecd-dataflows": ("https://sdmx.oecd.org/public/rest/dataflow/all", "xml", "oecd", "dataflow_list"),
     "oecd-terms": ("https://www.oecd.org/en/about/terms-conditions.html", "html", "oecd", "page"),
     # (d) long-run academic / institutional
-    "dallas-houseprice-page": ("https://www.dallasfed.org/institute/houseprice", "html", "dallas", "page"),
+    "dallas-houseprice-page": ("https://www.dallasfed.org/research/international/houseprice", "html", "dallas", "page"),
     "dallas-hp2606-xlsx": (DALLAS + "hp2606.xlsx", "xlsx", "dallas", "xlsx"),
     "dallas-hp2603-xlsx": (DALLAS + "hp2603.xlsx", "xlsx", "dallas", "xlsx"),
     "jst-macrohistory-page": ("https://www.macrohistory.net/database/", "html", "jst", "page"),
+    "jst-licence-terms": ("https://www.macrohistory.net/database/licence-terms/", "html", "jst", "page"),
+    "jst-r6-xlsx": ("https://www.macrohistory.net/app/download/9834512569/JSTdatasetR6.xlsx?t=1763503850", "xlsx", "jst", "xlsx_panel"),
+    "jst-r6-documentation-pdf": ("https://www.macrohistory.net/app/download/9834516169/JST_documentationR6.pdf?t=1676279836", "pdf", "jst", "pdf_text"),
     "jst-macrohistory-home": ("https://www.macrohistory.net/", "html", "jst", "page"),
     "imf-ghw-page": ("https://www.imf.org/en/Topics/Global-Housing-Watch", "html", "imf", "page"),
-    "eurostat-hpi-q-nl": ("https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/PRC_HPI_Q/Q.I15_Q.TOTAL.NL?format=SDMX-CSV", "csv", "eurostat", "sdmx_csv"),
+    "eurostat-hpi-q-nl": ("https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/PRC_HPI_Q/Q.TOTAL.I15_Q.NL?format=SDMX-CSV", "csv", "eurostat", "sdmx_csv"),
     # (e) Dutch open-data catalogue
     "overheid-ckan-woningprijzen": ("https://data.overheid.nl/data/api/3/action/package_search?q=woningprijzen&rows=10", "json", "overheid", "ckan"),
     "overheid-ckan-koopwoningen": ("https://data.overheid.nl/data/api/3/action/package_search?q=koopwoningen&rows=10", "json", "overheid", "ckan"),
@@ -155,7 +160,10 @@ def year_ranges(years):
 
 # ------------------------------------------------------------------ classification
 def detect_base(attrs):
-    """Base period of an index from attribute text ('2010=100', 'Index, 2015 = 100', ...) or None."""
+    """Base period of an index from attribute text ('2010=100', 'Index, 2015 = 100', BASE_PER) or None."""
+    bp = _code(attrs, "BASE_PER")
+    if bp and re.fullmatch(r"(19|20)\d\d", bp):
+        return bp
     blob = " | ".join(str(v) for v in attrs.values())
     for rx in BASE_RES:
         m = rx.search(blob)
@@ -164,7 +172,21 @@ def detect_base(attrs):
     return None
 
 
+def _code(attrs, name):
+    for k, v in attrs.items():
+        if k.split(":")[0].strip().upper() == name:
+            return str(v).split(":")[0].strip().upper()
+    return None
+
+
 def classify_unit(attrs):
+    um = _code(attrs, "UNIT_MEASURE")
+    if _code(attrs, "VARIABLE") in {"HPNOM", "HPREAL"}:
+        return "INDEX"  # inferred from the JST variable name only; confirmed or refuted by the documentation text in the same run
+    if um in {"628", "IX"} or (um or "").startswith("IX"):
+        return "INDEX"
+    if um in {"771"} or (um or "").startswith(("PC", "PT")):
+        return "RATE"
     blob = " ".join(str(v) for v in attrs.values())
     low = blob.lower()
     if re.search(r"year-on-year|percentage change|growth|% change|per cent change|annual change|rate of change", low):
@@ -177,6 +199,16 @@ def classify_unit(attrs):
 
 
 def classify_real_nominal(attrs):
+    val, meas = _code(attrs, "VALUE"), _code(attrs, "MEASURE")
+    var = _code(attrs, "VARIABLE")
+    if var in {"HPNOM", "HPREAL"}:
+        return "NOMINAL" if var == "HPNOM" else "REAL"
+    if val in {"N", "R"}:
+        return "NOMINAL" if val == "N" else "REAL"
+    if meas == "RHP":
+        return "REAL"
+    if meas == "HPI":
+        return "NOMINAL"
     low = " ".join(str(v) for v in attrs.values()).lower()
     if re.search(r"\breal\b|deflat|\brhp\b|constant price", low):
         return "REAL"
@@ -398,6 +430,51 @@ def scan_xlsx_country(raw, country="Netherlands"):
     return {"layout": "xlsx", "sheet_names": list(sheets)[:12], "nl_series_count": len(out), "nl_series": out, "_parsed": parsed_store}
 
 
+def scan_xlsx_panel(raw, country="Netherlands", var_prefix="hp"):
+    """Long-run panel layout (JST): header row has 'country' and 'year'; keep variables starting with var_prefix for one country.
+    Annual series; blanks stay missing; duplicate years / non-numeric cells are hard errors."""
+    sheets = read_xlsx_sheets(raw, max_rows=20000, max_cols=400)
+    out, parsed_store = [], {}
+    for name, rows in sheets.items():
+        hdr = next((ri for ri, r in enumerate(rows[:10]) if "country" in [c.strip().lower() for c in r] and "year" in [c.strip().lower() for c in r]), None)
+        if hdr is None:
+            continue
+        head = [c.strip() for c in rows[hdr]]
+        ci, yi = head.index(next(c for c in head if c.lower() == "country")), head.index(next(c for c in head if c.lower() == "year"))
+        cols = [i for i, c in enumerate(head) if c.lower().startswith(var_prefix) and i not in (ci, yi)]
+        data = {i: ({}, [0]) for i in cols}
+        countries = set()
+        for r in rows[hdr + 1:]:
+            if len(r) <= max(ci, yi) or not r[ci].strip():
+                continue
+            countries.add(r[ci].strip())
+            if r[ci].strip() != country:
+                continue
+            ym = re.fullmatch(r"(\d{4})(?:\.0+)?", r[yi].strip())
+            if not ym:
+                raise HousingSourceError("INVALID_PERIOD " + r[yi][:20])
+            for i in cols:
+                v = r[i].strip() if i < len(r) else ""
+                pts, miss = data[i]
+                if v in MISSING:
+                    miss[0] += 1
+                    continue
+                if ym.group(1) in pts:
+                    raise HousingSourceError("DUPLICATE_PERIOD_IN_SERIES")
+                pts[ym.group(1)] = to_decimal(v)
+        for i in cols:
+            pts, miss = data[i]
+            summ, parsed, freq = summarize_series({"sheet": name, "country": country, "variable": head[i]}, pts, miss[0])
+            if summ:
+                summ["variable"] = head[i]
+                out.append(summ)
+                parsed_store[len(out) - 1] = (parsed, freq, {"variable": head[i]})
+        if out:
+            return {"layout": "xlsx_panel", "sheet_names": list(sheets)[:12], "countries_in_sheet": len(countries), "variables_scanned": [head[i] for i in cols],
+                    "nl_series_count": len(out), "nl_series": out, "_parsed": parsed_store}
+    return {"layout": "xlsx_panel", "sheet_names": list(sheets)[:12], "nl_series_count": 0, "nl_series": [], "_parsed": {}}
+
+
 # ------------------------------------------------------------------ PDF table (Vastgoedmarkt)
 VM_HEADING = r"Gemiddelde\s+verkoopprijs\s+bestaande\s+woningen"
 
@@ -576,6 +653,14 @@ def run_candidate(sid, results, store, cbs):
         entry["ckan"] = ckan_facts(raw)
     elif kind == "dataflow_list":
         entry["dataflows_matching"] = dataflow_names(raw, r"house|dwelling|property|residential|price", 25)
+    elif kind == "pdf_text":
+        text = pdf_to_text(raw)
+        if text is None:
+            entry["text"] = {"status": "PDFTOTEXT_UNAVAILABLE_OR_FAILED"}
+        else:
+            plain = re.sub(r"\s+", " ", text)
+            sents = [x[:300] for x in re.split(r"(?<=[.!?])\s+", plain) if re.search(r"house price|housing price|hpnom|hpreal|residential property", x, re.I)]
+            entry["text"] = {"status": "OK", "chars": len(plain), "house_price_sentences": sents[:8]}
     elif kind == "pdf_table":
         text = pdf_to_text(raw)
         if text is None:
@@ -606,6 +691,8 @@ def run_candidate(sid, results, store, cbs):
                 entry["format_unparsed"] = "XML_OR_HTML_BODY " + re.sub(r"\s+", " ", raw[:160].decode("utf-8", "replace"))
         elif kind == "sdmx_zip":
             scan = scan_zip_bytes(raw)
+        elif kind == "xlsx_panel":
+            scan = scan_xlsx_panel(raw)
         else:
             scan = scan_xlsx_country(raw)
         if scan:
@@ -643,12 +730,48 @@ def coverage_matrix(results):
     return rows
 
 
+def digest(doc):
+    """Compact one-line-per-fact view of a summary (aggregates only), for CI logs."""
+    lines = [f"STATUS {doc['status']} missing={doc['missing_sources']} defects={doc['defects']}"]
+    for r in doc["results"]:
+        head = {k: r.get(k) for k in ("source_id", "fetch", "label", "bytes", "sha256", "rights_evidence", "defect")}
+        err = r.get("error")
+        if err:
+            head["error"] = err[:60]
+            head["probe"] = {k: v for k, v in (r.get("probe") or {}).items() if k in ("status", "location_host", "location_path")}
+        lines.append("SRC " + json.dumps(head, sort_keys=True, separators=(",", ":")))
+        for q in r.get("licence_quotes", [])[:3]:
+            lines.append("  QUOTE " + q[:260])
+        pg = r.get("page")
+        if pg:
+            lines.append("  PAGE " + json.dumps({"title": pg.get("title"), "links": pg.get("links", [])[:12]}, separators=(",", ":"))[:700])
+        for k in ("ckan", "table", "text", "dataflows_matching", "format_unparsed", "pdf_text_chars"):
+            if k in r:
+                lines.append(f"  {k.upper()} " + json.dumps(r[k], sort_keys=True, separators=(",", ":"))[:900])
+        sc = r.get("scan")
+        if sc:
+            lines.append("  SCAN " + json.dumps({k: sc.get(k) for k in ("layout", "rows_scanned", "nl_series_count", "sheet_names", "zip_member", "variables_scanned")}, separators=(",", ":"))[:500])
+            for i, s_ in enumerate(sc["nl_series"]):
+                keys = ("frequency", "first", "last", "n_obs", "missing_markers", "gap_count", "unit_class", "base_period", "real_or_nominal", "first_value", "last_value", "n_obs_1975_1999", "years_up_to_1999")
+                lines.append(f"  S{i} " + json.dumps({"attrs": s_["attrs"], **{k: s_[k] for k in keys}}, sort_keys=True, separators=(",", ":"))[:800])
+        for ov in r.get("overlap_vs_cbs", []):
+            if ov.get("status") == "COMPARED":
+                lines.append("  OVERLAP " + json.dumps(ov, sort_keys=True, separators=(",", ":"))[:1200])
+    return lines
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--digest", help="print a compact digest of an existing summary JSON and exit")
+    ap.add_argument("--summary-out")
     ap.add_argument("--cbs-csv", help="read-only CBS baseline CSV (date,series,value) for overlap diagnostics")
     ap.add_argument("--only", action="append", choices=sorted(CANDIDATES))
     args = ap.parse_args(argv)
+    if args.digest:
+        print("\n".join(digest(json.loads(Path(args.digest).read_text()))))
+        return 0
+    if not args.summary_out:
+        ap.error("--summary-out is required")
     cbs = load_cbs(args.cbs_csv) if args.cbs_csv else None
     results, store, defects = [], {}, []
     for sid in (args.only or list(CANDIDATES)):
