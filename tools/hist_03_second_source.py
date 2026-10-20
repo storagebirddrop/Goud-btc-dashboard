@@ -22,10 +22,10 @@ from tools import hist_02_acquire
 
 START, END = "1975-01", "1999-12"
 BOE_SERIES = "XUMAGPD"  # Bank of England IADB: gold price against US$, monthly average
-BOE_CSV = ("https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?csv.x=yes"
+BOE_CSV = ("https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?csv.x=yes"
            "&Datefrom=01/Jan/1975&Dateto=31/Dec/1999&SeriesCodes=" + BOE_SERIES +
            "&CSVF=TN&UsingCodes=Y&VPD=Y&VFD=N")
-BOE_NOTES = "https://www.bankofengland.co.uk/statistics/Pages/iadb/notesiadb/gold.aspx"
+BOE_NOTES = "https://www.bankofengland.co.uk/statistics/details/further-details-about-gold-prices-against-us$-data"
 
 # source_id -> (url, format); granularity says how the file is interpreted.
 CANDIDATES = {
@@ -84,7 +84,8 @@ def parse_points(raw, series_code, expected_unit_note=None):
         html = lines[0].lstrip().startswith("<")
         raise SecondSourceError("UNEXPECTED_HEADER_SHAPE " + json.dumps(
             {"lines": len(lines), "first_line_chars": len(lines[0]), "looks_like_html": html,
-             "first_line_prefix": None if html else lines[0][:60]}))
+             "first_line_prefix": None if html else lines[0][:60],
+             "html_title": (re.search(r"<title[^>]*>([^<]{0,100})", text, re.I) or [None, None])[1] if html else None}))
     if header[1] != series_code:
         raise SecondSourceError("WRONG_SERIES_COLUMN")
     points, missing = {}, 0
