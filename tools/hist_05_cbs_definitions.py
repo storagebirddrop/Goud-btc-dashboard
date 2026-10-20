@@ -22,6 +22,8 @@ import re
 import statistics
 import sys
 from collections import Counter
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 from decimal import Decimal
 from pathlib import Path
 
@@ -253,7 +255,29 @@ def focus_sentences(text, regex, limit=14, maxlen=320):
     return out
 
 
-def window_after(text, anchor, n=1800, occurrence=-1):
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def probe_redirect(sid, opener=None):
+    """For an allowlisted URL that failed with UNAUTHORIZED_ENDPOINT_OR_REDIRECT: GET without following and report only
+    status and the Location header (no body read; nothing fetched from the target). The target is a hint for a later,
+    explicitly registered exact URL; it is never followed here."""
+    url = hist_02_acquire.SOURCES[sid][0]
+    hist_02_acquire.validate_url(sid, url)
+    opener = opener or build_opener(_NoRedirect).open
+    try:
+        resp = opener(Request(url, headers={"User-Agent": "Goud-btc-dashboard/HIST-05 research"}), timeout=20)
+    except HTTPError as exc:
+        return {"http": exc.code, "location": (exc.headers.get("Location") or "")[:200] if exc.headers else None}
+    except (OSError, URLError) as exc:
+        return {"http": None, "error": type(exc).__name__}
+    with resp:
+        return {"http": getattr(resp, "status", None), "location": None}
+
+
+def window_after(text, anchor, n=1800, occurrence=0):
     """Text window after the chosen occurrence (default: last) of ANCHOR; '' when the anchor is absent (NOT_RETRIEVED)."""
     idx = [mm.start() for mm in re.finditer(re.escape(anchor), text or "")]
     return text[idx[occurrence]: idx[occurrence] + n] if idx else ""
@@ -347,8 +371,43 @@ def analyse_core(tid, props_doc, data_doc):
     def mon(key):
         combos = [fm.get("M") for (k, _), fm in series.items() if k == key and fm.get("M")]
         return combos[0] if len(combos) == 1 else None
+    count = [k for k, t in props["topics"].items() if t["kind"] == "COUNT" and "verkocht" in t["title"].lower()]
+    annual = [fm.get("A") for (k, _), fm in series.items() if k == price and fm.get("A")] if price else []
     return {"price_key": price, "index_keys": index, "price": mon(price) if price else None,
-            "index": {k: mon(k) for k in index}, "unsupported": len(unsupported)}
+            "index": {k: mon(k) for k in index}, "count": mon(count[0]) if len(count) == 1 else None,
+            "price_annual": annual[0] if len(annual) == 1 else None, "unsupported": len(unsupported)}
+
+
+def weighted_annual_check(core, years=range(1995, 2000)):
+    """DERIVED: count-weighted mean of the 12 monthly average prices of a year versus the published annual average (and the
+    sum of monthly counts versus the published annual count is NOT available here). Tests whether the annual level is a plain
+    mean over transactions (weights = counts), without mix adjustment. Any month missing => that year is skipped, not filled."""
+    out = {}
+    for t, c in sorted(core.items()):
+        if not (c.get("price") and c.get("count") and c.get("price_annual")):
+            continue
+        rows = {}
+        for y in years:
+            labs = periods_between("M", f"{y}-01", f"{y}-12")
+            if any(c["price"].get(k) is None or c["count"].get(k) is None for k in labs):
+                continue
+            n = sum(c["count"][k] for k in labs)
+            w = sum(c["price"][k] * c["count"][k] for k in labs) / n if n else None
+            pub = c["price_annual"].get(str(y))
+            if w is None or pub is None:
+                continue
+            rows[str(y)] = {"weighted_monthly_mean": str(w.quantize(Decimal("0.01"))), "published_annual": str(pub), "diff": str((w - pub).quantize(Decimal("0.01"))),
+                            "sum_monthly_counts": str(n), "label": "DERIVED"}
+        out[t] = rows
+    return out
+
+
+PDF_YEAR_ROW = re.compile(r"^\s*((?:19|20)\d\d)\s+([\d.]{5,9})\s+([\d.]{5,9})\s*$", re.M)
+
+
+def pdf_year_rows(text, limit=40):
+    """Rows 'year  count  average-price' of a method-PDF table (layout text). Only exact three-column rows are kept."""
+    return [{"year": y, "col_a": a, "col_b": b} for y, a, b in PDF_YEAR_ROW.findall(text or "")][:limit]
 
 
 def revision_comparison(core, fixture):
@@ -435,6 +494,8 @@ def main(argv=None):
         print(json.dumps({sid: {k: entry.get(k) for k in ("status", "http_status", "bytes")}}, sort_keys=True), flush=True)
         if raw is None:
             missing.append(sid)
+            if str(entry.get("error", "")).startswith("UNAUTHORIZED_ENDPOINT_OR_REDIRECT"):
+                entry["redirect_probe"] = probe_redirect(sid)
             results.append(entry)
             continue
         if fmt == "pdf":
@@ -447,7 +508,7 @@ def main(argv=None):
         entry["text_chars"] = len(text or "")
         if group.startswith("rights_"):
             rights_text[sid] = text or ""
-            entry["window_terms"] = window_after(text, "Terms of permitted use of BIS statistics", 1800) if sid.startswith("bis-") else ""
+            entry["window_terms"] = window_after(text, "Terms of permitted use of BIS statistics", 2600) if sid.startswith("bis-") else ""
             entry["rights_evidence"] = rights_level(text)
             entry["rights_quotes"] = rights_quotes(text)
         else:
@@ -554,10 +615,11 @@ def main(argv=None):
     nlg = {t: guilder_numbers(month_range(c["price"], "1995-01", "1998-12")) for t, c in sorted(core.items()) if c.get("price")}
     nlg["fixture_1995_1998"] = guilder_numbers(month_range(fixture, "1995-01", "1998-12"))
     facts = extract_facts(corpus)
+    pdf_tables = {sid: pdf_year_rows(corpus.get(sid, "")) for sid in ("cbs-method-pdf-2008", "cbs-method-pdf-2018", "cbs-method-pdf-2024")}
     description_excerpts = {t: focus_sentences(m["fields"]["Description"]["value"], DESC_FOCUS, 16) for t, m in sorted(metadata.items())
                             if t in CORE or t.replace("_v4", "") in CORE}
     method_history = {sid: focus_sentences(corpus.get(sid, ""), METHOD_FOCUS, 14) for sid in ("cbs-method-pbk-2010", "cbs-method-pbk-2015", "cbs-method-regio", "cbs-background-2005", "cbs-faq-woningprijzen", "cbs-method-pdf-2008", "cbs-method-pdf-2018", "cbs-method-pdf-2024")}
-    kadaster_excerpts = {sid: focus_sentences(corpus.get(sid, ""), KADASTER_FOCUS, 10) for sid in sorted(PAGES) if PAGES[sid][2] == "kadaster_def"}
+    kadaster_excerpts = {sid: focus_sentences(corpus.get(sid, ""), KADASTER_FOCUS, 30) for sid in sorted(PAGES) if PAGES[sid][2] == "kadaster_def"}
     summary = {"status": "DONE", "nothing_approved": True, "publication_authorized": False, "rights_status": "UNVERIFIED",
                "facts": facts, "table_metadata": metadata, "description_excerpts": description_excerpts,
                "method_history": method_history, "kadaster_excerpts": kadaster_excerpts,
@@ -567,7 +629,7 @@ def main(argv=None):
                "perioden_status": perioden, "catalog_entries_of_known_tables": catalog_ids,
                "catalog_title_hits": catalogue_hits[:60], "catalog_extra_fetched": [r["id"] for r in extra],
                "price_keys": {t: c["price_key"] for t, c in core.items()}, "index_keys": {t: c["index_keys"] for t, c in core.items()},
-               "revision_comparison": revisions, "break_statistics": breaks, "guilder_numbers_derived": nlg,
+               "revision_comparison": revisions, "weighted_annual_check": weighted_annual_check(core) if not defects else {}, "pdf_tables": pdf_tables, "break_statistics": breaks, "guilder_numbers_derived": nlg,
                "rights": {sid: {"level": rights_level(t), "quotes": rights_quotes(t)} for sid, t in sorted(rights_text.items())},
                "results": results, "findings": findings, "missing_sources": sorted(set(missing)), "defects": defects}
     out = Path(args.summary_out)
@@ -608,13 +670,13 @@ def report_lines(summary):
     out.append("CATALOG " + json.dumps(summary["catalog_entries_of_known_tables"], sort_keys=True, separators=(",", ":"))[:2500])
     for r in summary["catalog_title_hits"]:
         out.append(f"HIT {r['id']}|{r['period']}|{r['frequency']}|{r['modified']}|{r['title'][:100]}")
-    for key in ("revision_comparison", "break_statistics", "guilder_numbers_derived", "price_keys", "index_keys"):
+    for key in ("weighted_annual_check", "pdf_tables", "revision_comparison", "break_statistics", "guilder_numbers_derived", "price_keys", "index_keys"):
         out.append(f"{key.upper()} " + json.dumps(summary[key], sort_keys=True, separators=(",", ":")))
     for sid, r in sorted(summary["rights"].items()):
         out.append(f"RIGHTS {sid} {r['level']}")
         out += [f"  Q {q}" for q in r["quotes"][:6]]
     for r in summary["results"]:
-        out.append(f"SRC {r['source_id']} {r['status']} http={r.get('http_status')} bytes={r.get('bytes')} sha={(r.get('sha256') or '')[:16]} err={str(r.get('error') or '')[:90]} pdf={json.dumps(r.get('pdf'), sort_keys=True) if r.get('pdf') else ''}")
+        out.append(f"SRC {r['source_id']} {r['status']} http={r.get('http_status')} bytes={r.get('bytes')} sha={(r.get('sha256') or '')[:16]} err={str(r.get('error') or '')[:90]} redirect={json.dumps(r.get('redirect_probe'), sort_keys=True) if r.get('redirect_probe') else ''} pdf={json.dumps(r.get('pdf'), sort_keys=True) if r.get('pdf') else ''}")
     out.append("FINDINGS " + json.dumps(summary["findings"], sort_keys=True, default=str)[:2000])
     out.append("MISSING " + json.dumps(summary["missing_sources"]))
     out.append("DEFECTS " + json.dumps(summary["defects"]))

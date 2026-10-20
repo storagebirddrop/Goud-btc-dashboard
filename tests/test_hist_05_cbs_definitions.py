@@ -213,7 +213,7 @@ def test_catalog_info_rows_defaults_not_retrieved():
 def test_report_lines_render_minimal_summary():
     s = {"facts": m.extract_facts(CORPUS), "table_metadata": {"T": m.parse_table_info({"value": [{"Title": "T"}]})},
          "measure_details": {"T": m.parse_property_details(PROPS)}, "perioden_status": {}, "catalog_entries_of_known_tables": {},
-         "catalog_title_hits": [], "revision_comparison": {}, "break_statistics": {}, "guilder_numbers_derived": {}, "price_keys": {},
+         "catalog_title_hits": [], "revision_comparison": {}, "weighted_annual_check": {}, "pdf_tables": {}, "break_statistics": {}, "guilder_numbers_derived": {}, "price_keys": {},
          "index_keys": {}, "rights": {}, "results": [], "findings": [], "missing_sources": [], "defects": [],
          "description_excerpts": {"T": ["x"]}, "method_history": {}, "kadaster_excerpts": {}, "kadaster_page_rights_quotes": {}, "rights_windows": {}}
     lines = m.report_lines(s)
@@ -225,5 +225,50 @@ def test_focus_sentences_and_window():
     text = "Eerste zin zonder inhoud hier voor de test. De gemiddelde verkoopprijs is een gemiddelde. Nog een lange neutrale zin hier."
     assert m.focus_sentences(text, r"verkoopprijs") == ["De gemiddelde verkoopprijs is een gemiddelde."]
     assert m.focus_sentences("", r"x") == []
-    assert m.window_after("a TERMS b TERMS c", "TERMS", 7) == "TERMS c"
+    assert m.window_after("a TERMS b TERMS c", "TERMS", 7, occurrence=-1) == "TERMS c"
+    assert m.window_after("a TERMS b TERMS c", "TERMS", 7) == "TERMS b"
     assert m.window_after("a TERMS b", "ABSENT") == ""
+
+
+class _Hdr(dict):
+    def get(self, k, d=None):
+        return super().get(k, d)
+
+
+def test_probe_redirect_reports_location_only_and_respects_allowlist():
+    from urllib.error import HTTPError
+    sid = "bis-terms-statistics"
+
+    def opener(req, timeout=None):
+        raise HTTPError(req.full_url, 301, "moved", _Hdr(Location="https://www.bis.org/other"), None)
+    assert m.probe_redirect(sid, opener) == {"http": 301, "location": "https://www.bis.org/other"}
+
+    def refuse(req, timeout=None):
+        raise OSError("boom")
+    assert m.probe_redirect(sid, refuse) == {"http": None, "error": "OSError"}
+    with pytest.raises(KeyError):
+        m.probe_redirect("not-registered", opener)
+
+
+def test_weighted_annual_check_and_skips_incomplete_years():
+    ms = months("1995-01", 12) + months("1996-01", 11)  # 1996 incomplete: December missing
+    price = {k: D(100000 + 1000 * i) for i, k in enumerate(ms)}
+    count = {k: D(10 + i) for i, k in enumerate(ms)}
+    n = sum(count[k] for k in ms[:12])
+    w = sum(price[k] * count[k] for k in ms[:12]) / n
+    core = {"T": {"price": price, "count": count, "price_annual": {"1995": w.quantize(D("1")), "1996": D(1)}}}
+    r = m.weighted_annual_check(core, range(1995, 1997))["T"]
+    assert set(r) == {"1995"} and abs(D(r["1995"]["diff"])) <= D("0.5") and r["1995"]["label"] == "DERIVED"
+    assert m.weighted_annual_check({"T": {"price": price}}) == {}
+
+
+def test_core_analysis_picks_count_and_annual():
+    props = {"value": PROPS["value"][:3] + [{"Type": "Topic", "Key": "N", "Title": "Aantal verkochte woningen", "Unit": "aantal"}]}
+    data = {"value": [{"Perioden": "1995MM01", "P1": 5, "I2": 1, "N": 7}, {"Perioden": "1995JJ00", "P1": 6, "I2": 1, "N": 70}]}
+    c = m.analyse_core("T", props, data)
+    assert c["count"]["1995-01"] == D(7) and c["price_annual"]["1995"] == D(6)
+
+
+def test_pdf_year_rows_only_exact_three_column_rows():
+    text = "Jaar  aantal  prijs\n 1995      154.568      93.750\n1996  1.2 3\n 1999   199.000   123.456  \ntekst 2000 1 2 3\n"
+    assert m.pdf_year_rows(text) == [{"year": "1995", "col_a": "154.568", "col_b": "93.750"}, {"year": "1999", "col_a": "199.000", "col_b": "123.456"}]
