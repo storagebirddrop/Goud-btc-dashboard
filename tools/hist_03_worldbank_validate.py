@@ -5,6 +5,19 @@ Fetches only the approved World Bank source through tools.hist_02_acquire.fetch
 copy of the logic in etl/sources/worldbank_gold.py (that module is untouched),
 and validates 1975-01..1999-12 strictly. Raw bytes stay in memory; output is
 metadata only. No interpolation, no publication, no repository data writes.
+
+Single sources of truth (HIST-03 consolidation):
+- World Bank acquisition: tools.hist_02_acquire.fetch (no second download path).
+- Month enumeration: tools.hist_02_coverage.month_range (expected_months delegates).
+- Canonical series hash: canonical_sha256 below; fingerprint() below feeds both
+  validate() and tools.hist_03_independent_parse (which re-exports it).
+
+Deliberate deviation from the production parser etl/sources/worldbank_gold.py
+(left untouched): this validator is STRICT (date format 'YYYYMmm' only, exactly one
+GOLD column, duplicates/unparseable dates/invalid values are reported and fail the
+run, range 1975-01..1999-12), whereas the production parser accepts Excel serials
+and 'YYYY-MM', skips rows before 2000-01 and records problems less strictly.
+The two are intentionally not merged; this module never feeds production data.
 """
 import argparse
 import hashlib
@@ -16,6 +29,8 @@ import zipfile
 import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+
+from tools.hist_02_coverage import month_range
 
 NS = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
       "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
@@ -117,18 +132,28 @@ def parse(raw, start=START, end=END):
 
 
 def expected_months(start=START, end=END):
-    y, m = map(int, start.split("-"))
-    ey, em = map(int, end.split("-"))
-    out = []
-    while (y, m) <= (ey, em):
-        out.append(f"{y:04d}-{m:02d}")
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return out
+    return month_range(start, end)
 
 
 def canonical_sha256(series, months):
     text = "".join(f"{p},{format(series[p], 'f')}\n" for p in months)
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+def fingerprint(p, start=START, end=END):
+    """Aggregate facts of a parsed workbook (metadata only); shared by validate() and the cross-check."""
+    s = p["series"]
+    months = [m for m in expected_months(start, end) if m in s]
+    ap = p["all_periods"]
+    return {
+        "count_in_range": len(s), "first_in_range": min(s) if s else None, "last_in_range": max(s) if s else None,
+        "gold_column": p["gold_column"], "header_text": p["header_text"],
+        "unit_accepted": next((u for u in p["unit_texts"] if UNIT_RE.search(u)), None),
+        "sheet_period_count": len(ap), "sheet_first_period": ap[0] if ap else None,
+        "sheet_last_period": ap[-1] if ap else None,
+        "canonical_series_sha256": canonical_sha256(s, months),
+        "non_integer_count_in_range": sum(1 for v in s.values() if v != v.to_integral_value()),
+    }
 
 
 def precision_stats(values, start=START, end=END):
@@ -148,7 +173,8 @@ def validate(raw, start=START, end=END):
     p = parse(raw, start, end)
     months = expected_months(start, end)
     s = p["series"]
-    unit = next((u for u in p["unit_texts"] if UNIT_RE.search(u)), None)
+    fp = fingerprint(p, start, end)
+    unit = fp["unit_accepted"]
     missing = [m for m in months if m not in s]
     problems = []
     if unit is None:
@@ -161,24 +187,23 @@ def validate(raw, start=START, end=END):
         problems.append("INVALID_VALUES")
     if p["bad_dates"]:
         problems.append("UNPARSEABLE_DATES")
-    ap = p["all_periods"]
     summary = {
         "worksheet": SHEET, "gold_column": p["gold_column"], "header_text": p["header_text"],
         "unit_rows_literal": p["unit_texts"], "unit_accepted": unit,
         "date_format": "YYYYMmm (e.g. 1975M01)", "workbook_sha256": hashlib.sha256(raw).hexdigest(),
-        "sheet_first_period": ap[0] if ap else None, "sheet_last_period": ap[-1] if ap else None,
-        "sheet_period_count": len(ap), "range": [start, end], "expected_count": len(months),
-        "count_in_range": len(s), "first_in_range": min(s) if s else None, "last_in_range": max(s) if s else None,
-        "missing_months": missing, "duplicate_months": p["duplicates"], "invalid_rows": p["invalid"],
+        "sheet_first_period": fp["sheet_first_period"], "sheet_last_period": fp["sheet_last_period"],
+        "sheet_period_count": fp["sheet_period_count"], "range": [start, end], "expected_count": len(months),
+        "count_in_range": fp["count_in_range"], "first_in_range": fp["first_in_range"],
+        "last_in_range": fp["last_in_range"], "missing_months": missing, "duplicate_months": p["duplicates"], "invalid_rows": p["invalid"],
         "unparseable_dates": p["bad_dates"],
         "min": str(min(s.values())) if s else None, "max": str(max(s.values())) if s else None,
         "anchors": [{"month": m, "value": str(s[m])} for m in ANCHORS if m in s][:12],
-        "non_integer_count_in_range": sum(1 for v in s.values() if v != v.to_integral_value()),
+        "non_integer_count_in_range": fp["non_integer_count_in_range"],
         "decimal_places_histogram": precision_stats(p["all_values"], start, end),
         "problems": problems, "rights_status": "UNVERIFIED", "publication_authorized": False,
     }
     if not problems:
-        summary["canonical_series_sha256"] = canonical_sha256(s, months)
+        summary["canonical_series_sha256"] = fp["canonical_series_sha256"]
     summary["status"] = "VALIDATED" if not problems else "FAILED"
     return summary
 

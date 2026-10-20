@@ -1,5 +1,10 @@
 """HIST-02 research-only HTTPS acquisition: raw bytes remain ephemeral.
 No fallback, no repository writes, no production data or methodology changes.
+
+fetch() is the ONLY download path (also used by tools.hist_03_worldbank_validate for
+the World Bank workbook). The CLI/run() writes ephemeral raw files for a manual probe
+only; the World Bank workbook is validated in hist-03-worldbank-validation.yml, so the
+hist-02 workflow probes just the FRED candidate (--source fred-exneus-history).
 """
 import argparse
 import hashlib
@@ -119,7 +124,7 @@ def fetch(source, *, opener=None):
                      "publication_authorized": False}
 
 
-def run(directory):
+def run(directory, sources=None):
     out = Path(directory).resolve()
     if os.environ.get("GITHUB_WORKSPACE") and (out == Path(os.environ["GITHUB_WORKSPACE"]).resolve() or
         out.is_relative_to(Path(os.environ["GITHUB_WORKSPACE"]).resolve())):
@@ -127,7 +132,7 @@ def run(directory):
     out.mkdir(parents=True, exist_ok=True)
     manifest = {"status": "BLOCKED_PENDING_SOURCE_SCHEMA_AND_RIGHTS_REVIEW", "sources": []}
     failures = []
-    for source in SOURCES:
+    for source in (sources or SOURCES):
         diagnostic = diagnose(source)
         print(json.dumps({"diagnostic": diagnostic}, sort_keys=True), flush=True)
         try:
@@ -155,5 +160,7 @@ def run(directory):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ephemeral-directory", required=True)
+    parser.add_argument("--source", action="append", choices=sorted(SOURCES),
+                        help="restrict to this source (repeatable); default: all approved sources")
     args = parser.parse_args()
-    run(args.ephemeral_directory)
+    run(args.ephemeral_directory, args.source)
