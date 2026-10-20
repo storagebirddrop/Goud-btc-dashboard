@@ -221,19 +221,20 @@ def parse_dated_text(raw, century=None, slash_order=None):
     if len(resolved) != 1:
         raise NlgSourceError("DATE_ORDER_UNRESOLVED_OR_NOT_CHRONOLOGICAL")
     order, ds = resolved[0]
-    points, seen, missing = {}, set(), 0
+    points, seen, missing, missing_dates = {}, set(), 0, []
     for d, (_, _, v) in zip(ds, rows):
         if d in seen:
             raise NlgSourceError("DUPLICATE_DATE")
         seen.add(d)
         if v in MISSING:
             missing += 1
+            missing_dates.append(d)
             continue
         points[d] = to_decimal(v)
     clean = points
     if not clean:
         raise NlgSourceError("NO_OBSERVATIONS")
-    return {"points": clean, "missing_markers": missing, "header": header, "trailer": trailer[:3], "trailer_count": len(trailer),
+    return {"points": clean, "missing_markers": missing, "missing_dates": missing_dates, "header": header, "trailer": trailer[:3], "trailer_count": len(trailer),
             "slash_order": order if any(k == "slash" for k, _, _ in rows) else None}
 
 

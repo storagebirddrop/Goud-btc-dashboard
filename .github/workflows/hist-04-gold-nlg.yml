@@ -1,0 +1,41 @@
+name: HIST-04 gold NLG/EUR research candidate (not approved)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'research/hist-04-gold-fx-consolidated'
+    paths:
+      - '.github/workflows/hist-04-gold-nlg.yml'
+      - 'tools/hist_04_gold_nlg.py'
+      - 'tests/test_hist_04_gold_nlg.py'
+permissions:
+  contents: read
+jobs:
+  gold-nlg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_04_gold_nlg.py tests/test_hist_04_nlg_sources.py tests/test_hist_04_fx.py tests/test_hist_04_gold_outliers.py tests/test_hist_02_acquire.py tests/test_hist_03_quality_contract.py
+      - name: Build research candidate table (unreachable sources exit 0 as PARTIAL/INCOMPLETE; defects exit 1)
+        run: >
+          python -m tools.hist_04_gold_nlg
+          --summary-out "$RUNNER_TEMP/hist-04-gold-nlg/summary.json"
+          --table-json-out "$RUNNER_TEMP/hist-04-gold-nlg/table.json"
+          --table-csv-out "$RUNNER_TEMP/hist-04-gold-nlg/table.csv"
+      - name: Derived research artifact (research candidate - not approved, rights UNVERIFIED, no raw source data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-04-gold-nlg-research-candidate-not-approved
+          path: ${{ runner.temp }}/hist-04-gold-nlg/
+          if-no-files-found: warn
+          retention-days: 14
