@@ -252,6 +252,8 @@ def test_median_table_parse_selected_years_only_and_unparsed_not_defect():
     assert t["status"] == "PARSED" and t["years"] == [1999, 1995, 1990, 1985] and t["source_note"] == "NVM Wonen"
     assert t["rows"]["Woningen totaal"] == {"1999": "329000", "1995": "223000", "1990": "159000", "1985": "130000"}
     assert "Vrijstaande woningen" not in t["rows"]  # incomplete row is dropped, never filled
+    bad = m.parse_median_table(ESB_PLAIN + " Appartementen 148.000 346.000 228.000 549.000")
+    assert "Appartementen" not in bad["rows"] and bad["rejected_rows"][0]["label"] == "Appartementen"
     assert m.parse_median_table("nothing")["status"] == "HEADING_NOT_FOUND"
     assert m.parse_median_table("Prijsontwikkeling bestaande koopwoning 1985 (mediaan) Jaar x")["status"] == "FORMAT_UNPARSED"
 

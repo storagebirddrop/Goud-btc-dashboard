@@ -94,6 +94,11 @@ REFERENCES = {
 }
 
 PDF_SENTENCE_RE = r"house price|housing price|hpnom|hpreal|residential property|Netherlands|Dutch|Kadaster|NVM"
+PDF_FOCUS = {
+    "bis-pp-selected-documentation-pdf": {"anchor": r"NL Netherlands", "near": r".", "width": 1100, "limit": 2},
+    "bis-pp-sources-pdf": {"anchor": r"NL Netherlands|Netherlands", "near": r".", "width": 250, "limit": 3},
+    "jst-r6-documentation-pdf-cdn": {"anchor": r"Netherlands", "near": r"house price|Herengracht|Eichholtz|Knoll|housing", "width": 600, "limit": 8},
+}
 PERIOD_RE = re.compile(r"(\d{4})(?:-?Q([1-4])|-(\d{2}))?")
 TIME_COLS = {"TIME_PERIOD", "Time period", "TIME PERIOD", "DATE"}
 OBS_COLS = {"OBS_VALUE", "Observation value", "Observation Value", "VALUE_OBS"}
@@ -530,13 +535,18 @@ def parse_median_table(plain):
         return {"status": "FORMAT_UNPARSED", "reason": "no year row"}
     years = [int(y) for y in ym.group(1).split()]
     n = len(years)
-    rows = {}
+    rows, rejected = {}, []
     for lab, nums in re.findall(r"([A-Z][A-Za-z\- ]{3,30}?)\s+((?:\d{1,3}\.\d{3}(?=\s|$)\s*){%d})" % n, tail[ym.end():]):
         vals = [Decimal(x.replace(".", "")) for x in nums.split()]
+        ordered = [v for _, v in sorted(zip(years, vals))]
+        if ordered != sorted(ordered):  # plausibility flag only: prices rose in every printed interval; a scrambled row is rejected, never repaired
+            rejected.append({"label": lab.strip(), "reason": "NOT_MONOTONE_LIKELY_COLUMN_MISALIGNMENT"})
+            continue
         rows.setdefault(lab.strip(), dict(zip(years, vals)))
     if not rows:
         return {"status": "FORMAT_UNPARSED", "reason": "no complete rows", "years": years}
     return {"status": "PARSED", "source_note": (m.group(1) or "").strip(), "years": years, "rows": {k: {str(y): str(v) for y, v in r.items()} for k, r in rows.items()},
+            "rejected_rows": rejected,
             "unit_note": "NLG per dwelling as printed (article table); statistic = median; selected years only"}
 
 
@@ -664,15 +674,15 @@ def overlap_with_cbs(key, summ, parsed, freq, cbs):
 
 
 # ------------------------------------------------------------------ probes
+STRONG_LICENCE = r"permitted|not permitted|may not|prohibit|forbid|non-?commercial|commercial|redistribut|toegestaan|zonder .{0,30}toestemming|attribution|CC[ -]?BY"
+
+
 def licence_quotes(raw, limit=4):
+    """Sentences about reuse; sentences with an explicit permission/prohibition term come first."""
     plain = strip_tags(raw.decode("utf-8", "replace"))
-    out = []
-    for s in re.split(r"(?<=[.!?])\s+", plain):
-        if 30 <= len(s) <= 600 and re.search(LICENCE_KEYWORDS, s, re.I):
-            out.append(s[:280])
-        if len(out) >= limit:
-            break
-    return out
+    cand = [x for x in re.split(r"(?<=[.!?])\s+", plain) if 30 <= len(x) <= 600 and re.search(LICENCE_KEYWORDS, x, re.I)]
+    cand.sort(key=lambda x: 0 if re.search(STRONG_LICENCE, x, re.I) else 1)
+    return [x[:280] for x in cand[:limit]]
 
 
 def ckan_facts(raw):
@@ -715,12 +725,13 @@ def run_candidate(sid, results, store, cbs):
         entry["dataflows_matching"] = dataflow_names(raw, r"house|dwelling|property|residential|price", 25)
     elif kind == "pdf_text":
         text, diag = pdf_to_text(raw)
+        focus = PDF_FOCUS.get(sid, {})
         if text is None:
             entry["text"] = {"status": "PDFTOTEXT_UNAVAILABLE_OR_FAILED", "diag": diag}
         else:
             plain = re.sub(r"\s+", " ", text)
             sents = [x[:300] for x in re.split(r"(?<=[.!?])\s+", plain) if re.search(PDF_SENTENCE_RE, x, re.I)]
-            entry["text"] = {"status": "OK", "chars": len(plain), "contexts": pdf_context(plain), "matching_sentences": sents[:4]}
+            entry["text"] = {"status": "OK", "chars": len(plain), "contexts": pdf_context(plain, **focus), "matching_sentences": sents[:4]}
     elif kind == "pdf_table":
         text, diag = pdf_to_text(raw)
         if text is None:
@@ -817,6 +828,8 @@ def digest(doc):
         pg = r.get("page")
         if pg:
             lines.append("  PAGE " + json.dumps({"title": pg.get("title"), "links": pg.get("links", [])[:12]}, separators=(",", ":"))[:700])
+        for c in (r.get("text") or {}).get("contexts", []):
+            lines.append("  CTX " + c[:1300])
         for k in ("ckan", "median_table", "table", "text", "dataflows_matching", "format_unparsed", "pdf_text_chars"):
             if k in r:
                 lines.append(f"  {k.upper()} " + json.dumps(r[k], sort_keys=True, separators=(",", ":"))[:900])
