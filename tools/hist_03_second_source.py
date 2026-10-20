@@ -81,7 +81,10 @@ def parse_points(raw, series_code, expected_unit_note=None):
         raise SecondSourceError("EMPTY_FILE")
     header = [c.strip().strip('"') for c in lines[0].split(",")]
     if len(header) != 2 or header[0].upper() != "DATE":
-        raise SecondSourceError("UNEXPECTED_HEADER_SHAPE")
+        html = lines[0].lstrip().startswith("<")
+        raise SecondSourceError("UNEXPECTED_HEADER_SHAPE " + json.dumps(
+            {"lines": len(lines), "first_line_chars": len(lines[0]), "looks_like_html": html,
+             "first_line_prefix": None if html else lines[0][:60]}))
     if header[1] != series_code:
         raise SecondSourceError("WRONG_SERIES_COLUMN")
     points, missing = {}, 0
@@ -156,6 +159,27 @@ def coverage(other, start=START, end=END):
             "missing_count": len(months) - len(present)}
 
 
+def probe_redirect(url):
+    """Diagnostic only: status and Location host/path of the first response, no redirect followed, no body read."""
+    from urllib.error import HTTPError
+    from urllib.parse import urlsplit
+    from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+    class NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    try:
+        resp = build_opener(NoRedirect).open(Request(url, headers={"User-Agent": "Goud-btc-dashboard/HIST-03 probe"}), timeout=30)
+        return {"status": resp.status}
+    except HTTPError as exc:
+        loc = exc.headers.get("Location")
+        parts = urlsplit(loc) if loc else None
+        return {"status": exc.code, "location_host": parts.hostname if parts else None,
+                "location_path": parts.path if parts else None, "server": exc.headers.get("Server")}
+    except OSError as exc:
+        return {"error_class": type(exc).__name__}
+
+
 def notes_snippets(raw, limit=6, width=240):
     """Definition text only (documentation page, not data): short sentences with basis keywords."""
     text = re.sub(r"<[^>]+>", " ", raw.decode("utf-8", "replace"))
@@ -206,7 +230,8 @@ def main(argv=None):
         raw_n, rec_n = hist_02_acquire.fetch("boe-gold-notes")
         summary["boe_notes"] = {"sha256": rec_n["sha256"], "bytes": rec_n["bytes"], "snippets": notes_snippets(raw_n)}
     except hist_02_acquire.AcquisitionError as exc:
-        summary["failures"].append({"source_id": "boe-gold-notes", "error": str(exc)[:200]})
+        summary["failures"].append({"source_id": "boe-gold-notes", "error": str(exc)[:200],
+                                    "probe": probe_redirect(BOE_NOTES)})
     for sid, cfg in CANDIDATES.items():
         try:
             raw, rec = hist_02_acquire.fetch(sid)
@@ -214,7 +239,8 @@ def main(argv=None):
             res["sha256"], res["bytes"] = rec["sha256"], rec["bytes"]
             summary["candidates"].append(res)
         except (hist_02_acquire.AcquisitionError, SecondSourceError) as exc:
-            summary["failures"].append({"source_id": sid, "error_class": type(exc).__name__, "error": str(exc)[:200]})
+            summary["failures"].append({"source_id": sid, "error_class": type(exc).__name__, "error": str(exc)[:400],
+                                        "probe": probe_redirect(cfg["url"])})
     summary["status"] = "COMPARED" if summary["candidates"] else "NO_CANDIDATE_COMPARED"
     out.write_text(json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n")
     print(json.dumps(summary, indent=2, sort_keys=True, default=str))
