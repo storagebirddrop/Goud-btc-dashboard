@@ -1,0 +1,43 @@
+name: HIST-04 USD/NLG sources (research only)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/hist-04-gold-fx-consolidated
+    paths:
+      - '.github/workflows/hist-04-nlg-sources.yml'
+      - 'tools/hist_04_nlg_sources.py'
+      - 'tests/test_hist_04_nlg_sources.py'
+permissions:
+  contents: read
+jobs:
+  nlg-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_04_nlg_sources.py tests/test_hist_02_acquire.py
+      - name: Probe USD/NLG candidates (unreachable sources exit 0; parser/integrity defects exit 1)
+        run: python -m tools.hist_04_nlg_sources --summary-out "$RUNNER_TEMP/hist-04-nlg-sources.json"
+      - name: Print aggregates-only summary (no raw third-party data)
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/hist-04-nlg-sources.json" ]; then
+            python -c "import json,sys; d=json.load(open(sys.argv[1])); [print('RESULT', json.dumps(r, sort_keys=True, separators=(',',':'))[:3500]) for r in d['results']]" "$RUNNER_TEMP/hist-04-nlg-sources.json"
+          fi
+      - name: Metadata-only review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-04-nlg-sources-summary-review-only
+          path: ${{ runner.temp }}/hist-04-nlg-sources.json
+          if-no-files-found: warn
+          retention-days: 14
