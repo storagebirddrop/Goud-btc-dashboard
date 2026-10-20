@@ -29,8 +29,8 @@ jobs:
           HIST02_TMP: ${{ runner.temp }}/hist-02-inputs
         run: |
           umask 077
+          trap 'if [ -f "$HIST02_TMP/manifest.json" ]; then cp "$HIST02_TMP/manifest.json" "$RUNNER_TEMP/hist-02-manifest.json"; fi' EXIT
           python -m tools.hist_02_acquire --ephemeral-directory "$HIST02_TMP"
-          cp "$HIST02_TMP/manifest.json" "$RUNNER_TEMP/hist-02-manifest.json"
       - name: Metadata-only review artifact
         if: always()
         uses: actions/upload-artifact@v4
