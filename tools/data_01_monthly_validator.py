@@ -122,18 +122,27 @@ def _manifest_status(hashref, manifest_evidence):
     return None
 
 
-def validate(approved, candidate, *, approved_through, as_of_period,
+def validate(approved, candidate, *, approved_through, as_of_period, as_of_date_utc,
              approved_metrics, methodology_by_metric, manifest_evidence=None,
              permitted_future=False):
     """Return deterministic content-addressed review; never mutate either input.
 
     manifest_evidence is an explicitly supplied independent verification registry,
     not an assertion inferred from a syntactically valid SHA.
+    APPEND_REVIEW is review-only; publication_authorized remains false.
     """
     old = _index(approved, "APPROVED")
     new = _index(candidate, "CANDIDATE")
     boundary = month_number(approved_through)
     today = month_number(as_of_period)
+    if not isinstance(as_of_date_utc, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", as_of_date_utc):
+        raise ObservationError("INVALID_AS_OF_DATE_UTC")
+    try:
+        reference_date = date.fromisoformat(as_of_date_utc)
+    except ValueError as exc:
+        raise ObservationError("INVALID_AS_OF_DATE_UTC") from exc
+    if reference_date.strftime("%Y-%m") != as_of_period:
+        raise ObservationError("AS_OF_PERIOD_DATE_MISMATCH")
     if not isinstance(approved_metrics, (list, tuple)) or not approved_metrics:
         raise ObservationError("INVALID_METRIC_POLICY")
     if any(not isinstance(m, str) for m in approved_metrics) or len(approved_metrics) != len(set(approved_metrics)) or not set(approved_metrics) <= METRICS:
@@ -173,6 +182,9 @@ def validate(approved, candidate, *, approved_through, as_of_period,
                 reasons.append(manifest_problem)
         if reasons:
             kind = "BLOCKED"
+        elif before is None and month_number(period) == today:
+            kind = "PENDING"
+            reasons.append("CALENDAR_MONTH_NOT_CLOSED")
         elif after["completeness_status"] != "COMPLETE" or after["observation_status"] != "FINAL":
             kind = "PENDING" if before is None else "REVISION_REVIEW"
             if before is not None:
@@ -221,10 +233,12 @@ def validate(approved, candidate, *, approved_through, as_of_period,
               for name in CLASSIFICATIONS}
     status = ("BLOCKED" if counts["BLOCKED"] else
               "REVIEW_REQUIRED" if counts["REVISION_REVIEW"] or counts["LATE_ARRIVAL"] else
-              "PENDING" if counts["PENDING"] else "APPEND_REVIEW")
+              "PENDING" if counts["PENDING"] else
+              "APPEND_REVIEW" if counts["APPEND_CANDIDATE"] else "NO_CHANGE")
     return {"contract_version": CONTRACT, "approved_sha256": digest(approved),
             "candidate_sha256": digest(candidate), "approved_through": approved_through,
-            "as_of_period": as_of_period, "validation_status": status,
+            "as_of_period": as_of_period, "as_of_date_utc": as_of_date_utc,
+            "validation_status": status,
             "counts": counts, "classifications": items,
             "publication_authorized": False, "manifest_evidence_mode":
             "EXPLICIT_VERIFIED_REGISTRY" if manifest_evidence is not None else "NOT_PROVIDED"}
