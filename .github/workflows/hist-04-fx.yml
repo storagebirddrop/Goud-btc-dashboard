@@ -1,0 +1,37 @@
+name: HIST-04 FX sources (research only)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/hist-04-gold-fx-consolidated
+    paths:
+      - '.github/workflows/hist-04-fx.yml'
+      - 'tools/hist_04_fx.py'
+      - 'tests/test_hist_04_fx.py'
+permissions:
+  contents: read
+jobs:
+  fx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_04_fx.py tests/test_hist_02_acquire.py
+      - name: Acquire Fed G.5 NLG and ECB EXR USD (aggregates only, raw stays in memory)
+        run: python -m tools.hist_04_fx --summary-out "$RUNNER_TEMP/hist-04-fx.json"
+      - name: Metadata-only review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-04-fx-summary-review-only
+          path: ${{ runner.temp }}/hist-04-fx.json
+          if-no-files-found: warn
+          retention-days: 14

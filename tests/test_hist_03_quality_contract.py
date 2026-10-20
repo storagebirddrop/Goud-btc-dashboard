@@ -127,7 +127,9 @@ def _write_calls(tree):
 def test_hist_tools_never_write_public_paths(path):
     tree = _tree(path)
     literals = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
-    assert not [s for s in literals if FORBIDDEN_LITERALS.search(s)], "hist tool names a public data path"
+    # Remote source URLs (e.g. an API path containing /data/) are not repository paths; the
+    # write-target check below still scans ALL literals, including https:// ones.
+    assert not [s for s in literals if not s.startswith("https://") and FORBIDDEN_LITERALS.search(s)], "hist tool names a public data path"
     for call, target in _write_calls(tree):
         for sub in (ast.walk(target) if target is not None else []):
             if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
@@ -140,6 +142,12 @@ def test_write_detector_catches_violations():
     t = ast.parse("open('data/cbs-housing.csv','w')\nPath('x').write_text('a')\np.open('wb')\nopen('r.csv')")
     assert len(list(_write_calls(t))) == 3
     assert FORBIDDEN_LITERALS.search("frontend/public/data/monthly.json")
+    assert FORBIDDEN_LITERALS.search("data/cbs-housing.csv")
+    # writes to a repo path and to an https URL target are still detected as write calls
+    t2 = ast.parse("open('data/x.csv','w')\nopen('https://example.org/service/data/x','w')")
+    targets = [tg.value for _, tg in _write_calls(t2)]
+    assert targets == ["data/x.csv", "https://example.org/service/data/x"]
+    assert FORBIDDEN_LITERALS.search(targets[0]) and FORBIDDEN_LITERALS.search(targets[1])
 
 
 # (e) canonical series hash ---------------------------------------------------------
