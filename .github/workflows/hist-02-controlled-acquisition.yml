@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/hist-02-controlled-acquisition.yml'
+      - 'tools/hist_02_acquire.py'
+      - 'tests/test_hist_02_acquire.py'
 permissions:
   contents: read
 jobs:
@@ -30,10 +32,10 @@ jobs:
           python -m tools.hist_02_acquire --ephemeral-directory "$HIST02_TMP"
           cp "$HIST02_TMP/manifest.json" "$RUNNER_TEMP/hist-02-manifest.json"
       - name: Metadata-only review artifact
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hist-02-source-metadata-review-only
           path: ${{ runner.temp }}/hist-02-manifest.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
