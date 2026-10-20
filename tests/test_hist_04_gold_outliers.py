@@ -69,6 +69,20 @@ def test_daily_variant_reproduces_wb_proven():
     assert r["rounding_explains"] is False
 
 
+def test_scale_mismatch_series_excluded_not_compared():
+    gbp_like = {date(1985, 3, 4): D("0.42"), date(1985, 3, 5): D("0.43")}
+    r = go.analyse_month("1985-03", {"1985-03": D("305")}, {"1985-03": D("308")}, {"XFX": gbp_like})
+    assert r["daily"] == {} and r["excluded_series"][0]["series"] == "XFX"
+    assert r["classification"]["class"] == "UNVERIFIED"
+
+
+def test_report_lines_runs_on_analysis():
+    r = go.analyse_month("1985-03", {"1985-03": D("305")}, {"1985-03": D("308")}, {"XTEST": DAILY})
+    s = {"status": "ANALYSED", "failures": [], "discovered_codes": {}, "daily_series": {}, "results": [r]}
+    text = "\n".join(go.report_lines(s))
+    assert "MONTH 1985-03" in text and "PROVEN" in text
+
+
 def test_matching_days_dates_only():
     assert go.matching_days(DAILY, "1985-03", D("306.2")) == ["1985-03-05"]
 
