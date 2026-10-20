@@ -54,9 +54,10 @@ CANDIDATES = {
     "bis-pp-selected-page": ("https://www.bis.org/statistics/pp_selected.htm", "html", "bis", "page"),
     "bis-pp-long-page": ("https://www.bis.org/statistics/pp_long.htm", "html", "bis", "page"),
     "bis-terms": ("https://www.bis.org/about/terms-conditions", "html", "bis", "page"),
+    "bis-data-legal": ("https://data.bis.org/legal", "html", "bis", "page"),
     "bis-legal": ("https://data.bis.org/help/legal", "html", "bis", "page"),
-    "bis-pp-selected-documentation-pdf": ("https://www.bis.org/statistics/pp_selected_documentation.pdf", "pdf", "bis", "pdf_text"),
-    "bis-pp-sources-pdf": ("https://www.bis.org/statistics/pp_sources.pdf", "pdf", "bis", "pdf_text"),
+    "bis-pp-selected-documentation-pdf": ("https://www.bis.org/pages/statistics/pp-documentation.pdf", "pdf", "bis", "pdf_text"),
+    "bis-pp-sources-pdf": ("https://www.bis.org/pages/statistics/pp-sources.pdf", "pdf", "bis", "pdf_text"),
     "bis-data-portal-rpp": ("https://data.bis.org/topics/RPP", "html", "bis", "page"),
     # (c) OECD
     "oecd-hp-nld": (OECD + "NLD.....?format=csv", "csv", "oecd", "sdmx_csv"),
@@ -66,7 +67,8 @@ CANDIDATES = {
     # (d) long-run academic / institutional
     "dallas-houseprice-page": ("https://www.dallasfed.org/research/international/houseprice", "html", "dallas", "page"),
     "dallas-hp2604-xlsx": ("https://www.dallasfed.org/~/media/documents/research/international/houseprice/hp2604.xlsx", "xlsx", "dallas", "xlsx"),
-    "dallas-hp2603-xlsx": ("https://www.dallasfed.org/~/media/documents/research/international/houseprice/hp2603.xlsx", "xlsx", "dallas", "xlsx"),
+    "dallas-hp2604-xlsx-dash": ("https://www.dallasfed.org/-/media/documents/research/international/houseprice/hp2604.xlsx", "xlsx", "dallas", "xlsx"),
+    "dallas-hp2604-xlsx-dash-caps": ("https://www.dallasfed.org/-/media/Documents/research/international/houseprice/hp2604.xlsx", "xlsx", "dallas", "xlsx"),
     "jst-macrohistory-page": ("https://www.macrohistory.net/database/", "html", "jst", "page"),
     "jst-licence-terms": ("https://www.macrohistory.net/database/licence-terms/", "html", "jst", "page"),
     "jst-r6-xlsx": ("https://www.macrohistory.net/app/download/9834512569/JSTdatasetR6.xlsx?t=1763503850", "xlsx", "jst", "xlsx_panel"),
@@ -501,6 +503,43 @@ def pdf_to_text(raw):
     return (p.stdout.decode("utf-8", "replace") if p.returncode == 0 and p.stdout else None), diag
 
 
+def pdf_context(plain, anchor=r"Netherlands|Dutch", near=r"house price|Herengracht|residential|dwelling|housing", width=220, limit=6):
+    """Short contexts around ANCHOR that also mention NEAR; used to read definitions / sources out of documentation PDFs."""
+    out, last = [], -10**9
+    for m in re.finditer(anchor, plain):
+        if m.start() - last < width:
+            continue
+        ctx = plain[max(0, m.start() - width): m.end() + width]
+        if re.search(near, ctx, re.I):
+            out.append(ctx)
+            last = m.start()
+        if len(out) >= limit:
+            break
+    return out
+
+
+def parse_median_table(plain):
+    """ESB article table 'Prijsontwikkeling bestaande koopwoning YYYY - YYYY (mediaan) (bron: NVM Wonen)': years in a 'Jaar' row, then
+    rows 'label n.nnn n.nnn ...'. Heuristic text extraction: a mismatch gives status FORMAT_UNPARSED (not a defect)."""
+    m = re.search(r"Prijsontwikkeling bestaande koopwoning[^()]{0,40}\(mediaan\)(?:\s*\(bron:\s*([^)]{1,40})\))?(.{0,1200})", plain)
+    if not m:
+        return {"status": "HEADING_NOT_FOUND"}
+    tail = m.group(2)
+    ym = re.search(r"Jaar((?:\s+(?:19|20)\d\d){2,8})", tail)
+    if not ym:
+        return {"status": "FORMAT_UNPARSED", "reason": "no year row"}
+    years = [int(y) for y in ym.group(1).split()]
+    n = len(years)
+    rows = {}
+    for lab, nums in re.findall(r"([A-Z][A-Za-z\- ]{3,30}?)\s+((?:\d{1,3}\.\d{3}(?=\s|$)\s*){%d})" % n, tail[ym.end():]):
+        vals = [Decimal(x.replace(".", "")) for x in nums.split()]
+        rows.setdefault(lab.strip(), dict(zip(years, vals)))
+    if not rows:
+        return {"status": "FORMAT_UNPARSED", "reason": "no complete rows", "years": years}
+    return {"status": "PARSED", "source_note": (m.group(1) or "").strip(), "years": years, "rows": {k: {str(y): str(v) for y, v in r.items()} for k, r in rows.items()},
+            "unit_note": "NLG per dwelling as printed (article table); statistic = median; selected years only"}
+
+
 def parse_year_value_table(text, heading=VM_HEADING, window=7000):
     """Heuristic: after the heading, collect '<year> <value>' pairs until a year repeats. Not strict machine
     parsing: any mismatch yields status FORMAT_UNPARSED with diagnostics, not a defect."""
@@ -664,6 +703,11 @@ def run_candidate(sid, results, store, cbs):
         entry["nvm_sentences"] = [x[:300] for x in re.split(r"(?<=[.!?])\s+", plain) if "NVM" in x and re.search(r"mediaan|gemiddeld|prijs|gulden|transactie|vraagprijs|verkoop", x, re.I)][:5] if group in ("compilation", "nvm") else []
         q = licence_quotes(raw)
         entry["licence_quotes"] = q
+        if sid == "esb-nvm-median":
+            mt = parse_median_table(plain)
+            entry["median_table"] = mt
+            if mt["status"] == "PARSED":
+                entry["label"] = "OBTAINED"
         entry["rights_evidence"] = "OFFICIAL_TEXT_READ" if q else "NOT_RETRIEVED"
     elif kind == "ckan":
         entry["ckan"] = ckan_facts(raw)
@@ -676,11 +720,11 @@ def run_candidate(sid, results, store, cbs):
         else:
             plain = re.sub(r"\s+", " ", text)
             sents = [x[:300] for x in re.split(r"(?<=[.!?])\s+", plain) if re.search(PDF_SENTENCE_RE, x, re.I)]
-            entry["text"] = {"status": "OK", "chars": len(plain), "matching_sentences": sents[:10]}
+            entry["text"] = {"status": "OK", "chars": len(plain), "contexts": pdf_context(plain), "matching_sentences": sents[:4]}
     elif kind == "pdf_table":
         text, diag = pdf_to_text(raw)
         if text is None:
-            entry["table"] = {"status": "PDFTOTEXT_UNAVAILABLE_OR_FAILED", "diag": diag}
+            entry["table"] = {"status": "NOT_A_PDF_RESPONSE" if not raw.startswith(b"%PDF") else "PDFTOTEXT_FAILED", "diag": diag}
         else:
             entry["pdf_text_chars"] = len(text)
             tab = parse_year_value_table(text)
@@ -737,6 +781,13 @@ def coverage_matrix(results):
     for r in results:
         if r.get("label") != "OBTAINED":
             continue
+        mt = r.get("median_table")
+        if mt and mt.get("status") == "PARSED":
+            for lab, vals in mt["rows"].items():
+                ys = sorted(int(y) for y in vals)
+                rows.append({"source_id": r["source_id"], "series": lab, "unit_class": "LEVEL", "frequency": "A (selected years)", "first": str(ys[0]), "last": str(ys[-1]),
+                             "years_up_to_1999": [str(y) for y in ys if y <= 1999], "real_or_nominal": "UNSPECIFIED"})
+            continue
         if r["kind"] == "pdf_table":
             s = r["table"]["summary"]
             rows.append({"source_id": r["source_id"], "series": "table", "unit_class": s["unit_class"], "frequency": s["frequency"],
@@ -766,7 +817,7 @@ def digest(doc):
         pg = r.get("page")
         if pg:
             lines.append("  PAGE " + json.dumps({"title": pg.get("title"), "links": pg.get("links", [])[:12]}, separators=(",", ":"))[:700])
-        for k in ("ckan", "table", "text", "dataflows_matching", "format_unparsed", "pdf_text_chars"):
+        for k in ("ckan", "median_table", "table", "text", "dataflows_matching", "format_unparsed", "pdf_text_chars"):
             if k in r:
                 lines.append(f"  {k.upper()} " + json.dumps(r[k], sort_keys=True, separators=(",", ":"))[:900])
         sc = r.get("scan")

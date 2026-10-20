@@ -243,6 +243,33 @@ def test_xlsx_panel_scan_blanks_missing_and_duplicates():
         m.scan_xlsx_panel(_xlsx([["country", "year", "hpnom"], ["Netherlands", "1970", "x"]], sheet="Data"))
 
 
+ESB_PLAIN = ("x Prijsontwikkeling bestaande koopwoning 1985 &#8211; 1999 (mediaan) (bron: NVM Wonen) Jaar 1999 1995 1990 1985 "
+             "Woningen totaal 329.000 223.000 159.000 130.000 Tussen-woningen 285.000 204.000 141.000 116.000 Vrijstaande woningen 549.000 y")
+
+
+def test_median_table_parse_selected_years_only_and_unparsed_not_defect():
+    t = m.parse_median_table(ESB_PLAIN)
+    assert t["status"] == "PARSED" and t["years"] == [1999, 1995, 1990, 1985] and t["source_note"] == "NVM Wonen"
+    assert t["rows"]["Woningen totaal"] == {"1999": "329000", "1995": "223000", "1990": "159000", "1985": "130000"}
+    assert "Vrijstaande woningen" not in t["rows"]  # incomplete row is dropped, never filled
+    assert m.parse_median_table("nothing")["status"] == "HEADING_NOT_FOUND"
+    assert m.parse_median_table("Prijsontwikkeling bestaande koopwoning 1985 (mediaan) Jaar x")["status"] == "FORMAT_UNPARSED"
+
+
+def test_pdf_context_requires_both_anchor_and_near():
+    txt = "Netherlands: house price index from Eichholtz. " + "x" * 600 + " Dutch elections were held."
+    ctx = m.pdf_context(txt)
+    assert len(ctx) == 1 and "Eichholtz" in ctx[0]
+
+
+def test_non_pdf_response_is_reported_not_defect(monkeypatch, tmp_path):
+    monkeypatch.setattr(m.hist_02_acquire, "fetch", _fake_fetch({"vastgoedmarkt-kerncijfers-pdf": b"\x89PNG\r\n\x1a\n" + b"0" * 50}))
+    out = tmp_path / "s.json"
+    assert m.main(["--summary-out", str(out), "--only", "vastgoedmarkt-kerncijfers-pdf"]) == 0
+    r = json.loads(out.read_text())["results"][0]
+    assert r["label"] == "REFERENCE_ONLY" and r["table"]["status"] == "NOT_A_PDF_RESPONSE"
+
+
 def test_digest_is_compact(monkeypatch, tmp_path):
     monkeypatch.setattr(m.hist_02_acquire, "fetch", _fake_fetch({"bis-spp-q-nl": LONG.encode()}))
     out = tmp_path / "s.json"
