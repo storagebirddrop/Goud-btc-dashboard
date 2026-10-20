@@ -1,0 +1,41 @@
+name: HIST-05 gold per Dutch home 1995-1999 (research candidate - not approved)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/hist-05-nl-housing-prices-pre-2000
+    paths:
+      - '.github/workflows/hist-05-gold-per-home.yml'
+      - 'tools/hist_05_gold_per_home.py'
+      - 'tests/test_hist_05_gold_per_home.py'
+permissions:
+  contents: read
+jobs:
+  gold-per-home:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_05_gold_per_home.py tests/test_hist_04_gold_nlg.py tests/test_hist_05_cbs_kadaster.py tests/test_hist_02_acquire.py tests/test_hist_03_quality_contract.py
+      - name: Build 60-month research table (unreachable sources exit 0 as PARTIAL/INCOMPLETE; defects exit 1)
+        run: >
+          python -m tools.hist_05_gold_per_home
+          --summary-out "$RUNNER_TEMP/hist-05-gold-per-home/summary.json"
+          --table-json-out "$RUNNER_TEMP/hist-05-gold-per-home/table.json"
+          --table-csv-out "$RUNNER_TEMP/hist-05-gold-per-home/table.csv"
+      - name: Derived research artifact (research candidate - not approved, rights UNVERIFIED, no raw source data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-05-gold-per-home-research-candidate-not-approved
+          path: ${{ runner.temp }}/hist-05-gold-per-home/
+          if-no-files-found: warn
+          retention-days: 14
