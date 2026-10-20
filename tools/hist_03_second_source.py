@@ -218,13 +218,14 @@ def compare_candidate(wb, sid, cfg, raw):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--workbook", help="read this local World Bank workbook instead of downloading it")
     args = ap.parse_args(argv)
-    from tools.hist_03_worldbank_validate import parse as wb_parse
+    from tools.hist_03_worldbank_validate import parse as wb_parse, load_workbook
     out = Path(args.summary_out)
     out.parent.mkdir(parents=True, exist_ok=True)
     summary = {"status": "RUNNING", "range": [START, END], "definition_notes": DEFINITION_NOTES,
                "rights_status": "UNVERIFIED", "publication_authorized": False, "candidates": [], "failures": []}
-    raw_wb, rec_wb = hist_02_acquire.fetch("world-bank-gold-history")
+    raw_wb, rec_wb = load_workbook(args.workbook)
     wb = wb_parse(raw_wb)["series"]
     summary["world_bank"] = {"sha256": rec_wb["sha256"], "bytes": rec_wb["bytes"], "months": len(wb)}
     try:
