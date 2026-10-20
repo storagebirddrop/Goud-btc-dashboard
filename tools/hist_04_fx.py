@@ -45,8 +45,20 @@ STATIC_SOURCES = {
 hist_02_acquire.SOURCES.update(STATIC_SOURCES)
 
 
+class SourceUnavailable(Exception):
+    """External source missing/unreachable (HTTP 4xx/5xx, timeout, DNS, empty body, not found). Research gap, not a defect."""
+
+    def __init__(self, source_id, reason_class, detail=""):
+        super().__init__(f"{source_id}: {reason_class}: {detail}")
+        self.source_id, self.reason_class, self.detail = source_id, reason_class, detail
+
+
 class FxError(ValueError):
     pass
+
+
+class DataIntegrityError(FxError):
+    """Real defect: bad content, wrong direction, integrity/allowlist violation, unknown acquisition error. Always hard."""
 
 
 def to_decimal(text):
@@ -484,75 +496,117 @@ def fed_url(series_hash):
             "&lastobs=&from=&to=&filetype=csv&label=include&layout=seriescolumn")
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--summary-out", required=True)
-    args = ap.parse_args(argv)
-    out = Path(args.summary_out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    s = {"status": "RUNNING", "candidate_not_approved": True, "needs_owner_decision": True, "directions": DIRECTIONS,
-         "nlg_per_eur": str(NLG_PER_EUR), "rights_status": "UNVERIFIED", "publication_authorized": False,
-         "discovery": {}, "fed": {}, "ecb": {}, "failures": []}
+_UNAVAILABLE_TOKENS = {"NETWORK_TIMEOUT": "TIMEOUT", "DNS_ERROR": "UNREACHABLE", "NETWORK_ERROR": "UNREACHABLE"}
 
-    def fail(sid, exc):
-        s["failures"].append({"source_id": sid, "error": f"{type(exc).__name__}: {str(exc)[:300]}"})
+
+def classify_acquisition_error(source_id, exc):
+    """Map a hist_02_acquire.AcquisitionError to SourceUnavailable or DataIntegrityError (conservative: unknown => hard).
+
+    Unavailable: network timeout/DNS/generic network error, HTTP 4xx/5xx, empty body.
+    Hard: size limit, invalid content-length, allowlist/redirect violation, unapproved source, hash mismatch,
+    TLS errors, unexpected non-error HTTP status and every message not recognised here.
+    """
+    msg = str(exc)
+    token = msg.split()[0] if msg.split() else ""
+    detail = msg[:200]
+    if token in _UNAVAILABLE_TOKENS:
+        return SourceUnavailable(source_id, _UNAVAILABLE_TOKENS[token], detail)
+    if token == "HTTP_STATUS_ERROR":
+        code = getattr(exc.__cause__, "code", None)
+        if isinstance(code, int) and 400 <= code <= 599:
+            return SourceUnavailable(source_id, f"HTTP_{code}", detail)
+        return DataIntegrityError(f"{source_id}: UNCLASSIFIED_HTTP_ERROR: {detail}")
+    if token == "EMPTY_SOURCE":
+        return SourceUnavailable(source_id, "EMPTY_RESPONSE", detail)
+    return DataIntegrityError(f"{source_id}: ACQUISITION_INTEGRITY: {detail}")
+
+
+def acquire(source_id):
+    try:
+        return hist_02_acquire.fetch(source_id)
+    except hist_02_acquire.AcquisitionError as exc:
+        raise classify_acquisition_error(source_id, exc) from exc
+
+
+CI_STATUS_NOTE = ("A green CI run only means this research tool ran without a hard defect. It is NOT methodological approval "
+                  "and NOT publication approval. The methodology is a candidate and is not approved; missing sources and "
+                  "analyses not performed are listed explicitly and need an owner decision.")
+
+
+def _write(out, s):
+    out.write_text(json.dumps(s, indent=2, sort_keys=True, default=str) + "\n")
+    print(json.dumps(s, indent=2, sort_keys=True, default=str))
+
+
+def collect(s):
+    """Fill summary dict s. Raises FxError/DataIntegrityError/anything unexpected as a hard failure;
+    SourceUnavailable is recorded in s['missing_sources'] and never raised out."""
+    missing = s["missing_sources"]
+
+    def miss(exc):
+        missing.append({"source_id": exc.source_id, "reason_class": exc.reason_class, "detail": exc.detail})
 
     ecb_d = ecb_m = None
     for sid, freq in ((ECB_DAILY, "D"), (ECB_MONTHLY, "M")):
         try:
-            raw, rec = hist_02_acquire.fetch(sid)
-            p = parse_ecb_csv(raw, freq)
-            s["ecb"][sid] = {"sha256": rec["sha256"], "bytes": rec["bytes"], "observations": len(p["points"]),
-                             "missing_markers": p["missing"], "meta": p["meta"],
-                             "first": min(p["points"]), "last": max(p["points"])}
-            if freq == "D":
-                ecb_d = p["points"]
-            else:
-                ecb_m = p["points"]
-        except (hist_02_acquire.AcquisitionError, FxError) as exc:
-            fail(sid, exc)
+            raw, rec = acquire(sid)
+        except SourceUnavailable as exc:
+            miss(exc)
+            continue
+        p = parse_ecb_csv(raw, freq)
+        if not p["points"]:
+            miss(SourceUnavailable(sid, "NOT_FOUND", "valid response without observations"))
+            continue
+        s["ecb"][sid] = {"sha256": rec["sha256"], "bytes": rec["bytes"], "observations": len(p["points"]),
+                         "missing_markers": p["missing"], "meta": p["meta"],
+                         "first": min(p["points"]), "last": max(p["points"])}
+        if freq == "D":
+            ecb_d = p["points"]
+        else:
+            ecb_m = p["points"]
 
     s["probes"] = {u: probe_status(u) for u in PROBE_URLS}
     hashes = []
     for sid in DISCOVERY_PAGES:
         try:
-            raw, rec = hist_02_acquire.fetch(sid)
-            text = raw.decode("utf-8", "replace")
-            found = discover_series(text)
-            s["discovery"][sid] = {"sha256": rec["sha256"], "bytes": rec["bytes"], "links": extract_links(text),
-                                   "all_series_hashes": len(set(HASH_RE.findall(text))),
-                                   "netherlands_hits": [{"hash": h, "context": c} for h, c in found][:12]}
-            hashes += [h for h, _ in found]
-        except hist_02_acquire.AcquisitionError as exc:
-            fail(sid, exc)
+            raw, rec = acquire(sid)
+        except SourceUnavailable as exc:
+            miss(exc)
+            continue
+        text = raw.decode("utf-8", "replace")
+        found = discover_series(text)
+        s["discovery"][sid] = {"sha256": rec["sha256"], "bytes": rec["bytes"], "links": extract_links(text),
+                               "all_series_hashes": len(set(HASH_RE.findall(text))),
+                               "netherlands_hits": [{"hash": h, "context": c} for h, c in found][:12],
+                               "status_snippets": status_snippets(text)}
+        hashes += [h for h, _ in found]
 
     s["alt_probes"] = {}
     for sid in list(EUROSTAT_PROBES) + list(EXTRA_PAGES):
         try:
-            raw, rec = hist_02_acquire.fetch(sid)
-            entry = {"sha256": rec["sha256"], "bytes": rec["bytes"]}
-            if sid in EUROSTAT_PROBES:
-                entry.update(jsonstat_summary(raw))
-                if sid == "eurostat-usd-m":
-                    es_m = jsonstat_series(raw)
-                    entry["coverage"] = coverage(es_m)
-                    entry["vs_ecb_monthly"] = compare_monthly(es_m, ecb_m) if ecb_m else "NO_ECB_MONTHLY"
-                    entry["anchors_usd_per_eur"] = {k: str(es_m[k]) for k in ("1998-12", "1999-01") if k in es_m}
-                    entry["pre_1999_months"] = sum(1 for k in es_m if k < "1999-01")
-            entry["status_snippets"] = status_snippets(raw.decode("utf-8", "replace")) if sid == "fed-ddp-g5a" else None
-            s["alt_probes"][sid] = entry
-        except Exception as exc:  # diagnostics only
-            s["alt_probes"][sid] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}",
-                                    "probe": probe_status(hist_02_acquire.SOURCES[sid][0])}
-    for sid in DISCOVERY_PAGES:
-        try:
-            raw, _ = hist_02_acquire.fetch(sid)
-            s["discovery"][sid]["status_snippets"] = status_snippets(raw.decode("utf-8", "replace"))
-        except Exception:
-            pass
+            raw, rec = acquire(sid)
+        except SourceUnavailable as exc:
+            miss(exc)
+            s["alt_probes"][sid] = {"unavailable": exc.reason_class, "probe": probe_status(hist_02_acquire.SOURCES[sid][0])}
+            continue
+        entry = {"sha256": rec["sha256"], "bytes": rec["bytes"]}
+        if sid in EUROSTAT_PROBES:
+            entry.update(jsonstat_summary(raw))
+            if sid == "eurostat-usd-m":
+                es_m = jsonstat_series(raw)
+                entry["coverage"] = coverage(es_m)
+                entry["vs_ecb_monthly"] = compare_monthly(es_m, ecb_m) if ecb_m else "NO_ECB_MONTHLY"
+                entry["anchors_usd_per_eur"] = {k: str(es_m[k]) for k in ("1998-12", "1999-01") if k in es_m}
+                entry["pre_1999_months"] = sum(1 for k in es_m if k < "1999-01")
+        entry["status_snippets"] = status_snippets(raw.decode("utf-8", "replace")) if sid == "fed-ddp-g5a" else None
+        s["alt_probes"][sid] = entry
+
     fed = {}
     try:
-        raw, rec = hist_02_acquire.fetch(FED_ZIP)
+        raw, rec = acquire(FED_ZIP)
+    except SourceUnavailable as exc:
+        miss(exc)
+    else:
         z = parse_fed_xml_zip(raw)
         s["fed_xml_zip"] = {"sha256": rec["sha256"], "bytes": rec["bytes"], "members": z["members"], "tags": z["tags"],
                             "attr_names": z["attr_names"], "attributed_elements": z["series_total"],
@@ -560,42 +614,47 @@ def main(argv=None):
                             "nl_series": [{k: v for k, v in n.items() if k != "points"} for n in z["nl_series"]]}
         for n in z["nl_series"]:
             freq = {"D": "D", "B": "D", "M": "M", "A": "A"}.get(str(n["attrs"].get("FREQ", ""))[:1].upper())
-            if freq is None:
+            if freq is None or not n["points"]:
                 continue
             fed.setdefault(freq, {"meta": n["attrs"], "points": n["points"], "nd": n["nd"], "rec": rec})
-    except (hist_02_acquire.AcquisitionError, FxError, Exception) as exc:  # diagnostics must not abort the run
-        fail(FED_ZIP, exc)
+        if not fed:
+            miss(SourceUnavailable(FED_ZIP, "NOT_FOUND", "reachable package without an NLG series that has observations"))
     for h in dict.fromkeys(hashes):
         sid = "fed-g5-" + h[:8]
         hist_02_acquire.SOURCES[sid] = (fed_url(h), "csv")
         try:
-            raw, rec = hist_02_acquire.fetch(sid)
-        except hist_02_acquire.AcquisitionError as exc:
-            fail(sid, exc)
+            raw, rec = acquire(sid)
+        except SourceUnavailable as exc:
+            miss(exc)
             continue
+        parsed = None
         for freq in ("D", "M", "A"):
             try:
-                p = parse_fed_g5(raw, freq)
+                parsed = (freq, parse_fed_g5(raw, freq))
             except FxError:
                 continue
-            p["rec"] = rec
-            fed.setdefault(freq, p)
             break
+        if parsed is None:
+            raise DataIntegrityError(f"{sid}: reachable G.5 response not parseable for any frequency")
+        parsed[1]["rec"] = rec
+        fed.setdefault(parsed[0], parsed[1])
     for freq, p in fed.items():
-        try:
-            assert_fed_nlg_direction(p["meta"])
-            dir_ok = True
-        except FxError as exc:
-            dir_ok = str(exc)
+        assert_fed_nlg_direction(p["meta"])  # wrong direction/scale is a hard failure
         s["fed"][freq] = {"sha256": p["rec"]["sha256"], "bytes": p["rec"]["bytes"], "meta": p["meta"],
-                          "direction_check": dir_ok, "observations": len(p["points"]), "nd_markers": p["nd"],
+                          "direction_check": True, "observations": len(p["points"]), "nd_markers": p["nd"],
                           "first": min(p["points"]), "last": max(p["points"])}
     fed_d = fed.get("D", {}).get("points")
+    not_done = s["analyses_not_performed"]
     if fed_d:
         fs = monthly_stats(fed_d)
         s["fed_daily_analysis"] = {"months": coverage(fs), "obs_per_month": count_stats(fs),
                                    "jensen_nlg_per_usd": jensen_summary(fs),
                                    "provider_monthly_vs_own": provider_vs_own(fed["M"]["points"], fs) if "M" in fed else "NO_MONTHLY_SERIES"}
+    else:
+        reason = "Fed G.5 NLG daily series not obtained (see missing_sources)"
+        not_done += [{"analysis": "nlg_daily_monthly_stats_and_coverage", "reason": reason},
+                     {"analysis": "nlg_jensen_gap", "reason": reason},
+                     {"analysis": "nlg_provider_monthly_vs_own", "reason": reason}]
     if ecb_d:
         es = monthly_stats(ecb_d)
         s["ecb_daily_analysis"] = {"months": coverage(es), "obs_per_month": count_stats(es),
@@ -603,13 +662,50 @@ def main(argv=None):
                                    "provider_monthly_vs_own": provider_vs_own(ecb_m, es) if ecb_m else "NO_MONTHLY_SERIES"}
         if ecb_m:
             s["ecb_monthly_series_coverage"] = coverage(ecb_m)
+        else:
+            not_done.append({"analysis": "ecb_provider_monthly_vs_own", "reason": "ECB monthly series not obtained"})
+    else:
+        reason = "ECB EXR USD daily series not obtained (see missing_sources)"
+        not_done += [{"analysis": "ecb_daily_monthly_stats_and_jensen_gap", "reason": reason},
+                     {"analysis": "ecb_provider_monthly_vs_own", "reason": reason}]
     if fed_d and ecb_d:
         s["transition"] = transition_report(fed_d, ecb_d)
         s["chain_example_synthetic_gold"] = chain_example(Decimal("400.00"), fed_d[max(fed_d)], ecb_d[min(ecb_d)])
-    s["status"] = "OK" if (ecb_d and fed_d) else "PARTIAL"
-    out.write_text(json.dumps(s, indent=2, sort_keys=True, default=str) + "\n")
-    print(json.dumps(s, indent=2, sort_keys=True, default=str))
-    return 0 if s["status"] == "OK" else 2
+    else:
+        reason = "needs both Fed NLG and ECB USD daily series; missing: " + ", ".join(
+            n for n, ok in (("fed_nlg", fed_d), ("ecb_usd", ecb_d)) if not ok)
+        not_done += [{"analysis": "transition_check_1998-12_1999-01", "reason": reason},
+                     {"analysis": "nlg_chain", "reason": reason}]
+    if fed_d and ecb_d:
+        s["status"] = "OK"
+    elif fed_d or ecb_d:
+        s["status"] = "PARTIAL"
+    else:
+        s["status"] = "INCOMPLETE"
+    if missing and s["status"] == "OK":
+        s["status"] = "PARTIAL"  # optional sources missing: still reported, never hidden
+
+
+def main(argv=None):
+    """Exit 0: OK/PARTIAL/INCOMPLETE (research gaps listed in the artifact). Exit 1: hard defect (any other exception)."""
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--summary-out", required=True)
+    args = ap.parse_args(argv)
+    out = Path(args.summary_out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    s = {"status": "RUNNING", "ci_status_note": CI_STATUS_NOTE, "candidate_not_approved": True,
+         "needs_owner_decision": True, "directions": DIRECTIONS,
+         "nlg_per_eur": str(NLG_PER_EUR), "rights_status": "UNVERIFIED", "publication_authorized": False,
+         "discovery": {}, "fed": {}, "ecb": {}, "missing_sources": [], "analyses_not_performed": []}
+    try:
+        collect(s)
+    except Exception as exc:  # recorded as hard failure (exit 1), never converted into a gap
+        s["status"] = "FAILED_HARD"
+        s["hard_error"] = {"class": type(exc).__name__, "detail": str(exc)[:500]}
+        _write(out, s)
+        return 1
+    _write(out, s)
+    return 0
 
 
 if __name__ == "__main__":

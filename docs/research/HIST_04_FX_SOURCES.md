@@ -14,7 +14,7 @@ CI runs on branch `research/hist-04-gold-fx-consolidated`:
 | https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39439246477 | 62a44a1 | Eurostat probes added |
 | https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39439591397 | 41e91f1 | Eurostat series parsed and compared (all numbers below) |
 
-The workflow ends red (exit 2, status `PARTIAL`) on purpose: the Fed G.5 NLG series could not be obtained, and the tool does not hide that.
+CI semantics: the workflow ends green (exit 0) with research status `PARTIAL` (or `INCOMPLETE`) when external sources are missing or unreachable (HTTP 4xx/5xx, timeout, empty or not-found); the artifact lists `missing_sources` and `analyses_not_performed`, so the gap stays visible. Real defects (bad content, wrong quote direction, duplicate dates, NaN/negative values, sha/size/allowlist violations, unknown errors) fail hard (exit 1). A green run is NOT methodological or publication approval; the methodology stays candidate/not approved. Currently the Fed G.5 NLG series could not be obtained (status `PARTIAL`).
 
 ## 1. Quote direction and unit of every rate
 

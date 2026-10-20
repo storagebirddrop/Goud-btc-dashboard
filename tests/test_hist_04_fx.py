@@ -1,5 +1,10 @@
+import json
+import tempfile
 import unittest
 from decimal import Decimal as D
+from pathlib import Path
+from unittest import mock
+from urllib.error import HTTPError
 
 from tools import hist_04_fx as fx
 
@@ -148,6 +153,121 @@ class Hist04FxTests(unittest.TestCase):
         self.assertIn(fx.ECB_DAILY, a.SOURCES)
         with self.assertRaises(a.AcquisitionError):
             a.validate_url(fx.ECB_DAILY, "https://example.com/EXR/D.USD.EUR.SP00.A?format=csvdata")
+
+
+ECB_M = (b"KEY,FREQ,CURRENCY,CURRENCY_DENOM,TIME_PERIOD,OBS_VALUE,OBS_STATUS\n"
+         b"EXR.M.USD.EUR.SP00.A,M,USD,EUR,1999-01,1.1789,A\n")
+REC = {"sha256": "0" * 64, "bytes": 1}
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def http_error(code):
+    acq = fx.hist_02_acquire.AcquisitionError("HTTP_STATUS_ERROR source=x phase=response_headers elapsed_seconds=0.1")
+    acq.__cause__ = HTTPError("https://x", code, "err", {}, None)
+    return acq
+
+
+class Hist04CiSemanticsTests(unittest.TestCase):
+    def run_main(self, overrides=None, default=None):
+        """Run main() offline: ECB OK, everything else raises `default` (HTTP 404) unless overridden per source."""
+        overrides = overrides or {}
+        default = default or http_error(404)
+
+        def fake_fetch(sid):
+            if sid in overrides:
+                v = overrides[sid]
+                if isinstance(v, BaseException):
+                    raise v
+                return v, dict(REC)
+            if sid == fx.ECB_DAILY:
+                return ECB, dict(REC)
+            if sid == fx.ECB_MONTHLY:
+                return ECB_M, dict(REC)
+            raise default
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(fx.hist_02_acquire, "fetch", fake_fetch), \
+                mock.patch.object(fx, "probe_status", lambda u: {"status": 0}), \
+                mock.patch("sys.stdout"):
+            out = Path(d) / "s.json"
+            rc = fx.main(["--summary-out", str(out)])
+            return rc, json.loads(out.read_text())
+
+    def test_missing_fed_is_partial_exit_0_and_listed(self):
+        rc, s = self.run_main()
+        self.assertEqual(rc, 0)
+        self.assertEqual(s["status"], "PARTIAL")
+        ids = {m["source_id"]: m for m in s["missing_sources"]}
+        self.assertEqual(ids[fx.FED_ZIP]["reason_class"], "HTTP_404")
+        self.assertTrue(all({"source_id", "reason_class", "detail"} <= set(m) for m in s["missing_sources"]))
+        names = {a["analysis"] for a in s["analyses_not_performed"]}
+        self.assertTrue({"transition_check_1998-12_1999-01", "nlg_jensen_gap", "nlg_chain"} <= names)
+        self.assertIn("NOT methodological", s["ci_status_note"])
+        self.assertIn("not approved", s["ci_status_note"])
+
+    def test_everything_missing_is_incomplete_exit_0(self):
+        rc, s = self.run_main({fx.ECB_DAILY: fx.hist_02_acquire.AcquisitionError("NETWORK_TIMEOUT source=a"),
+                               fx.ECB_MONTHLY: fx.hist_02_acquire.AcquisitionError("EMPTY_SOURCE")})
+        self.assertEqual((rc, s["status"]), (0, "INCOMPLETE"))
+        classes = {m["source_id"]: m["reason_class"] for m in s["missing_sources"]}
+        self.assertEqual(classes[fx.ECB_DAILY], "TIMEOUT")
+        self.assertEqual(classes[fx.ECB_MONTHLY], "EMPTY_RESPONSE")
+
+    def test_fed_package_without_nlg_is_not_found_not_error(self):
+        import io
+        import zipfile
+        b = io.BytesIO()
+        with zipfile.ZipFile(b, "w") as z:
+            z.writestr("d.xml", '<r><S CURRENCY="JPY" SERIES_NAME="RXI_N.B.JA"><O TIME_PERIOD="1998-12-30" OBS_VALUE="115"/></S></r>')
+        rc, s = self.run_main({fx.FED_ZIP: b.getvalue()})
+        self.assertEqual(rc, 0)
+        self.assertIn("NOT_FOUND", {m["reason_class"] for m in s["missing_sources"] if m["source_id"] == fx.FED_ZIP})
+
+    def assert_hard(self, overrides):
+        rc, s = self.run_main(overrides)
+        self.assertEqual(rc, 1)
+        self.assertEqual(s["status"], "FAILED_HARD")
+        return s
+
+    def test_hard_parse_and_numeric_defects(self):
+        dup = ECB + b"EXR.D.USD.EUR.SP00.A,D,USD,EUR,1999-01-04,1.1,A\n"
+        self.assert_hard({fx.ECB_DAILY: dup})
+        self.assert_hard({fx.ECB_DAILY: ECB.replace(b"1.1789", b"nan")})
+        self.assert_hard({fx.ECB_DAILY: ECB.replace(b"1.1789", b"-1.1789")})
+        self.assert_hard({fx.ECB_DAILY: ECB.replace(b"1.1789", b"Infinity")})
+        self.assert_hard({fx.ECB_DAILY: ECB.replace(b"1.1789", b"0")})
+        self.assert_hard({fx.ECB_DAILY: ECB.replace(b",USD,EUR,", b",EUR,USD,")})  # wrong direction
+
+    def test_hard_wrong_fed_direction(self):
+        import io
+        import zipfile
+        b = io.BytesIO()
+        with zipfile.ZipFile(b, "w") as z:
+            z.writestr("d.xml", '<r><S CURRENCY="NLG" FREQ="D" UNIT="Per_NLG" SERIES_NAME="RXI_N.B.NL">'
+                                '<O TIME_PERIOD="1998-12-30" OBS_VALUE="1.9"/></S></r>')
+        s = self.assert_hard({fx.FED_ZIP: b.getvalue()})
+        self.assertIn("hard_error", s)
+
+    def test_hard_integrity_acquisition_errors(self):
+        A = fx.hist_02_acquire.AcquisitionError
+        for msg in ("SOURCE_TOO_LARGE", "INVALID_CONTENT_LENGTH", "UNAUTHORIZED_ENDPOINT_OR_REDIRECT", "UNAPPROVED_SOURCE",
+                    "READBACK_HASH_MISMATCH", "TLS_ERROR source=x", "UNEXPECTED_HTTP_STATUS", "SOMETHING_NEW"):
+            self.assert_hard({fx.ECB_DAILY: A(msg)})
+        self.assert_hard({fx.FED_ZIP: A("HTTP_STATUS_ERROR source=x")})  # no HTTP code => unclassified => hard
+
+    def test_hard_unknown_exception(self):
+        self.assert_hard({fx.ECB_DAILY: RuntimeError("boom")})
+
+    def test_classifier(self):
+        c = fx.classify_acquisition_error
+        self.assertIsInstance(c("s", http_error(503)), fx.SourceUnavailable)
+        self.assertEqual(c("s", http_error(404)).reason_class, "HTTP_404")
+        self.assertIsInstance(c("s", http_error(304)), fx.DataIntegrityError)
+        self.assertEqual(c("s", fx.hist_02_acquire.AcquisitionError("DNS_ERROR source=s")).reason_class, "UNREACHABLE")
+        self.assertIsInstance(c("s", fx.hist_02_acquire.AcquisitionError("")), fx.DataIntegrityError)
+
+    def test_workflow_has_no_continue_on_error(self):
+        self.assertNotIn("continue-on-error", (ROOT / ".github/workflows/hist-04-fx.yml").read_text())
 
 
 if __name__ == "__main__":
