@@ -1,0 +1,65 @@
+name: GOLD-01 terms and rights probe (research only)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/gold-01-publication-readiness
+    paths:
+      - '.github/workflows/gold-01-terms-probe.yml'
+      - 'tools/gold_01_terms_probe.py'
+      - 'tests/test_gold_01_terms_probe.py'
+permissions:
+  contents: read
+jobs:
+  terms-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Install poppler-utils (pdftotext; text stays in memory)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends poppler-utils
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_gold_01_terms_probe.py tests/test_hist_02_acquire.py tests/test_hist_03_quality_contract.py
+      - name: Probe official terms pages and Pink Sheet notes (unreachable sources exit 0 with missing_sources; defects exit 1)
+        run: python -m tools.gold_01_terms_probe --summary-out "$RUNNER_TEMP/gold-01-terms-probe.json"
+      - name: Compact summary in log
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          p = os.path.join(os.environ["RUNNER_TEMP"], "gold-01-terms-probe.json")
+          if os.path.exists(p):
+              d = json.load(open(p))
+              for s in d["sources"]:
+                  print("OK ", s["source_id"], s["bytes"], s["sha256"][:12])
+                  for q in s.get("quotes", []):
+                      if q["quote"] not in ("NOT_RETRIEVED", "OMITTED_QUOTE_CAP"):
+                          print("   Q", q["topic"], "::", q["quote"])
+                  w = s.get("workbook")
+                  if w:
+                      print("   SHEETS", w["sheet_names"])
+                      print("   GOLD_HEADER", w.get("data_sheet_gold_header"))
+                      for n in w["notes_sheets"]:
+                          for q in n["quotes"]:
+                              if q["quote"] != "NOT_RETRIEVED":
+                                  print("   N", n["sheet"], q["topic"], "::", q["quote"])
+              for m in d["missing_sources"]:
+                  print("MISSING", m)
+          PY
+      - name: Metadata-only review artifact (URL, status, sha256, short quotes; no third-party pages)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-01-terms-probe-review-only
+          path: ${{ runner.temp }}/gold-01-terms-probe.json
+          if-no-files-found: warn
+          retention-days: 14
