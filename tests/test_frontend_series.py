@@ -74,11 +74,11 @@ def test_index_base_matches_the_unit_text():
             assert expected in e["unit"], key
 
 
-def test_withheld_series_is_never_offered_in_cards_or_level_charts():
+def test_withheld_series_is_never_offered_in_cards():
     text = SERIES_TS.read_text(encoding="utf-8")
     withheld = {k for k, e in _registry().items() if e["publication"] == "withheld"}
     assert withheld == {"sat_per_house"}
-    for const in ("LEVEL_KEYS", "CARD_KEYS"):
+    for const in ("CARD_KEYS",):
         line = re.search(rf"export const {const}:SeriesKey\[\]=\[([^\]]*)\]", text).group(1)
         assert not withheld & set(re.findall(r"'(\w+)'", line)), const
     assert "isWithheld(k)" in text and "!isWithheld(k)&&" in text, "visibleKeys must exclude withheld series"
@@ -120,8 +120,8 @@ def test_main_uses_the_registry_and_keeps_its_functionality():
     text = MAIN_TSX.read_text(encoding="utf-8")
     assert "from './series'" in text and "visibleKeys(data)" in text
     assert "const SERIES" not in text, "the registry lives in series.ts only"
-    for needle in ("id=\"h-cards\"", "id=\"h-level\"", "id=\"h-idx\"", "Bronnen &amp; methode", "Toon als tabel",
-                   "'Alles'", "'Sinds 2008'", "'Laatste 10 jaar'", "<Chart", "<Card", "baseLine annotate",
+    for needle in ("id=\"h-cards\"", "id=\"h-chart\"", "Bronnen &amp; methode", "Toon als tabel",
+                   "'Alles'", "'Sinds 2008'", "'Laatste 10 jaar'", "<Chart", "<Card", "baseLine={curView.baseLine} annotate",
                    "jun 2025: bronwijziging goud", "fetch('/data/monthly.json')"):
         assert needle in text, needle
     for cat in ("nominal", "index", "alternative"):

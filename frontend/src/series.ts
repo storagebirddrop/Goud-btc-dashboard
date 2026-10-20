@@ -40,7 +40,6 @@ export const CATEGORIES:{id:Category;label:string;caption:string}[]=[
  {id:'alternative',label:'Alternatieve waardering',caption:'De woningprijs uitgedrukt in een andere eenheid dan euro.'}
 ];
 
-export const LEVEL_KEYS:SeriesKey[]=['house_eur','hpi','gold_grams_per_house'];
 export const CARD_KEYS:SeriesKey[]=['house_eur','hpi','gold_index','gold_grams_per_house'];
 
 const BASE_TEXT:Record<BaseId,{label:string;caption:string}>={
@@ -61,3 +60,42 @@ export function isWithheld(k:SeriesKey):boolean{return SERIES[k].publication==='
 export function visibleKeys(data:Point[]):SeriesKey[]{
  return (Object.keys(SERIES) as SeriesKey[]).filter(k=>!isWithheld(k)&&data.some(p=>ok(p[k])));
 }
+
+// ---- Chart views: what the central chart can show, derived only from the visible series ----
+// A view is one selectable chart: a nominal level, one index base, or one alternative valuation.
+export type View={id:string;category:Category;label:string;keys:SeriesKey[];kind:Kind;unit:string;baseLine:boolean};
+
+export function chartViews(visible:SeriesKey[]):View[]{
+ const vis=new Set(visible);const all=Object.keys(SERIES) as SeriesKey[];const views:View[]=[];
+ for(const c of CATEGORIES){
+  if(c.id==='index'){
+   for(const b of BASES){const keys=b.keys.filter(k=>vis.has(k));if(keys.length)views.push({id:`index-${b.id}`,category:'index',label:b.label,keys,kind:'index',unit:`indexpunten, ${b.caption}`,baseLine:true})}
+  }else{
+   for(const k of all){const s=SERIES[k];if(s.category===c.id&&s.kind!=='index'&&vis.has(k))views.push({id:k,category:c.id,label:s.label,keys:[k],kind:s.kind,unit:s.unit,baseLine:false})}
+  }
+ }
+ return views;
+}
+
+// ---- Period selection: one range ('YYYY-MM' .. 'YYYY-MM'), presets and free months share it ----
+export type Range={from:string;to:string};
+export type PresetId='all'|'2008'|'10y';
+export const MONTH_RE=/^\d{4}-(0[1-9]|1[0-2])$/;
+
+export function presetRange(id:PresetId,periods:string[]):Range|null{
+ if(!periods.length)return null;
+ const first=periods[0],last=periods[periods.length-1];
+ if(id==='2008'){const f=periods.find(p=>p>='2008-01');return {from:f??first,to:last}}
+ if(id==='10y')return {from:periods[Math.max(0,periods.length-120)],to:last};
+ return {from:first,to:last};
+}
+// Keeps both ends inside the available months and from <= to; an invalid end falls back to the bound.
+export function clampRange(r:Range,periods:string[]):Range|null{
+ if(!periods.length)return null;
+ const first=periods[0],last=periods[periods.length-1];
+ let from=MONTH_RE.test(r.from)?r.from:first,to=MONTH_RE.test(r.to)?r.to:last;
+ if(from<first)from=first;if(to>last)to=last;if(from>last)from=last;if(to<first)to=first;
+ if(from>to)to=from;
+ return {from,to};
+}
+export function sliceRange(data:Point[],r:Range):Point[]{return data.filter(p=>p.period>=r.from&&p.period<=r.to)}

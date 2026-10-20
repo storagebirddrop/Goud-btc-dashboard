@@ -50,3 +50,11 @@ thead th{position:sticky;top:0;background:var(--surface)}
 tbody th{text-align:left;font-weight:600}
 .notice{padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
 @media (max-width:480px){.big{font-size:1.6rem}.panel{padding:12px}}
+.field{display:inline-flex;align-items:center;gap:6px;font-size:.92rem}
+.field span{white-space:nowrap}
+.field input{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-height:36px;min-width:0}
+.sub-segs{margin-top:8px}
+.panel-head h2{flex:1 1 auto}
+@media (pointer:coarse){.seg,.field input,.hint-btn{min-height:44px}}
+@media (max-width:560px){.toolbar{gap:8px}.field{flex:1 1 100%}.field span{min-width:6.5em}.field input{flex:1 1 auto;width:100%}.seg{padding:6px 12px}.panel-head{align-items:flex-start}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
