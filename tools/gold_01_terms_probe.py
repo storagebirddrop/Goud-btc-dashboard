@@ -76,6 +76,7 @@ TOPICS = {
            "terms_pointer": r"Terms of Use|terms and conditions|copyright",
            "gold_source": r"\bgold\b.{0,120}(LBMA|London|fixing|spot)|(LBMA|London|fixing).{0,120}\bgold\b"},
     "iba": {"derived": r"derived (benchmark|indices|index)", "derived_definition": r"derived benchmark(s)? (is|are|means|licen[cs]e)|Derived Benchmark Licen[cs]e",
+            "lbma_user_scope": r"(?<=Schedule J\) )\S", "derived_lbma": r"LBMA.{0,100}derived|derived.{0,100}LBMA",
             "derived_scope": r"derived .{0,60}(index|indices|benchmark).{0,80}(LBMA|based on|calculated|created)", "redistribution": r"redistribut", "usage_licence": r"usage licen[cs]e|licen[cs]e from IBA|available under licen[cs]e",
             "historical_access": r"historical (access|data)", "lbma_gold_price": r"LBMA Gold Price",
             "reserves_rights": r"reserves all rights|all rights", "non_commercial": r"non-commercial|educational|internal use|personal use",
@@ -83,6 +84,7 @@ TOPICS = {
     "lbma": {"historic_tables": r"histor", "licence": r"licen[cs]e", "portal": r"members?[' ]*(area|portal)|portal|self-certif", "iba": r"\bIBA\b|ICE Benchmark",
              "derived": r"derived", "redistribution": r"redistribut|republish", "non_commercial": r"non-commercial|educational"},
     "ecb": {"free_reuse": r"free reuse regarding|policy of free", "source_condition": r"Source: ECB|source is (acknowledged|cited|mentioned|stated)|acknowledg",
+            "additional_rules": r"(?<=additional rules apply: )\S", "disclaimer_conditions": r"(?<=following conditions: )\S", "accuracy": r"accurate",
             "conditions": r"provided that|on condition that|as long as|subject to", "reproduction": r"reproduc", "dataset_modification": r"Modification of original data",
             "not_modified": r"not (been )?(modified|altered)|are not modified|distort", "information_only": r"information purposes",
             "commercial": r"commercial", "third_party": r"third[- ]part(y|ies) (data|content|material)|originator",
@@ -91,7 +93,7 @@ TOPICS = {
     "cbs": {"reproduction": r"reproduc|verveelvoudig|overnemen", "source": r"bronvermelding|sourced from CBS|state that the data", "licence": r"CC[ -]?BY|Creative Commons",
             "exception": r"covered by copyright|not permitted|niet toegestaan"},
 }
-WORKBOOK_TOPICS = {"gold_row_tail": r"(?<=London afternoon fixing, average of daily rates \| )\S", "gold_definition": r"\bgold\b", "gold_provider": r"\bgold\b.{0,200}(LBMA|London|Reuters|\bICE\b|\bIBA\b|Platts|Metal Bulletin|fixing|spot)",
+WORKBOOK_TOPICS = {"gold_row_tail2": r"(?<=London Bullion Market; )\S", "gold_row_tail": r"(?<=London afternoon fixing, average of daily rates \| )\S", "gold_definition": r"\bgold\b", "gold_provider": r"\bgold\b.{0,200}(LBMA|London|Reuters|\bICE\b|\bIBA\b|Platts|Metal Bulletin|fixing|spot)",
                    "rights": r"licen[cs]e|copyright|terms of use|attribut|third[- ]part|permission|reproduc|redistribut|citation|creative commons|CC BY",
                    "source_line": r"Source:|Notes?:"}
 UNREACHABLE_PREFIXES = ("NETWORK_", "TLS_ERROR", "DNS_ERROR", "HTTP_STATUS_ERROR", "UNEXPECTED_HTTP_STATUS")
