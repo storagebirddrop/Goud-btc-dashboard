@@ -3,11 +3,10 @@ import {createRoot} from 'react-dom/client';
 import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer} from 'recharts';
 import './style.css';
 
-import {SERIES,CATEGORIES,LEVEL_KEYS,CARD_KEYS,BASES,visibleKeys,ok} from './series';
-import type {SeriesKey,Point,Kind} from './series';
+import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRange,sliceRange,viewAnnotations,MONTH_RE,ok} from './series';
+import type {SeriesKey,Point,Kind,Range,PresetId} from './series';
 
-const PRESETS=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}] as const;
-type Preset=typeof PRESETS[number]['id'];
+const PRESETS:{id:PresetId;label:string}[]=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}];
 const WARNING='De reeks toont de prijs van een gemiddeld verkochte bestaande koopwoning uitgedrukt in de gekozen rekeneenheid. De mix van verkochte woningen kan veranderen; de reeks meet geen constante woningkwaliteit of algemene betaalbaarheid. Dit is geen beleggingsadvies.';
 const MIX_HINT='De verandering van de gemiddelde verkoopprijs weerspiegelt niet alleen prijsontwikkeling. Ze hangt ook af van welke woningen in de begin- en eindmaand zijn verkocht (transactiemix) en van uitschieters in een afzonderlijke maand. De CBS-huizenprijsindex corrigeert voor kwaliteitsverschillen en is daarvoor de betere maatstaf.';
 
@@ -22,6 +21,12 @@ function useDark(){
  const [d,setD]=React.useState(()=>window.matchMedia?.(q).matches??false);
  React.useEffect(()=>{const m=window.matchMedia?.(q);if(!m)return;const h=(e:MediaQueryListEvent)=>setD(e.matches);m.addEventListener('change',h);return()=>m.removeEventListener('change',h)},[]);
  return d;
+}
+function useNarrow(){
+ const q='(max-width: 560px)';
+ const [n,setN]=React.useState(()=>window.matchMedia?.(q).matches??false);
+ React.useEffect(()=>{const m=window.matchMedia?.(q);if(!m)return;const h=(e:MediaQueryListEvent)=>setN(e.matches);m.addEventListener('change',h);return()=>m.removeEventListener('change',h)},[]);
+ return n;
 }
 const colorOf=(k:SeriesKey,dark:boolean)=>dark?SERIES[k].dark:SERIES[k].light;
 
@@ -57,23 +62,22 @@ function isoDot(rows:Point[],k:SeriesKey,color:string){
  return (p:{cx?:number;cy?:number;index?:number})=>{const i=p.index??-1;const iso=i>=0&&ok(rows[i]?.[k])&&!ok(rows[i-1]?.[k])&&!ok(rows[i+1]?.[k]);
   return iso&&p.cx!==undefined&&p.cy!==undefined?<circle key={`d-${k}-${i}`} cx={p.cx} cy={p.cy} r={4} fill={color}/>:<g key={`d-${k}-${i}`}/>}
 }
-function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,annotate}:{rows:Point[];keys:SeriesKey[];dark:boolean;ariaLabel:string;yLabel:string;baseLine?:boolean;annotate?:boolean}){
+function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,height}:{rows:Point[];keys:SeriesKey[];dark:boolean;ariaLabel:string;yLabel:string;baseLine?:boolean;height:number}){
  const kind=SERIES[keys[0]].kind;
  const years=rows.length/12;const step=years<=6?1:years<=12?2:years<=20?4:5;
  const ticks=rows.map(r=>r.period).filter(p=>p.endsWith('-01')&&Number(p.slice(0,4))%step===0);
  const grid=dark?'#3a3a38':'#e4e3df',axis=dark?'#c3c2b7':'#52514e';
- const goldKeys=keys.filter(k=>SERIES[k].gold);
- const hasJune=!!annotate&&goldKeys.some(k=>rows.some(r=>r.period<'2025-06'&&ok(r[k]))&&rows.some(r=>r.period>='2025-06'&&ok(r[k])))&&rows.some(r=>r.period==='2025-06');
+ const notes=viewAnnotations(keys,rows);
  return <figure className="chart" role="img" aria-label={ariaLabel}>
-  <ResponsiveContainer width="100%" height={340}>
-   <LineChart data={rows} margin={{top:8,right:16,bottom:4,left:4}}>
+  <ResponsiveContainer width="100%" height={height}>
+   <LineChart data={rows} accessibilityLayer margin={{top:8,right:16,bottom:4,left:4}}>
     <CartesianGrid stroke={grid} vertical={false}/>
     <XAxis dataKey="period" ticks={ticks} interval={0} tickFormatter={(p:string)=>p.slice(0,4)} tick={{fill:axis,fontSize:12}} stroke={grid} tickMargin={6}/>
     <YAxis width={kind==='eur'?78:48} domain={['auto','auto']} tickFormatter={(v:number)=>kind==='eur'?euro.format(v):nf0.format(v)} tick={{fill:axis,fontSize:12}} stroke={grid}/>
     <Tooltip content={<Tip/>} cursor={{stroke:axis,strokeDasharray:'3 3'}}/>
     {keys.length>1&&<Legend verticalAlign="top" height={30} formatter={(_v,e)=>{const k=(e as {dataKey?:string}).dataKey as SeriesKey;return <span style={{color:axis}}>{SERIES[k].short}</span>}}/>}
     {baseLine&&<ReferenceLine y={100} stroke={axis} strokeDasharray="2 4" label={{value:'basis = 100',position:'insideBottomRight',fill:axis,fontSize:11}}/>}
-    {hasJune&&<ReferenceLine x="2025-06" stroke={axis} strokeDasharray="4 3" label={{value:'jun 2025: bronwijziging goud',position:'insideTopLeft',fill:axis,fontSize:11}}/>}
+    {notes.map(a=><ReferenceLine key={a.period+a.label} x={a.period} stroke={axis} strokeDasharray="4 3" label={{value:a.label,position:'insideTopLeft',fill:axis,fontSize:11}}/>)}
     {keys.map(k=><Line key={k} type="monotone" dataKey={k} name={SERIES[k].label} dot={isoDot(rows,k,colorOf(k,dark))} stroke={colorOf(k,dark)} strokeWidth={2} strokeDasharray={SERIES[k].dash} connectNulls={false} isAnimationActive={false} activeDot={{r:5,stroke:dark?'#1a1a19':'#fcfcfb',strokeWidth:2}}/>)}
    </LineChart>
   </ResponsiveContainer>
@@ -85,30 +89,46 @@ function summary(rows:Point[],keys:SeriesKey[]){
  return keys.map(k=>{const v=rows.filter(p=>ok(p[k]));if(!v.length)return '';const s=SERIES[k];return `${s.label}: van ${fmt(s.kind,v[0][k] as number)} in ${month(v[0].period)} naar ${fmt(s.kind,v[v.length-1][k] as number)} in ${month(v[v.length-1].period)}.`}).join(' ')
 }
 
+function MonthField({id,label,value,min,max,onCommit}:{id:string;label:string;value:string;min:string;max:string;onCommit:(v:string)=>void}){
+ // Native month pickers are missing in some desktop browsers and fall back to text: keep a draft and commit only valid months.
+ const [draft,setDraft]=React.useState(value);
+ React.useEffect(()=>setDraft(value),[value]);
+ return <label className="field" htmlFor={id}><span>{label}</span><input id={id} type="month" value={draft} min={min} max={max} placeholder="jjjj-mm" pattern="[0-9]{4}-[0-9]{2}"
+  onChange={e=>{const v=e.target.value;setDraft(v);if(MONTH_RE.test(v))onCommit(v)}}
+  onBlur={()=>setDraft(value)}/></label>
+}
+
 function App(){
  const [data,setData]=React.useState<Point[]>([]);
  const [error,setError]=React.useState('');
  const [loading,setLoading]=React.useState(true);
- const [preset,setPreset]=React.useState<Preset>('all');
- const [level,setLevel]=React.useState<SeriesKey>('house_eur');
- const [baseId,setBaseId]=React.useState('2000');
+ const [range,setRange]=React.useState<Range|null>(null);
+ const [catId,setCatId]=React.useState('');
+ const [viewId,setViewId]=React.useState('');
  const [open,setOpen]=React.useState(false);
  const [table,setTable]=React.useState(false);
  const dark=useDark();
+ const narrow=useNarrow();
  React.useEffect(()=>{fetch('/data/monthly.json').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}).then((j:{data:Point[]}|null)=>{if(!j||!Array.isArray(j.data))throw Error('Ongeldig dataformaat');const rows=j.data.filter(p=>p&&typeof p.period==='string'&&/^\d{4}-\d{2}$/.test(p.period));if(rows.length!==j.data.length)throw Error('Ongeldig dataformaat (periode)');setData(rows)}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
 
  const avail=React.useMemo(()=>new Set<SeriesKey>(visibleKeys(data)),[data]);
- const levelKeys=LEVEL_KEYS.filter(k=>avail.has(k));
- const bases=BASES.map(b=>({...b,keys:b.keys.filter(k=>avail.has(k))})).filter(b=>b.keys.length);
- const curLevel=levelKeys.includes(level)?level:levelKeys[0];
- const curBase=bases.find(b=>b.id===baseId)??bases[0];
- const start=(()=>{if(preset==='2008'){const i=data.findIndex(p=>p.period>='2008-01');return i<0?0:i}if(preset==='10y')return Math.max(0,data.length-120);return 0})();
- const rows=data.slice(start);
+ const periods=React.useMemo(()=>data.map(p=>p.period),[data]);
+ const full=periods.length?{from:periods[0],to:periods[periods.length-1]}:null;
+ const eff=(range&&clampRange(range,periods))||full;
+ const rows=eff?sliceRange(data,eff):[];
+ const views=chartViews([...avail]);
+ const cats=CATEGORIES.filter(c=>views.some(v=>v.category===c.id));
+ const curCat=cats.find(c=>c.id===catId)??cats[0];
+ const catViews=curCat?views.filter(v=>v.category===curCat.id):[];
+ const curView=catViews.find(v=>v.id===viewId)??catViews[0];
  const cardKeys=CARD_KEYS.filter(k=>avail.has(k)&&rows.some(p=>ok(p[k])));
  const hasGold=[...avail].some(k=>SERIES[k].gold);
  const missing=['reële EUR',...(hasGold?[]:['goud']),'Bitcoin'].join(', ').replace(/, ([^,]*)$/,' en $1');
  const shown=(Object.keys(SERIES) as SeriesKey[]).filter(k=>avail.has(k));
  const first=data[0]?.period,last=data[data.length-1]?.period;
+ const pressed=(id:PresetId)=>{const p=presetRange(id,periods);return !!p&&!!eff&&p.from===eff.from&&p.to===eff.to};
+ const chartHasData=!!curView&&curView.keys.some(k=>rows.some(p=>ok(p[k])));
+ const sources=curView?[...new Set(curView.keys.map(k=>SERIES[k].source))].join('; '):'';
 
  return <main>
   <header>
@@ -116,30 +136,28 @@ function App(){
    {data.length>0&&<p className="lede">Maandelijkse CBS-reeksen, {month(first)} t/m {month(last)}: gemiddelde verkoopprijs in euro en prijsindex.</p>}
    {!error&&!loading&&<p className="muted">Nog niet beschikbaar: {missing}.</p>}
   </header>
-  {error?<p role="alert" className="notice">Dashboardgegevens niet beschikbaar: {error}</p>:loading?<p role="status">Gegevens laden…</p>:data.length===0||avail.size===0?<p className="notice">Nog geen gevalideerde brongegevens geladen.</p>:<>
+  {error?<p role="alert" className="notice">Dashboardgegevens niet beschikbaar: {error}</p>:loading?<p role="status">Gegevens laden…</p>:data.length===0||avail.size===0||!eff?<p className="notice">Nog geen gevalideerde brongegevens geladen.</p>:<>
   <div className="toolbar" role="group" aria-label="Periode">
    <span className="tl">Periode</span>
-   <span className="segs">{PRESETS.map(p=><button key={p.id} type="button" className="seg" aria-pressed={preset===p.id} onClick={()=>setPreset(p.id)}>{p.label}</button>)}</span>
-   <span className="muted">{month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} maanden)</span>
+   <span className="segs">{PRESETS.map(p=><button key={p.id} type="button" className="seg" aria-pressed={pressed(p.id)} onClick={()=>setRange(presetRange(p.id,periods))}>{p.label}</button>)}</span>
+   <MonthField id="from" label="Van" value={eff.from} min={first} max={eff.to} onCommit={v=>setRange(clampRange({from:v,to:eff.to},periods))}/>
+   <MonthField id="to" label="Tot en met" value={eff.to} min={eff.from} max={last} onCommit={v=>setRange(clampRange({from:eff.from,to:v},periods))}/>
+   <span className="muted" role="status" aria-live="polite">{month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} {rows.length===1?'maand':'maanden'})</span>
   </div>
+
+  {curCat&&curView&&<section className="panel" aria-labelledby="h-chart">
+   <div className="panel-head"><h2 id="h-chart">{curView.keys.length===1?curView.label:`Relatieve verandering, ${curView.label}`}</h2>
+    {cats.length>1&&<div className="segs" role="group" aria-label="Soort weergave">{cats.map(c=><button key={c.id} type="button" className="seg" aria-pressed={curCat.id===c.id} onClick={()=>{setCatId(c.id);setViewId('')}}>{c.label}</button>)}</div>}</div>
+   {catViews.length>1&&<div className="segs sub-segs" role="group" aria-label={curCat.id==='index'?'Indexbasis':'Reeks'}>{catViews.map(v=><button key={v.id} type="button" className="seg" aria-pressed={curView.id===v.id} onClick={()=>setViewId(v.id)}>{v.label}</button>)}</div>}
+   <p className="cap">{curCat.caption}</p>
+   <p className="cap">Eenheid: <strong>{curView.unit}</strong>{curView.keys[0]==='house_eur'&&<InfoHint id="hint-chart"/>}</p>
+   {chartHasData?<Chart rows={rows} keys={curView.keys} dark={dark} height={narrow?260:340} yLabel={curView.unit} baseLine={curView.baseLine} ariaLabel={`Lijngrafiek, ${curView.unit}. ${summary(rows,curView.keys)}`}/>:<p className="notice" role="status">Geen gegevens voor deze weergave in de gekozen periode.</p>}
+   <p className="status">Bron: {sources}. Gebruik de pijltjestoetsen op de grafiek om waarden per maand te lezen; de tabel onder Bronnen &amp; methode bevat alle waarden.</p>
+  </section>}
 
   <section aria-labelledby="h-cards"><h2 id="h-cards" className="sec-h">Prijsontwikkeling in de gekozen periode</h2><p className="cap">Nominale waarden en procentuele verandering tussen de eerste en laatste maand met gegevens. Dit is geen maat voor betaalbaarheid of koopkracht.</p>{CATEGORIES.map(c=>{const ks=cardKeys.filter(k=>SERIES[k].category===c.id);return ks.length?<div className="card-group" key={c.id}><h3 className="grp-h">{c.label}</h3><p className="cap">{c.caption}</p><div className="cards">{ks.map(k=><Card key={k} k={k} rows={rows}/>)}</div></div>:null})}</section>
 
   <aside className="warn" role="note"><strong>Let op bij interpretatie.</strong> {WARNING}</aside>
-
-  {curLevel&&<section className="panel" aria-labelledby="h-level">
-   <div className="panel-head"><h2 id="h-level">Niveau in eigen eenheid</h2>
-    {levelKeys.length>1&&<div className="segs" role="group" aria-label="Kies een reeks">{levelKeys.map(k=><button key={k} type="button" className="seg" aria-pressed={curLevel===k} onClick={()=>setLevel(k)}>{SERIES[k].short}</button>)}</div>}</div>
-   <p className="cap">{SERIES[curLevel].label}, {SERIES[curLevel].unit}{curLevel==='house_eur'&&<InfoHint id="hint-chart"/>}</p>
-   <Chart rows={rows} keys={[curLevel]} dark={dark} yLabel={SERIES[curLevel].unit} ariaLabel={`Lijngrafiek. ${summary(rows,[curLevel])}`}/>
-  </section>}
-
-  {curBase&&<section className="panel" aria-labelledby="h-idx">
-   <div className="panel-head"><h2 id="h-idx">Relatieve verandering (index)</h2>
-    {bases.length>1&&<div className="segs" role="group" aria-label="Indexbasis">{bases.map(b=><button key={b.id} type="button" className="seg" aria-pressed={curBase.id===b.id} onClick={()=>setBaseId(b.id)}>{b.label}</button>)}</div>}</div>
-   <p className="cap">Relatieve verandering, indexbasis {curBase.caption}. Dit is geen prijs in euro.</p>
-   <Chart rows={rows} keys={curBase.keys} dark={dark} yLabel={`index, ${curBase.caption}`} baseLine annotate ariaLabel={`Lijngrafiek, indexbasis ${curBase.caption}. ${summary(rows,curBase.keys)}`}/>
-  </section>}
 
   <details className="sources" open={open} onToggle={e=>setOpen((e.currentTarget as HTMLDetailsElement).open)}>
    <summary>Bronnen &amp; methode</summary>
@@ -153,9 +171,9 @@ function App(){
     <p><strong>Definitiewijziging juni 2025:</strong> World Bank GOLD gebruikte tot en met mei 2025 London afternoon fixing (99,5% goud); vanaf juni 2025 gemiddelde dagelijkse spotprijzen. De goudreeks is daardoor niet volledig benchmarkhomogeen.</p></>}
     <h3>Gegevens als tabel</h3>
     <button type="button" className="seg" aria-expanded={table} aria-controls="data-table" onClick={()=>setTable(!table)}>{table?'Verberg tabel':'Toon als tabel'}</button>
-    {table&&<div className="table-wrap" tabIndex={0} role="region" aria-label="Maandgegevens (scrollbaar)"><table id="data-table"><caption>Maandelijkse waarden; leeg betekent geen gegevens.</caption>
+    {table&&<div className="table-wrap" tabIndex={0} role="region" aria-label="Maandgegevens (scrollbaar)"><table id="data-table"><caption>Maandelijkse waarden van {month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} {rows.length===1?'maand':'maanden'}, dezelfde periode als de grafiek); leeg betekent geen gegevens.</caption>
      <thead><tr><th scope="col">Maand</th>{shown.map(k=><th scope="col" key={k}>{SERIES[k].label} ({SERIES[k].unit})</th>)}</tr></thead>
-     <tbody>{data.map(p=><tr key={p.period}><th scope="row">{p.period}</th>{shown.map(k=><td key={k}>{ok(p[k])?fmt(SERIES[k].kind,p[k] as number):''}</td>)}</tr>)}</tbody></table></div>}
+     <tbody>{rows.map(p=><tr key={p.period}><th scope="row">{p.period}</th>{shown.map(k=><td key={k}>{ok(p[k])?fmt(SERIES[k].kind,p[k] as number):''}</td>)}</tr>)}</tbody></table></div>}
    </div>
   </details>
   </>}
