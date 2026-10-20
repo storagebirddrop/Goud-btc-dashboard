@@ -22,6 +22,7 @@ OUTLIER_MONTHS = ("1980-12", "1983-07", "1985-03")
 TOLERANCE = Decimal("0.5")        # whole-USD rounding of the World Bank value
 PLAUSIBLE_BAND = Decimal("2.0")   # residual up to this is "close but not reproduced"
 CONTEXT = 3
+SCALE_GUARD = Decimal("0.25")     # daily series whose monthly mean is >25% off BoE monthly is not a USD/oz gold series
 MAX_DAILY_CODES = 12
 CATEGORY_URL = ("https://www.bankofengland.co.uk/boeapps/database/FromShowColumns.asp?Travel=NIxAZxI1x"
                 "&FromCategoryList=Yes&NewMeaningId=RGOLD&CategId=6&HighlightCatValueDisplay=Gold+price")
@@ -51,7 +52,7 @@ def discover_codes(raw):
     return found
 
 
-def notes_facts(raw, limit=14, width=260):
+def notes_facts(raw, limit=14, width=600):
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", raw.decode("utf-8", "replace")))
     out = []
     for s in re.split(r"(?<=[.!?])\s+", text):
@@ -128,9 +129,30 @@ def combined_daily(a, b):
 VARIANT_NAMES = ("mean_all", "mean_weekdays", "mean_fridays", "last_day", "first_day", "median", "min", "max")
 
 
+def elsewhere_months(wb_v, series, month, limit=12):
+    """Months (other than `month`) whose value is within TOLERANCE of wb_v: tests a copy/mix-up from another
+    period. Coincidence-prone (many months), so informational only, never a proof by itself."""
+    return [m for m, v in sorted(series.items()) if m != month and abs(wb_v - v) <= TOLERANCE][:limit]
+
+
+def monthly_vs_daily_consistency(boe_monthly, daily):
+    """Does the BoE monthly average equal the arithmetic mean of the BoE daily values per month?"""
+    diffs = []
+    for m in sorted(boe_monthly):
+        var = daily_variants(daily, m)
+        if var:
+            diffs.append((abs(var["mean_all"] - boe_monthly[m]), m))
+    if not diffs:
+        return {"months": 0}
+    worst = max(diffs)
+    return {"months": len(diffs), "max_abs_diff": str(worst[0].quantize(Decimal("0.0001"))), "worst_month": worst[1],
+            "months_over_0_01": sum(1 for d, _ in diffs if d > Decimal("0.01"))}
+
+
 def variant_report(wb_v, var):
     out = {"n_days": var["n_days"], "first_date": var["first_date"], "last_date": var["last_date"],
-           "n_fridays": var["n_fridays"], "variants": {}}
+           "n_fridays": var["n_fridays"], "daily_min": str(var["min"]), "daily_max": str(var["max"]),
+           "wb_outside_daily_range": not (var["min"] <= wb_v <= var["max"]), "variants": {}}
     for name in VARIANT_NAMES:
         v = var[name]
         out["variants"][name] = None if v is None else compare(wb_v, v)
@@ -174,20 +196,28 @@ def analyse_month(month, wb, boe, dailies):
     wb_v = wb.get(month)
     boe_cmp = compare(wb_v, boe.get(month))
     shift = shift_test(wb, boe, month)
-    variants = {}
+    variants, excluded, goldlike = {}, [], {}
+    boe_v = boe.get(month)
     for code, daily in dailies.items():
         var = daily_variants(daily, month)
         if var and wb_v is not None:
+            if boe_v is not None and abs(var["mean_all"] - boe_v) > boe_v * SCALE_GUARD:
+                excluded.append({"series": code, "mean_all": str(var["mean_all"].quantize(Decimal("0.0001"))),
+                                 "reason": "SCALE_MISMATCH_NOT_A_USD_OZ_GOLD_SERIES"})
+                continue
+            goldlike[code] = daily
             variants[code] = variant_report(wb_v, var)
             variants[code]["days_within_half_usd_of_wb"] = matching_days(daily, month, wb_v)
-    if len(dailies) == 2 and wb_v is not None:
-        (ca, da), (cb, db) = sorted(dailies.items())
+    if len(goldlike) == 2 and wb_v is not None:
+        (ca, da), (cb, db) = sorted(goldlike.items())
         var = daily_variants(combined_daily(da, db), month)
         if var:
             variants[f"{ca}+{cb}"] = variant_report(wb_v, var)
     return {"month": month, "wb": None if wb_v is None else str(wb_v),
             "boe_monthly": boe_cmp, "rounding_explains": bool(boe_cmp and boe_cmp["within_half_usd"]),
             "context": context_rows(wb, boe, month), "month_shift": shift, "daily": variants,
+            "excluded_series": excluded,
+            "wb_value_elsewhere_in_boe_monthly": None if wb_v is None else elsewhere_months(wb_v, boe, month),
             "classification": classify(wb_v, boe_cmp, shift, variants)}
 
 
@@ -203,6 +233,36 @@ def is_daily(points):
     for d in points:
         per[month_of(d)] = per.get(month_of(d), 0) + 1
     return bool(per) and max(per.values()) > 1
+
+
+def report_lines(s):
+    """Compact human-readable summary (aggregates only) for the job log."""
+    L = ["REPORT status=%s wb_months=%s" % (s["status"], s.get("world_bank", {}).get("months"))]
+    L.append("REPORT failures=" + json.dumps(s["failures"]))
+    L.append("REPORT discovered_codes=" + json.dumps(s["discovered_codes"]))
+    L.append("REPORT daily_series=" + json.dumps(s["daily_series"], sort_keys=True))
+    L.append("REPORT notes=" + json.dumps(s.get("boe_notes_facts", {}).get("sentences")))
+    L.append("REPORT ranking=" + json.dumps(s.get("deviation_ranking")))
+    L.append("REPORT monthly_vs_daily=" + json.dumps(s.get("monthly_vs_daily")))
+    for r in s["results"]:
+        L.append("MONTH %s wb=%s class=%s %s repro=%s" % (r["month"], r["wb"], r["classification"]["class"],
+                 r["classification"]["reason"], r["classification"]["reproductions"]))
+        L.append("  boe_monthly=" + json.dumps(r["boe_monthly"]))
+        for c in r["context"]:
+            L.append("  ctx %+d %s wb=%s boe=%s diff=%s pct=%s" % (c["offset"], c["month"], c["wb"], c["boe_monthly"], c["diff"], c["pct"]))
+        for off, c in r["month_shift"].items():
+            L.append("  shift %s: %s" % (off, json.dumps(c)))
+        for code, rep in r["daily"].items():
+            L.append("  daily %s n=%s fri=%s %s..%s match_days=%s" % (code, rep["n_days"], rep["n_fridays"], rep["first_date"],
+                     rep["last_date"], rep.get("days_within_half_usd_of_wb")))
+            for name, c in rep["variants"].items():
+                L.append("    %s other=%s diff=%s within=%s" % (name, c["other"], c["diff"], c["within_half_usd"]))
+        L.append("  excluded=" + json.dumps(r["excluded_series"]))
+        L.append("  wb_value_elsewhere_in_boe_monthly=" + json.dumps(r["wb_value_elsewhere_in_boe_monthly"]))
+        for code, rep in r["daily"].items():
+            L.append("  range %s: min=%s max=%s wb_outside=%s" % (code, rep["daily_min"], rep["daily_max"],
+                                                                 rep["wb_outside_daily_range"]))
+    return L
 
 
 def main(argv=None):
@@ -254,10 +314,11 @@ def main(argv=None):
         if info["daily"]:
             dailies[code] = pts
     s["deviation_ranking"] = deviation_ranking(wb, boe) if boe else None
+    s["monthly_vs_daily"] = {c: monthly_vs_daily_consistency(boe, d) for c, d in dailies.items()} if boe else None
     s["results"] = [analyse_month(m, wb, boe, dailies) for m in OUTLIER_MONTHS]
     s["status"] = "ANALYSED" if boe else "NO_BOE_MONTHLY"
     out.write_text(json.dumps(s, indent=2, sort_keys=True, default=str) + "\n")
-    print(json.dumps(s, indent=2, sort_keys=True, default=str))
+    print("\n".join(report_lines(s)))
     return 0 if boe else 2
 
 

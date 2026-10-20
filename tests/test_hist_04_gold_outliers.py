@@ -69,6 +69,30 @@ def test_daily_variant_reproduces_wb_proven():
     assert r["rounding_explains"] is False
 
 
+def test_scale_mismatch_series_excluded_not_compared():
+    gbp_like = {date(1985, 3, 4): D("0.42"), date(1985, 3, 5): D("0.43")}
+    r = go.analyse_month("1985-03", {"1985-03": D("305")}, {"1985-03": D("308")}, {"XFX": gbp_like})
+    assert r["daily"] == {} and r["excluded_series"][0]["series"] == "XFX"
+    assert r["classification"]["class"] == "UNVERIFIED"
+
+
+def test_report_lines_runs_on_analysis():
+    r = go.analyse_month("1985-03", {"1985-03": D("305")}, {"1985-03": D("308")}, {"XTEST": DAILY})
+    s = {"status": "ANALYSED", "failures": [], "discovered_codes": {}, "daily_series": {}, "results": [r]}
+    text = "\n".join(go.report_lines(s))
+    assert "MONTH 1985-03" in text and "PROVEN" in text
+
+
+def test_range_flag_and_elsewhere_and_consistency():
+    r = go.analyse_month("1985-03", {"1985-03": D("350")}, {"1985-03": D("308"), "1985-09": D("350.2")}, {"XT": DAILY})
+    assert r["daily"]["XT"]["wb_outside_daily_range"] is True
+    assert r["wb_value_elsewhere_in_boe_monthly"] == ["1985-09"]
+    assert r["classification"]["class"] == "UNVERIFIED"
+    ok = go.monthly_vs_daily_consistency({"1985-03": D("308"), "1985-07": D("5")}, DAILY)
+    assert ok["months"] == 1 and ok["max_abs_diff"] == "0.0000" and ok["months_over_0_01"] == 0
+    assert go.monthly_vs_daily_consistency({"1990-01": D("1")}, DAILY) == {"months": 0}
+
+
 def test_matching_days_dates_only():
     assert go.matching_days(DAILY, "1985-03", D("306.2")) == ["1985-03-05"]
 
