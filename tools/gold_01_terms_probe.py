@@ -27,7 +27,7 @@ from tools import hist_02_acquire
 
 RETRIEVAL_DATE = "2026-10-20"
 MAX_QUOTE_WORDS = 25
-MAX_QUOTES = 24
+MAX_QUOTES = 30
 QUOTES_PER_TOPIC = 2
 SPREAD = 300
 MAX_PAGE_BYTES = 6_000_000
@@ -44,8 +44,6 @@ PAGES = {
     "wb-permissions": ("https://www.worldbank.org/en/about/legal/permissions", "html", "wb"),
     "wb-pink-sheet-2025-06": ("https://thedocs.worldbank.org/en/doc/18675f1d1639c7a34d463f59263ba0a2-0050012025/related/CMO-Pink-Sheet-June-2025.pdf", "pdf", "wb"),
     "ice-iba-lbma": ("https://www.ice.com/iba/lbma-precious-metals", "html", "iba"),
-    "ice-iba-licensing": ("https://www.ice.com/iba/licensing", "html", "iba"),
-    "ecb-eurofxref-short": ("https://www.ecb.europa.eu/stats/eurofxref", "html", "ecb"),
     "ecb-fx-framework": ("https://www.ecb.europa.eu/stats/pdf/exchange/Frameworkfortheeuroforeignexchangereferencerates.en.pdf", "pdf", "ecb"),
     "ice-iba-about":("https://www.ice.com/iba/about", "html", "iba"),
     "ice-iba-fee-schedule-2026": ("https://www.ice.com/publicdocs/IBA_MLA_Licensing_Data_Fee_Schedule_2026.pdf", "pdf", "iba"),
@@ -69,16 +67,23 @@ TOPICS = {
            "third_party_consent": r"consent of the original|original data provider|provided by third parties|third[- ]party (data|content|material)",
            "attribution_format": r"Dataset name|Data source \(if|attribution should|When you download or use",
            "changes": r"indicate (if )?changes|changes were made|you (modify|adapt)|derivative",
-           "endorsement": r"endors", "no_warranty": r"no (warranty|representation)|as is\b",
+           "endorsement": r"endors", "no_warranty": r"infring|warrant|as is\b",
+           "third_party_tail": r"(?<=without the consent of the original data provider, )\S",
+           "free_to": r"free to copy, distribute, adapt",
+           "data_sources_note": r"Prospects Group|data (is|are) (sourced|obtained|compiled)|sources? (of|for) (the )?(data|prices)",
+           "contact": r"pubrights|permissions@|data@worldbank",
+           "pdf_rights": r"licen[cs]e|copyright|permission|Creative Commons|terms of use|redistribut",
            "terms_pointer": r"Terms of Use|terms and conditions|copyright",
            "gold_source": r"\bgold\b.{0,120}(LBMA|London|fixing|spot)|(LBMA|London|fixing).{0,120}\bgold\b"},
-    "iba": {"derived": r"derived (benchmark|indices|index)", "redistribution": r"redistribut", "usage_licence": r"usage licen[cs]e|licen[cs]e from IBA|available under licen[cs]e",
+    "iba": {"derived": r"derived (benchmark|indices|index)", "derived_definition": r"derived benchmark(s)? (is|are|means|licen[cs]e)|Derived Benchmark Licen[cs]e",
+            "derived_scope": r"derived .{0,60}(index|indices|benchmark).{0,80}(LBMA|based on|calculated|created)", "redistribution": r"redistribut", "usage_licence": r"usage licen[cs]e|licen[cs]e from IBA|available under licen[cs]e",
             "historical_access": r"historical (access|data)", "lbma_gold_price": r"LBMA Gold Price",
             "reserves_rights": r"reserves all rights|all rights", "non_commercial": r"non-commercial|educational|internal use|personal use",
             "contact": r"IBA-Licensing|contact us"},
     "lbma": {"historic_tables": r"histor", "licence": r"licen[cs]e", "portal": r"members?[' ]*(area|portal)|portal|self-certif", "iba": r"\bIBA\b|ICE Benchmark",
              "derived": r"derived", "redistribution": r"redistribut|republish", "non_commercial": r"non-commercial|educational"},
-    "ecb": {"free_reuse": r"free reuse|reuse of", "source_condition": r"acknowledg|duly|source is|cite the source|credit",
+    "ecb": {"free_reuse": r"free reuse regarding|policy of free", "source_condition": r"Source: ECB|source is (acknowledged|cited|mentioned|stated)|acknowledg",
+            "conditions": r"provided that|on condition that|as long as|subject to", "reproduction": r"reproduc", "dataset_modification": r"Modification of original data",
             "not_modified": r"not (been )?(modified|altered)|are not modified|distort", "information_only": r"information purposes",
             "commercial": r"commercial", "third_party": r"third[- ]part(y|ies) (data|content|material)|originator",
             "user_modification": r"modified by the user|calculation of growth rates|stated explicitly",
@@ -86,7 +91,7 @@ TOPICS = {
     "cbs": {"reproduction": r"reproduc|verveelvoudig|overnemen", "source": r"bronvermelding|sourced from CBS|state that the data", "licence": r"CC[ -]?BY|Creative Commons",
             "exception": r"covered by copyright|not permitted|niet toegestaan"},
 }
-WORKBOOK_TOPICS = {"gold_definition": r"\bgold\b", "gold_provider": r"\bgold\b.{0,200}(LBMA|London|Reuters|\bICE\b|\bIBA\b|Platts|Metal Bulletin|fixing|spot)",
+WORKBOOK_TOPICS = {"gold_row_tail": r"(?<=London afternoon fixing, average of daily rates \| )\S", "gold_definition": r"\bgold\b", "gold_provider": r"\bgold\b.{0,200}(LBMA|London|Reuters|\bICE\b|\bIBA\b|Platts|Metal Bulletin|fixing|spot)",
                    "rights": r"licen[cs]e|copyright|terms of use|attribut|third[- ]part|permission|reproduc|redistribut|citation|creative commons|CC BY",
                    "source_line": r"Source:|Notes?:"}
 UNREACHABLE_PREFIXES = ("NETWORK_", "TLS_ERROR", "DNS_ERROR", "HTTP_STATUS_ERROR", "UNEXPECTED_HTTP_STATUS")
@@ -114,8 +119,8 @@ def enforce_quote_limit(quote):
 def _window(text, pos):
     before = len(text[:pos].split())
     words = text.split()
-    start = max(0, before - 4)
-    for j in range(before - 1, max(-1, before - 11), -1):
+    start = max(0, before - 12)
+    for j in range(before - 1, max(-1, before - 13), -1):
         if j >= 0 and re.search(r"[.!?:;]$", words[j]):
             start = j + 1
             break
@@ -180,7 +185,9 @@ def pdf_to_text(raw):
         p = subprocess.run(["pdftotext", "-layout", "-", "-"], input=raw, capture_output=True, timeout=60, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
-    return re.sub(r"\s+", " ", p.stdout.decode("utf-8", "replace")).strip() if p.returncode == 0 and p.stdout else None
+    if p.returncode != 0 or not p.stdout:
+        return None
+    return re.sub(r"\s+", " ", re.sub(r"[.…]{4,}", " ", p.stdout.decode("utf-8", "replace"))).strip()
 
 
 # ---------------------------------------------------------------- workbook (all sheets, notes only)
