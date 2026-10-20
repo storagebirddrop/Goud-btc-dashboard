@@ -145,6 +145,7 @@ def run(directory):
         manifest["sources"].append(record)
         print(json.dumps({"acquired": record}, sort_keys=True), flush=True)
     manifest["failures"] = failures
+    manifest["status"] = "ACQUISITION_INCOMPLETE" if failures else "ACQUIRED_PENDING_SOURCE_SCHEMA_AND_RIGHTS_REVIEW"
     (out / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
     if failures:
         raise AcquisitionError("ACQUISITION_INCOMPLETE")
