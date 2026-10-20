@@ -43,7 +43,7 @@ def main():
     try:
         entries = []
         for metric in METRICS:
-            response = requests.get(URL, params={"assets": "btc", "metrics": metric}, timeout=30)
+            response = requests.get(URL, params={"metrics": metric}, timeout=30)
             if not response.ok:
                 try:
                     detail = json.dumps(response.json(), ensure_ascii=True)[:1000]
