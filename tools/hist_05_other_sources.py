@@ -95,7 +95,7 @@ REFERENCES = {
 
 PDF_SENTENCE_RE = r"house price|housing price|hpnom|hpreal|residential property|Netherlands|Dutch|Kadaster|NVM"
 PDF_FOCUS = {
-    "bis-pp-selected-documentation-pdf": {"anchor": r"NL Netherlands", "near": r".", "width": 1100, "limit": 2},
+    "bis-pp-selected-documentation-pdf": {"anchor": r"NL Netherlands Compilation", "near": r".", "width": 900, "limit": 1},
     "bis-pp-sources-pdf": {"anchor": r"NL Netherlands|Netherlands", "near": r".", "width": 250, "limit": 3},
     "jst-r6-documentation-pdf-cdn": {"anchor": r"Netherlands", "near": r"house price|Herengracht|Eichholtz|Knoll|housing", "width": 600, "limit": 8},
 }
