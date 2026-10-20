@@ -116,3 +116,36 @@ def test_main_fails_when_parsers_differ(monkeypatch, tmp_path):
     code, s = _run_main(monkeypatch, tmp_path, openpyxl_book())
     assert code == 2 and s["status"] == "CROSSCHECK_FAILED"
     assert s["independent_parser"]["differing_fields"] == ["canonical_series_sha256"]
+
+
+def test_main_workbook_option_reads_local_bytes_without_fetch(monkeypatch, tmp_path):
+    import hashlib
+    import json
+    import tools.hist_02_acquire as acq
+    from tools import hist_03_worldbank_validate as v
+    raw = openpyxl_book()
+    f = tmp_path / "wb.xlsx"
+    f.write_bytes(raw)
+
+    def boom(source):
+        raise AssertionError("fetch must not be called with --workbook")
+
+    monkeypatch.setattr(acq, "fetch", boom)
+    out = tmp_path / "s.json"
+    code = v.main(["--summary-out", str(out), "--workbook", str(f), "--independent-parser", "openpyxl"])
+    s = json.loads(out.read_text())
+    assert code == 0 and s["status"] == "VALIDATED"
+    assert s["fetch"]["sha256"] == hashlib.sha256(raw).hexdigest() == s["workbook_sha256"]
+    assert s["fetch"]["http_status"] == "LOCAL_FILE"
+    assert s["workbook_sha256_matches_known"] is False  # synthetic bytes are not the real workbook
+    assert s["canonical_series_sha256_matches_known"] is False
+
+
+def test_main_workbook_option_fails_closed_on_missing_or_empty_file(tmp_path):
+    import json
+    from tools import hist_03_worldbank_validate as v
+    out = tmp_path / "s.json"
+    assert v.main(["--summary-out", str(out), "--workbook", str(tmp_path / "nope.xlsx")]) == 3
+    assert json.loads(out.read_text())["status"] == "ACQUISITION_FAILED"
+    (tmp_path / "empty.xlsx").write_bytes(b"")
+    assert v.main(["--summary-out", str(out), "--workbook", str(tmp_path / "empty.xlsx")]) == 3
