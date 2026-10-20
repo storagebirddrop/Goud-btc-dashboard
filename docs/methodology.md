@@ -34,4 +34,4 @@ For gold, use the approved ADR-004 monthly ECB USD-per-EUR mean from available v
 8. Enable production credentials and scheduled ETL only in a separate reviewed change.
 
 ## Gold-specific approval boundary (2026-10-18)
-Canonical decision: [ADR-004 in DECISIONS.md](governance/DECISIONS.md). The approved gold methodology does not clear World Bank GOLD third-party rights or authorize public gold values; `gold_eur_oz`, `gold_index`, and `gold_grams_per_house` remain null until separately approved. This document is descriptive, not an independent ADR.
+Canonical decision: [ADR-004 in DECISIONS.md](governance/DECISIONS.md). The approved gold methodology does not by itself clear World Bank GOLD third-party rights. Owner decision GOLD-03 (2026-10-20) lifted the publication HOLD for `gold_index` and `gold_grams_per_house` only, from 2000-01, with the third-party-rights uncertainty registered as residual risk; the release itself still needs a separate owner approval. `gold_eur_oz` stays null and is never published; until a release is approved, the committed public gold fields remain null. This document is descriptive, not an independent ADR.

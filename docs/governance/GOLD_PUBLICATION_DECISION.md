@@ -1,6 +1,6 @@
 # GOLD_PUBLICATION_DECISION — rechtenbeoordeling en publicatieadvies
 
-**Actuele status (2026-10-19):** `DECIDED / LIMITED GOLD-01 GO` uitsluitend voor `gold_index` en `gold_grams_per_house`; **geen merge- of deployautorisatie**. De onderstaande analyse van 2026-10-18 behoudt haar historische status `PROPOSED / HOLD` als risicoanalyse, niet als juridisch bewijs van onbeperkte rechten. **Beoordeeld:** 2026-10-18 (UTC). **Repository:** `storagebirddrop/Goud-btc-dashboard`. **Basis:** `main` commit `4fcd23a4d6a5d873c8e600bda14c2873b330430f`; ADR-004 goud `ACCEPTED`. **Beslisser voor activatie:** projecteigenaar, afzonderlijk besluit vereist.
+**Actuele status (2026-10-20):** `DECIDED / GOLD-03` — de projecteigenaar heeft de HOLD opgeheven voor `gold_index` en `gold_grams_per_house` vanaf 2000-01 en heeft schriftelijke World Bank-toestemming als projectgate laten vervallen; het rechtenrisico is als restrisico geregistreerd (zie het eigenaarbesluit GOLD-03 onderaan en in [DECISIONS.md](DECISIONS.md)). Het HOLD-advies en de voorwaarden hieronder zijn voor deze twee indicatoren **vervangen** en blijven als historische risicoanalyse staan; `gold_eur_oz` en ruwe bronreeksen blijven niet publiek; geen merge-, deploy- of releaseautorisatie. **Vorige status (2026-10-19):** `DECIDED / LIMITED GOLD-01 GO` uitsluitend voor `gold_index` en `gold_grams_per_house`; **geen merge- of deployautorisatie**. De onderstaande analyse van 2026-10-18 behoudt haar historische status `PROPOSED / HOLD` als risicoanalyse, niet als juridisch bewijs van onbeperkte rechten. **Beoordeeld:** 2026-10-18 (UTC). **Repository:** `storagebirddrop/Goud-btc-dashboard`. **Basis:** `main` commit `4fcd23a4d6a5d873c8e600bda14c2873b330430f`; ADR-004 goud `ACCEPTED`. **Beslisser voor activatie:** projecteigenaar, afzonderlijk besluit vereist.
 
 ## Executive summary
 
@@ -56,7 +56,7 @@ Vereiste bronvermelding bij een eventuele afzonderlijk goedgekeurde activatie, z
 ## Besluit en governance
 
 - **Technische status:** PR #51 MERGED; 320 maanden eerder gevalideerd. **Economische methodologie:** ADR-004 goud ACCEPTED via PR #52. **Rechten:** deels bevestigd (ECB/CBS), **World Bank GOLD/derdepartij-afleiding OPEN**.
-- **Dashboard publicatieadvies:** **HOLD** totdat de hierboven gespecificeerde schriftelijke rechtenbevestiging (of specifieke toepasselijke licentie) beschikbaar is én de eigenaar daarna expliciet publieke activatie autoriseert. Bij positieve clearance is de **twee-indicatorvariant CONDITIONAL GO** onder bronvermelding, zichtbare juni-2025-annotatie en technische verificatie van de beperkte export.
+- **[Vervangen op 2026-10-20 door GOLD-03 voor `gold_index` en `gold_grams_per_house`; historisch advies]** **Dashboard publicatieadvies:** **HOLD** totdat de hierboven gespecificeerde schriftelijke rechtenbevestiging (of specifieke toepasselijke licentie) beschikbaar is én de eigenaar daarna expliciet publieke activatie autoriseert. Bij positieve clearance is de **twee-indicatorvariant CONDITIONAL GO** onder bronvermelding, zichtbare juni-2025-annotatie en technische verificatie van de beperkte export.
 - **Dit document:** `PROPOSED`, uitsluitend reviewbaar advies. Geen wijziging van ADR-004, productie-ETL, publieke JSON, featureflags of publicatieconfiguratie. Geen merge- of publicatieautorisatie.
 
 ## Eigenaarbesluit GOLD-01 — beperkte opheffing HOLD (2026-10-19)
@@ -67,3 +67,13 @@ Vereiste bronvermelding bij een eventuele afzonderlijk goedgekeurde activatie, z
 - **Rechten:** het eerdere World Bank/derdepartij-/IBA-onderzoek blijft ongewijzigd als **historische risicoanalyse**. Dit eigenaarbesluit is een bewuste, beperkte publicatierisicoacceptatie, **geen juridisch bewijs** van onbeperkte rechten, sublicenties of benchmarkhergebruik.
 - **Methodologie:** ADR-004 blijft ongewijzigd en leidend. Zichtbare bronvermelding World Bank Pink Sheet GOLD, ECB EXR.D.USD.EUR.SP00.A en CBS StatLine 85773NED; vermelding eigen transformaties en definitiebreuk per juni 2025.
 - **Publicatiepoort:** geen merge, deploy of live datasetwijziging zonder afzonderlijke expliciete toestemming. Fail-closed controles en de bestaande CBS-publicatie blijven leidend.
+
+## Eigenaarbesluit GOLD-03 — opheffing HOLD voor twee afgeleide indicatoren (2026-10-20)
+
+- **Status:** `DECIDED` door projecteigenaar op 2026-10-20; **technische release:** voorbereiding in Draft PR, niet gemerged, niet live.
+- **Besluit:** de goudpublicatie-HOLD is opgeheven voor uitsluitend `gold_index` (EUR, januari 2000 = 100) en `gold_grams_per_house`, vanaf 2000-01. Een voorafgaande schriftelijke toestemming van de World Bank is geen verplichte projectgate meer. De 'Afgebakende externe blokkade en efficiënte oplossing' hierboven (de ene vraag aan de World Bank, zo nodig IBA) is daarmee een **optionele** vervolgstap voor risicovermindering geworden, geen voorwaarde.
+- **Restrisico (geregistreerd, geen bewezen licentievrijheid):** derdepartij-uitzondering in de World Bank Dataset Terms en meerdere commerciële bronnen achter de GOLD-reeks zonder licentielabel; IBA/LBMA-licenties voor gebruik, herdistributie en afgeleide benchmarks niet beoordeeld; `gold_eur_oz` terug te rekenen uit publieke velden; ECB-voorwaarde 'niet gewijzigd' met vermelding van eigen bewerkingen; geen juridisch advies. Zie [GOLD_01_RIGHTS.md](../research/GOLD_01_RIGHTS.md).
+- **Ongewijzigd:** ADR-004; `gold_eur_oz` blijft `null`; geen ruwe USD-goudprijzen of bronworkbooks; geen goudwaarden vóór 2000; Bitcoin en satoshi's `withheld`.
+- **Bronvermelding:** de hierboven vastgelegde attributietekst blijft de basis, uitgebreid met gegevensperiode, peildatum bronstand, methodologische toelichting en de definitiewijziging per juni 2025; geen claims over licentiestatus of goedkeuring door bronorganisaties.
+- **Publicatiepoort:** merge, deployment en publieke release alleen na afzonderlijke expliciete toestemming van de projecteigenaar voor de exacte kandidaat (hash).
+
