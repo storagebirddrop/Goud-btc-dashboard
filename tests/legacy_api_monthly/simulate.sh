@@ -21,13 +21,14 @@ database_id = "gold-housing"
 EOT
 run() { # $1=label $2=withdb(0/1) rest=extra args
   label=$1; withdb=$2; shift 2
+  PORT=$((PORT+1)) # fresh port per run: a lingering workerd from the previous run must not answer
   CFG=""; [ "$withdb" = 1 ] && CFG="--d1 DB=gold-housing"
   $WRANGLER pages dev dist $CFG --local --port "$PORT" --persist-to "$WORK/state" "$@" >"$WORK/$label.log" 2>&1 &
   pid=$!
   for i in $(seq 1 40); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep 1; done
   code=$(curl -s -o "$WORK/$label.body" -w '%{http_code}' "http://127.0.0.1:$PORT/api/monthly")
   echo "[$label] HTTP $code"; head -c 700 "$WORK/$label.body"; echo
-  kill $pid 2>/dev/null; wait $pid 2>/dev/null; sleep 1
+  kill $pid 2>/dev/null; pkill -f -- "--port $PORT" 2>/dev/null; wait $pid 2>/dev/null; sleep 1
 }
 # (a) no D1 binding
 run nobinding 0

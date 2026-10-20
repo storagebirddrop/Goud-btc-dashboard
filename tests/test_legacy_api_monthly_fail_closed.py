@@ -15,6 +15,8 @@ def test_function_is_gated_and_gold_free_statically():
     src = FUNCTION.read_text(encoding="utf-8")
     assert "LEGACY_D1_API_ENABLED !== 'true'" in src
     assert "status: 404" in src
+    assert "status: 503" in src and "legacy_d1_unavailable" in src
+    assert "api-monthly-integration" not in src
     sql = re.search(r"prepare\(`(.*?)`\)", src, re.S).group(1)
     assert "gold" not in sql.lower()
     for field in ("gold_eur_oz", "gold_grams_per_house", "gold_index"):
