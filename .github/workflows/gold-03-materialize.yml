@@ -4,6 +4,9 @@
 name: GOLD-03 materialize (temporary)
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/gold-03-publication-prep]
+    paths: ['.github/gold-03-run-trigger']
 permissions:
   contents: write
 concurrency:
