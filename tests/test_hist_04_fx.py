@@ -94,6 +94,10 @@ class Hist04FxTests(unittest.TestCase):
         html = f'<a href="x?series={h1}">Netherlands -- Spot Exchange rate</a> <a href="x?series={h2}">Japan</a>'
         self.assertEqual([h for h, _ in fx.discover_series(html, width=60)], [h1])
 
+    def test_extract_links_filters_and_dedupes(self):
+        html = '<a href="/datadownload/Choose.aspx?rel=G5">a</a><a href="/about.htm">b</a><a href="/datadownload/Choose.aspx?rel=G5">c</a>'
+        self.assertEqual(fx.extract_links(html), ["/datadownload/Choose.aspx?rel=G5"])
+
     def test_url_allowlist_registered(self):
         from tools import hist_02_acquire as a
         self.assertIn(fx.ECB_DAILY, a.SOURCES)

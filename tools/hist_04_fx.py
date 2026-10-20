@@ -288,6 +288,52 @@ def discover_series(html_text, width=160):
     return out
 
 
+HREF_RE = re.compile(r"""href\s*=\s*["']([^"'#]+)""", re.I)
+LINK_FILTER = re.compile(r"datadownload|/g5|g5a|\.csv|\.xml|\.txt|\.zip|histor|archive", re.I)
+
+
+def extract_links(html_text, limit=80):
+    """Distinct hrefs on a documentation page that look like data/archive links (diagnostic only)."""
+    out = []
+    for h in HREF_RE.findall(html_text):
+        if LINK_FILTER.search(h) and h not in out:
+            out.append(h[:200])
+    return out[:limit]
+
+
+def probe_status(url):
+    """Diagnostic only: first-response status/Location/content-type, no redirect followed, no body read."""
+    from urllib.error import HTTPError
+    from urllib.parse import urlsplit
+    from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+    class NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    try:
+        r = build_opener(NoRedirect).open(Request(url, headers={"User-Agent": "Goud-btc-dashboard/HIST-04 probe"}), timeout=30)
+        return {"status": r.status, "content_type": r.headers.get("Content-Type"), "length": r.headers.get("Content-Length")}
+    except HTTPError as exc:
+        loc = exc.headers.get("Location")
+        parts = urlsplit(loc) if loc else None
+        return {"status": exc.code, "location_host": parts.hostname if parts else None,
+                "location_path": parts.path if parts else None, "server": exc.headers.get("Server")}
+    except OSError as exc:
+        return {"error_class": type(exc).__name__}
+
+
+PROBE_URLS = [
+    FED_BASE + "Choose.aspx?rel=G5", FED_BASE + "Build.aspx?rel=G5", FED_BASE + "Download.aspx?rel=G5",
+    FED_BASE + "Output.aspx?rel=G5&filetype=csv&label=include&layout=seriescolumn",
+    "https://www.federalreserve.gov/releases/g5/", "https://www.federalreserve.gov/releases/g5a/",
+    "https://www.federalreserve.gov/releases/g5/current/default.htm",
+    "https://www.federalreserve.gov/releases/g5/about.htm",
+    "https://www.federalreserve.gov/datadownload/",
+    "https://fred.stlouisfed.org/graph/fredgraph.csv?id=EXNEUS",
+    "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXNLUS",
+]
+
+
 def fed_url(series_hash):
     return (FED_BASE + "Output.aspx?rel=G5&series=" + series_hash +
             "&lastobs=&from=&to=&filetype=csv&label=include&layout=seriescolumn")
@@ -321,13 +367,14 @@ def main(argv=None):
         except (hist_02_acquire.AcquisitionError, FxError) as exc:
             fail(sid, exc)
 
+    s["probes"] = {u: probe_status(u) for u in PROBE_URLS}
     hashes = []
     for sid in DISCOVERY_PAGES:
         try:
             raw, rec = hist_02_acquire.fetch(sid)
             text = raw.decode("utf-8", "replace")
             found = discover_series(text)
-            s["discovery"][sid] = {"sha256": rec["sha256"], "bytes": rec["bytes"],
+            s["discovery"][sid] = {"sha256": rec["sha256"], "bytes": rec["bytes"], "links": extract_links(text),
                                    "all_series_hashes": len(set(HASH_RE.findall(text))),
                                    "netherlands_hits": [{"hash": h, "context": c} for h, c in found][:12]}
             hashes += [h for h, _ in found]
