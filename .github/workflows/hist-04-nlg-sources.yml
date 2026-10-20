@@ -31,7 +31,7 @@ jobs:
         if: always()
         run: |
           if [ -f "$RUNNER_TEMP/hist-04-nlg-sources.json" ]; then
-            python -c "import json,sys; d=json.load(open(sys.argv[1])); [print('RESULT', json.dumps(r, sort_keys=True, separators=(',',':'))[:3500]) for r in d['results']]" "$RUNNER_TEMP/hist-04-nlg-sources.json"
+            python -c "import json,sys; d=json.load(open(sys.argv[1])); [print('RESULT', json.dumps(r, sort_keys=True, separators=(',',':'))[:2200]) for r in d['results']]; [print('SUMMARY', k, json.dumps(d[k], sort_keys=True, separators=(',',':'))[:6000]) for k in ('fed_h10_combined_monthly_coverage','fed_h10_file_overlap_months','cross_checks_vs_fed_h10','fixed_rate_verified_in','defects')]" "$RUNNER_TEMP/hist-04-nlg-sources.json"
           fi
       - name: Metadata-only review artifact
         if: always()

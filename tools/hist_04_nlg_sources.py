@@ -29,7 +29,8 @@ START, END = "1975-01", "1998-12"
 FIXED_NLG_PER_EUR = Decimal("2.20371")
 MISSING = {"", ".", "ND", "NA", "N/A", "NC", "NaN", "nan", "-"}
 VALUE_RE = re.compile(r"\d+(\.\d+)?")
-BOUNDS = {"NLG_PER_USD": (Decimal("1.0"), Decimal("6.0")), "USD_PER_NLG": (Decimal("0.15"), Decimal("1.0"))}
+BOUNDS = {"NLG_PER_USD": (Decimal("1.0"), Decimal("6.0")), "USD_PER_NLG": (Decimal("0.15"), Decimal("1.0")),
+          "EUR_PER_USD": (Decimal("0.4"), Decimal("3.0"))}
 MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
 
 H10 = "https://www.federalreserve.gov/releases/h10/hist/"
@@ -57,7 +58,8 @@ CANDIDATES = {
     "bis-api-all-nl": (BIS_API + "*.NL?format=csv", "csv", "bis"),
     "imf-api-er-nld": ("https://api.imf.org/external/sdmx/2.1/data/IMF.STA,ER/NLD.XDC_USD.PA_RT.M?startPeriod=1975-01&endPeriod=1998-12&format=sdmx-csv", "csv", "imf"),
     "imf-legacy-ifs": ("https://dataservices.imf.org/REST/SDMX_JSON.svc/CompactData/IFS/M.NL.ENDA_XDC_USD_RATE", "json", "imf"),
-    "oecd-finmark-nld": ("https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/NLD.M.CCUS......?startPeriod=1975-01&endPeriod=1998-12&format=csvfilewithlabels", "csv", "oecd"),
+    "oecd-finmark-nld-m": ("https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/NLD.M.......?startPeriod=1975-01&endPeriod=1998-12&format=csvfilewithlabels", "csv", "oecd"),
+    "oecd-dataflows": ("https://sdmx.oecd.org/public/rest/dataflow/all", "xml", "oecd"),
     "dnb-statistics": ("https://www.dnb.nl/statistieken/", "html", "dnb"),
     "dnb-statistics-en": ("https://www.dnb.nl/en/statistics/", "html", "dnb"),
     "dnb-guilder-exchange": ("https://www.dnb.nl/en/money-exchange/exchanging-guilder-banknotes/", "html", "dnb"),
@@ -242,7 +244,7 @@ def detect_direction(text, values):
     by_text = None
     if re.search(r"GUILDERS?\s*/\s*(U\.?S\.?\s*\$|US\$|USD|DOLLAR)|GUILDERS?\s+PER\s+(ONE\s+)?(U\.?S\.?\s*)?(\$|DOLLAR)|"
                  r"PER\s+1\s+(AMERIKAANSE|US)\s+DOLLAR\s*,?\s*IN\s+GULDEN|AMERIKAANSE\s+DOLLAR.{0,20}IN\s+GULDEN|"
-                 r"GULDEN\s+PER\s+(1\s+)?(AMERIKAANSE|US)", t):
+                 r"GULDEN\s+PER\s+(1\s+)?(AMERIKAANSE|US)|AMERIKAANSE\s+DOLLAR\s*\(PER\s+1\).*GULDENS", t):
         by_text = "NLG_PER_USD"
     if re.search(r"(U\.?S\.?\s*\$|US\$|USD|DOLLARS?)\s*/\s*GUILDER|DOLLARS?\s+PER\s+(ONE\s+)?GUILDER", t):
         by_text = "USD_PER_NLG" if by_text is None else "CONFLICTING_TEXT"
@@ -388,7 +390,7 @@ def parse_cbs(props_raw, data_raw, title_regex=r"amerikaanse dollar|us dollar"):
     ks = sorted(monthly)
     return {"property_key": str(key), "property_title": str(prop.get("Title"))[:100], "property_unit": str(prop.get("Unit"))[:30],
             "property_description": str(prop.get("Description") or "")[:200], "direction": d, "rows": len(data["value"]),
-            "missing_values": missing, "monthly_points": len(monthly), "annual_points": len(annual), "first_month": ks[0], "last_month": ks[-1],
+            "missing_values": missing, "decimal_places_min_max": [min(max(0, -v.as_tuple().exponent) for v in monthly.values()), max(max(0, -v.as_tuple().exponent) for v in monthly.values())], "monthly_points": len(monthly), "annual_points": len(annual), "first_month": ks[0], "last_month": ks[-1],
             "next_link_present": any(k.endswith("nextLink") for k in data),
             "coverage_1975_1998": coverage(inr), "anchor_monthly_values": anchors(inr)}, inr, d["direction"]
 
@@ -399,21 +401,58 @@ def cbs_info_facts(raw):
     return {k: str(row.get(k))[:260] for k in ("Title", "ShortDescription", "Summary", "Modified", "Frequency", "Period", "Language") if k in row}
 
 
-# ---------------------------------------------------------------- SDMX-like / BIS CSV scanning
+# ---------------------------------------------------------------- SDMX-like (BIS / IMF / OECD) scanning
 TIME_COLS = {"TIME_PERIOD", "Time period", "TIME"}
 OBS_COLS = {"OBS_VALUE", "Observation value", "Value"}
 PERIOD_RE = re.compile(r"\d{4}(-\d{2}(-\d{2})?|-Q\d|-A1)?")
 
 
 def _is_nl(attrs):
-    return any(v == "NL" or v == "NLG" or re.search(r"netherlands|dutch guilder", v, re.I) for v in attrs)
+    return any(v in ("NL", "NLD", "NLG") or re.search(r"netherlands|dutch guilder", v, re.I) for v in attrs)
 
 
 def _period_key(p):
-    return p[:7] if len(p) >= 7 else None
+    m = re.fullmatch(r"(\d{4})-M(\d{2})", p)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    return p[:7] if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", p) else None
 
 
-def scan_sdmx_csv(rows, max_series=6):
+def series_entry(attrs, points, missing):
+    """attrs: dict; points: {period: Decimal}. Returns (entry, monthly, direction or None)."""
+    if not points:
+        return {"attrs": dict(list(attrs.items())[:14]), "observations": 0, "missing_markers": missing}, {}, None
+    ps = sorted(points)
+    mon = {}
+    for p in ps:
+        k = _period_key(p)
+        if k and START <= k <= END:
+            mon.setdefault(k, []).append(points[p])
+    monthly = {k: sum(v) / len(v) for k, v in mon.items()}
+    counts = {k: len(v) for k, v in mon.items()}
+    entry = {"attrs": dict(list(attrs.items())[:14]), "observations": len(points), "missing_markers": missing,
+             "first_period": ps[0], "last_period": ps[-1], "coverage_1975_1998": coverage(monthly, counts),
+             "anchor_monthly_means": anchors(monthly)}
+    vals = list(points.values())
+    places = [max(0, -v.as_tuple().exponent) for v in vals]
+    entry["decimal_places_min_max"] = [min(places), max(places)]
+    direction = None
+    try:
+        if str(attrs.get("CURRENCY", "")).upper() == "EUR":  # EUR-denominated legacy series: national currency converted at the fixed rate
+            lo, hi = BOUNDS["EUR_PER_USD"]
+            if any(not lo <= v <= hi for v in vals):
+                raise NlgSourceError("VALUE_OUT_OF_RANGE_FOR_DIRECTION")
+            entry["direction"] = {"direction": "EUR_PER_USD", "evidence": "CURRENCY=EUR attribute and value range; NLG = EUR x 2.20371 is a derivation"}
+            direction = "EUR_PER_USD"
+        else:
+            d = detect_direction(" ".join(str(v) for v in attrs.values()), vals)
+            entry["direction"], direction = d, d["direction"]
+    except NlgSourceError as exc:
+        entry["direction_error"] = str(exc)
+    return entry, monthly, direction
+
+
+def scan_sdmx_csv(rows, max_series=8):
     """rows: iterable of lists (csv.reader). Long (TIME_PERIOD/OBS_VALUE) or wide (period columns) layout."""
     it = iter(rows)
     header = None
@@ -433,6 +472,7 @@ def scan_sdmx_csv(rows, max_series=6):
     else:
         raise NlgSourceError("CSV_LAYOUT_UNRECOGNISED " + json.dumps(header[:8]))
     attr_idx = [i for i in range(len(header)) if i not in set(wide) and i not in {tcol, ocol}]
+    names = [header[i] for i in attr_idx]
     series, total, areas = {}, 0, set()
     area_col = next((i for i in attr_idx if header[i].upper() in {"REF_AREA", "REFERENCE AREA", "COUNTRY"}), None)
     for r in it:
@@ -444,42 +484,28 @@ def scan_sdmx_csv(rows, max_series=6):
             areas.add(r[area_col].strip()[:30])
         if not _is_nl(attrs):
             continue
-        key = tuple(a[:40] for a in attrs)
-        s = series.setdefault(key, {})
+        s = series.setdefault(tuple(a[:40] for a in attrs), {"_missing": 0})
         pairs = [(r[tcol].strip(), r[ocol].strip())] if layout == "long" else [(header[i], r[i].strip()) for i in wide if i < len(r)]
         for p, v in pairs:
             if v in MISSING:
-                s.setdefault("_missing", 0)
                 s["_missing"] += 1
                 continue
             if p in s:
                 raise NlgSourceError("DUPLICATE_PERIOD_IN_SERIES")
             s[p] = to_decimal(v)
-    out = []
-    for key, s in series.items():
+    return _finish_scan(layout, total, areas, header, [(dict(zip(names, k)), v) for k, v in series.items()], max_series)
+
+
+def _finish_scan(layout, total, areas, header, items, max_series):
+    out, monthlies = [], {}
+    for attrs, s in items:
         miss = s.pop("_missing", 0)
-        if not s:
-            out.append({"attrs": dict(zip([header[i] for i in attr_idx], key)), "observations": 0, "missing_markers": miss})
-            continue
-        ps = sorted(s)
-        mon = {}
-        for p in ps:
-            k = _period_key(p)
-            if k and START <= k <= END:
-                mon.setdefault(k, []).append(s[p])
-        monthly = {k: sum(v) / len(v) for k, v in mon.items()}
-        counts = {k: len(v) for k, v in mon.items()}
-        entry = {"attrs": dict(list(zip([header[i] for i in attr_idx], key))[:14]), "observations": len(s), "missing_markers": miss,
-                 "first_period": ps[0], "last_period": ps[-1], "coverage_1975_1998": coverage(monthly, counts),
-                 "anchor_monthly_means": anchors(monthly)}
-        vals = [v for v in s.values()]
-        try:
-            entry["direction"] = detect_direction(" ".join(key), vals)
-        except NlgSourceError as exc:
-            entry["direction_error"] = str(exc)
+        entry, monthly, direction = series_entry(attrs, s, miss)
         out.append(entry)
-    return {"layout": layout, "rows_scanned": total, "distinct_areas": len(areas) if areas else None, "header": header[:12] if layout == "long" else header[:8],
-            "nl_series_count": len(out), "nl_series": out[:max_series], "_monthly_for_cross": None}
+        if monthly:
+            monthlies[f"{attrs.get('FREQ', '?')}{attrs.get('COLLECTION', '')}:{len(out)}"] = (monthly, direction)
+    return {"layout": layout, "rows_scanned": total, "distinct_areas": len(areas) if areas else None, "header": header[:12],
+            "nl_series_count": len(out), "nl_series": out[:max_series], "_monthlies": monthlies}
 
 
 def scan_csv_bytes(raw):
@@ -504,6 +530,49 @@ def scan_zip_bytes(raw, max_member=400_000_000):
     return res
 
 
+def scan_sdmx_xml(raw, max_series=8):
+    """SDMX 2.1 structure-specific / generic data XML: series elements whose children carry TIME_PERIOD + OBS_VALUE."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError as exc:
+        raise NlgSourceError("NOT_XML") from exc
+    items = []
+    for el in root.iter():
+        kids = [c for c in el if "TIME_PERIOD" in c.attrib and "OBS_VALUE" in c.attrib]
+        if not kids:
+            continue
+        s = {"_missing": 0}
+        for c in kids:
+            v = c.attrib["OBS_VALUE"].strip()
+            if v in MISSING:
+                s["_missing"] += 1
+                continue
+            p = c.attrib["TIME_PERIOD"]
+            if p in s:
+                raise NlgSourceError("DUPLICATE_PERIOD_IN_SERIES")
+            s[p] = to_decimal(v)
+        items.append(({k: v[:60] for k, v in el.attrib.items()}, s))
+    if not items:
+        tags = sorted({re.sub(r"\{.*\}", "", e.tag) for e in root.iter()})[:12]
+        raise NlgSourceError("XML_NO_SERIES " + json.dumps(tags))
+    return _finish_scan("xml", len(items), set(), ["xml"], items, max_series)
+
+
+def dataflow_names(raw, pattern=r"exchange|xrate|currenc", limit=15):
+    """Metadata only: dataflow ids/names matching a pattern in an SDMX structure message."""
+    text = raw.decode("utf-8", "replace")
+    out = []
+    for m in re.finditer(r"""(?is)<(?:\w+:)?Dataflow\b[^>]*\bid=["']([^"']+)["'][^>]*>(.*?)</(?:\w+:)?Dataflow>""", text):
+        nm = re.search(r"(?is)<(?:\w+:)?Name[^>]*>(.*?)</(?:\w+:)?Name>", m.group(2))
+        label = strip_tags(nm.group(1)) if nm else ""
+        if re.search(pattern, m.group(1) + " " + label, re.I):
+            out.append({"id": m.group(1)[:80], "name": label[:100]})
+        if len(out) >= limit:
+            break
+    return out
+
+
 # ---------------------------------------------------------------- probes
 def probe_status(url):
     """Diagnostic only for a failed fetch: first-response status/location/content-type, no redirect followed."""
@@ -526,7 +595,7 @@ def probe_status(url):
         return {"error_class": type(exc).__name__}
 
 
-PAGE_KEYWORDS = r"noon buying|public domain|certified|discontinu|guilder|netherlands|historical|copyright|licen[cs]e|CC-BY|reuse|source|bron"
+PAGE_KEYWORDS = r"noon buying|public domain|certified|discontinu|guilder|netherlands|historical|copyright|licen[cs]e|CC-BY|reuse|re-use|source|bron"
 LINK_FILTERS = {"fed": r"_ne\.|neth|g5|g5a|hist|dat\d\d", "fred": r"exneus|download|csv|txt", "cbs": r"licen|copyright|cc-by|bron|7139",
                 "dnb": r"wissel|exchange|koers|rate|statist|api|open|data", "fixed": r"2866|conversion", "bis": r"xru|bulk", "imf": r"exchange|xru"}
 
@@ -539,21 +608,18 @@ def run_candidate(sid, results, monthly_store):
     except hist_02_acquire.AcquisitionError as exc:
         entry.update({"fetch": "FAILED", "error": str(exc)[:200], "probe": probe_status(url)})
         results.append(entry)
-        return
+        return []
     entry.update({"fetch": "HTTP_200", "bytes": rec["bytes"], "sha256": rec["sha256"]})
     defects = []
     try:
         if sid.endswith("-txt") and group in ("fed", "fred"):
-            gran = "monthly" if group == "fred" else "daily"
-            century = 1900
-            parsed = parse_dated_text(raw, century=century)
+            parsed = parse_dated_text(raw, century=1900)
             entry["two_digit_year_rule"] = "century 1900 (file span 1971-1999 only; chronological order enforced)"
-            entry["parsed"], monthly, direction = summarize_series(parsed, gran)
+            entry["parsed"], monthly, direction = summarize_series(parsed, "monthly" if group == "fred" else "daily")
             monthly_store[sid] = (monthly, direction)
         elif fmt == "html" and sid.endswith("-htm") and group == "fed":
-            plain_pre = re.findall(r"(?is)<pre[^>]*>", raw.decode("utf-8", "replace"))
             entry["page"] = page_facts(raw, PAGE_KEYWORDS, LINK_FILTERS["fed"])
-            entry["has_pre_block"] = bool(plain_pre)
+            entry["has_pre_block"] = bool(re.search(r"(?is)<pre[^>]*>", raw.decode("utf-8", "replace")))
         elif group == "fixed":
             entry["fixed_rate"] = extract_fixed_rate(raw)
         elif sid == "cbs-7139shfo-info":
@@ -564,18 +630,20 @@ def run_candidate(sid, results, monthly_store):
             props_raw, _ = hist_02_acquire.fetch("cbs-7139shfo-props")
             entry["parsed"], monthly, direction = parse_cbs(props_raw, raw)
             monthly_store[sid] = (monthly, direction)
+        elif sid.endswith("-dataflows"):
+            entry["dataflows_matching"] = dataflow_names(raw)
         elif fmt == "zip":
             entry["scan"] = scan_zip_bytes(raw)
-        elif fmt == "csv":
+        elif fmt in ("csv", "xml", "json") and group in ("bis", "imf", "oecd"):
+            head = re.sub(r"\s+", " ", raw[:160].decode("utf-8", "replace"))
             try:
-                entry["scan"] = scan_csv_bytes(raw)
+                entry["scan"] = scan_sdmx_xml(raw) if raw.lstrip()[:1] == b"<" else scan_csv_bytes(raw)
             except NlgSourceError as exc:  # exploratory API guesses: unparsed is a finding, not a defect
-                head = raw[:160].decode("utf-8", "replace")
                 entry["format_unparsed"] = str(exc)[:160]
-                entry["head_snippet"] = re.sub(r"\s+", " ", head)
-        elif fmt == "json" and group == "imf":
-            entry["format_unparsed"] = "JSON_NOT_PARSED_EXPLORATORY"
-            entry["head_snippet"] = re.sub(r"\s+", " ", raw[:160].decode("utf-8", "replace"))
+                entry["head_snippet"] = head
+            if "scan" in entry:
+                for k, v in entry["scan"].pop("_monthlies").items():
+                    monthly_store[f"{sid}:{k}"] = v
         else:
             entry["page"] = page_facts(raw, PAGE_KEYWORDS, LINK_FILTERS.get(group, r"data"))
     except NlgSourceError as exc:
@@ -585,46 +653,66 @@ def run_candidate(sid, results, monthly_store):
     return defects
 
 
+def cross_checks(store, fed):
+    """Unit identification and agreement of every other series with the combined Fed H.10 monthly means.
+
+    unit_by_comparison is an inference from the median ratio (within 3 percent of 1 => NLG_PER_USD; within 3 percent
+    of 1/2.20371 => EUR_PER_USD, converted back with the fixed rate for comparison ONLY, a labelled derivation)."""
+    out = {}
+    if not fed:
+        return out
+    for key, (mon, declared) in sorted(store.items()):
+        if key.startswith("fed-h10"):
+            continue
+        common = sorted(set(mon) & set(fed))
+        if not common:
+            out[key] = {"common_months": 0}
+            continue
+        ratios = sorted(mon[k] / fed[k] for k in common)
+        med = ratios[len(ratios) // 2]
+        unit = ("NLG_PER_USD" if abs(med - 1) < Decimal("0.03") else
+                "EUR_PER_USD" if abs(med * FIXED_NLG_PER_EUR - 1) < Decimal("0.03") else "UNMATCHED")
+        entry = {"declared_direction": declared, "median_ratio_to_fed": str(med.quantize(Decimal("0.00001"))), "unit_by_comparison": unit}
+        if unit == "EUR_PER_USD":
+            entry["derived_via"] = "NLG = EUR x 2.20371 (derivation for comparison only)"
+            entry.update(compare_monthly({k: mon[k] * FIXED_NLG_PER_EUR for k in common}, {k: fed[k] for k in common}))
+        elif unit == "NLG_PER_USD":
+            entry.update(compare_monthly({k: mon[k] for k in common}, {k: fed[k] for k in common}))
+        out[key] = entry
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--summary-out", required=True)
     ap.add_argument("--only", action="append", choices=sorted(CANDIDATES))
     args = ap.parse_args(argv)
-    results, monthly_store, defects = [], {}, []
+    results, store, defects = [], {}, []
     for sid in (args.only or list(CANDIDATES)):
-        if sid in ("cbs-7139shfo-props",):
+        if sid == "cbs-7139shfo-props":
             continue
         try:
-            d = run_candidate(sid, results, monthly_store)
+            defects += run_candidate(sid, results, store)
         except (hist_02_acquire.AcquisitionError, OSError) as exc:
             results.append({"source_id": sid, "fetch": "FAILED_DURING_PARSE_DEPENDENCY", "error": str(exc)[:200]})
-            d = None
-        defects += d or []
         print(json.dumps({sid: {k: results[-1].get(k) for k in ("fetch", "bytes", "defect", "error")}}, sort_keys=True, default=str), flush=True)
-    cross = {}
-    ids = sorted(monthly_store)
-    for i, a in enumerate(ids):
-        for b in ids[i + 1:]:
-            if monthly_store[a][1] == monthly_store[b][1]:
-                cross[f"{a} vs {b}"] = compare_monthly(monthly_store[a][0], monthly_store[b][0])
-    fed = {}
+    fed, overlap = {}, []
     for sid in ("fed-h10-dat89-ne-txt", "fed-h10-dat96-ne-txt"):
-        if sid in monthly_store:
-            for k, v in monthly_store[sid][0].items():
-                if k in fed and fed[k] != v:
-                    cross.setdefault("fed_file_overlap_conflict", []).append(k)
+        if sid in store:
+            for k, v in store[sid][0].items():
+                if k in fed:
+                    overlap.append(k)
                 fed[k] = v
-    fed_dir = {monthly_store[s][1] for s in ("fed-h10-dat89-ne-txt", "fed-h10-dat96-ne-txt") if s in monthly_store}
     summary = {"status": "DONE", "range": [START, END], "fixed_rate_expected": str(FIXED_NLG_PER_EUR), "rights_status": "UNVERIFIED",
-               "publication_authorized": False, "source_approved": False, "results": results, "cross_checks": cross,
-               "fed_h10_combined_monthly_coverage": coverage(fed) if fed and len(fed_dir) == 1 else None,
+               "publication_authorized": False, "source_approved": False, "results": results,
+               "fed_h10_combined_monthly_coverage": coverage(fed) if fed else None, "fed_h10_file_overlap_months": overlap,
+               "cross_checks_vs_fed_h10": cross_checks(store, fed),
                "fixed_rate_verified_in": [r["source_id"] for r in results if r.get("fixed_rate", {}).get("status") == "FOUND"],
                "defects": defects}
     out = Path(args.summary_out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n")
-    print(json.dumps({k: summary[k] for k in ("status", "cross_checks", "fed_h10_combined_monthly_coverage", "fixed_rate_verified_in", "defects")},
-                     sort_keys=True, default=str))
+    print(json.dumps({k: summary[k] for k in ("status", "fed_h10_file_overlap_months", "fixed_rate_verified_in", "defects")}, sort_keys=True))
     return 1 if defects else 0
 
 

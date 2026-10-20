@@ -167,3 +167,58 @@ def test_main_exits_zero_when_unreachable_and_one_on_defect(tmp_path, monkeypatc
     monkeypatch.setattr(hist_02_acquire, "fetch", lambda sid, **k: (b"h GUILDERS/US$\n1975-01-02 2.5\n1975-01-02 2.5\n", {"bytes": 1, "sha256": "x"}))
     assert m.main(["--summary-out", str(out), "--only", "fed-h10-dat89-ne-txt"]) == 1
     assert json.loads(out.read_text())["defects"] == ["fed-h10-dat89-ne-txt"]
+
+
+BIS_EUR = (b"FREQ,REF_AREA,CURRENCY,COLLECTION,TITLE,TIME_PERIOD,OBS_VALUE\n"
+           b"M,NL,EUR,A,Exchange rates against USD Netherlands -,1975-01,1.1147\n"
+           b"M,NL,EUR,A,Exchange rates against USD Netherlands -,1975-02,1.1000\n")
+
+
+def test_eur_denominated_series_is_labelled_not_assumed_nlg():
+    r = m.scan_csv_bytes(BIS_EUR)
+    e = r["nl_series"][0]
+    assert e["direction"]["direction"] == "EUR_PER_USD" and "derivation" in e["direction"]["evidence"]
+    assert e["decimal_places_min_max"] == [4, 4] and list(r["_monthlies"]) == ["MA:1"]
+    bad = BIS_EUR.replace(b"1.1147", b"9.0")
+    assert "direction_error" in m.scan_csv_bytes(bad)["nl_series"][0]
+
+
+def test_cross_check_identifies_unit_by_comparison():
+    fed = {"1975-01": Decimal("2.4565"), "1975-02": Decimal("2.4")}
+    eur = {k: v / m.FIXED_NLG_PER_EUR for k, v in fed.items()}
+    store = {"a": (dict(fed), "NLG_PER_USD"), "b": (eur, "EUR_PER_USD"), "c": ({"1975-01": Decimal("9")}, "NLG_PER_USD"),
+             "fed-h10-x": (fed, "NLG_PER_USD"), "d": ({"1980-01": Decimal("2")}, "NLG_PER_USD")}
+    out = m.cross_checks(store, fed)
+    assert out["a"]["unit_by_comparison"] == "NLG_PER_USD" and Decimal(out["a"]["max_rel_diff"]) == 0
+    assert out["b"]["unit_by_comparison"] == "EUR_PER_USD" and "derivation" in out["b"]["derived_via"]
+    assert out["c"]["unit_by_comparison"] == "UNMATCHED" and "max_rel_diff" not in out["c"]
+    assert out["d"] == {"common_months": 0} and "fed-h10-x" not in out
+    assert m.cross_checks(store, {}) == {}
+
+
+XML = (b"<?xml version='1.0'?><m:Message xmlns:m='urn:x'><m:DataSet><Series COUNTRY='NLD' INDICATOR='XDC_USD'>"
+       b"<Obs TIME_PERIOD='1975-01' OBS_VALUE='2.4565'/><Obs TIME_PERIOD='1975-02' OBS_VALUE='NaN'/>"
+       b"<Obs TIME_PERIOD='1975-03' OBS_VALUE='2.5'/></Series></m:DataSet></m:Message>")
+
+
+def test_sdmx_xml_scan_and_failures():
+    r = m.scan_sdmx_xml(XML)
+    e = r["nl_series"][0]
+    assert e["observations"] == 2 and e["missing_markers"] == 1 and e["attrs"]["COUNTRY"] == "NLD"
+    assert "1975-02" in e["coverage_1975_1998"]["missing_months"]
+    with pytest.raises(m.NlgSourceError, match="NOT_XML"):
+        m.scan_sdmx_xml(b"<a>")
+    with pytest.raises(m.NlgSourceError, match="XML_NO_SERIES"):
+        m.scan_sdmx_xml(b"<a><b/></a>")
+    with pytest.raises(m.NlgSourceError, match="DUPLICATE_PERIOD"):
+        m.scan_sdmx_xml(XML.replace(b"1975-03", b"1975-01"))
+
+
+def test_dataflow_names_and_cbs_text_evidence():
+    x = b"<s:Dataflow id='DF_X' agencyID='A'><c:Name>Exchange rates</c:Name></s:Dataflow><s:Dataflow id='DF_Y'><c:Name>Prices</c:Name></s:Dataflow>"
+    assert m.dataflow_names(x) == [{"id": "DF_X", "name": "Exchange rates"}]
+    props, data = _cbs([("1975MM01", 2.5)], title="Amerikaanse dollar (per 1)")
+    d = json.loads(props)
+    d["value"][0]["Unit"] = "guldens."
+    s, _, _ = m.parse_cbs(json.dumps(d).encode(), data)
+    assert s["direction"]["evidence"] == "TEXT_AND_VALUE_RANGE" and s["decimal_places_min_max"] == [1, 1]
