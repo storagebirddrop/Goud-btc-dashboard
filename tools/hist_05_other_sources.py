@@ -34,11 +34,10 @@ from tools.hist_04_nlg_sources import page_facts, probe_status, strip_tags, data
 
 OECD = "https://sdmx.oecd.org/public/rest/data/OECD.ECO.MPD,DSD_AN_HOUSE_PRICES@DF_HOUSE_PRICES,1.0/"
 BIS_API = "https://stats.bis.org/api/v2/data/dataflow/BIS/"
-DALLAS = "https://www.dallasfed.org/-/media/Documents/institute/houseprice/"
 # id -> (url, format, group, kind). kind: data (machine-readable) | page (documentation / licence text).
 CANDIDATES = {
     # (a) NVM and Dutch compilations
-    "nvm-marktinformatie": ("https://www.nvm.nl/marktinformatie/marktinformatie-koopwoningen/", "html", "nvm", "page"),
+    "nvm-marktinformatie": ("https://www.nvm.nl/wonen/marktinformatie-wonen/", "html", "nvm", "page"),
     "nvm-copyright": ("https://www.nvm.nl/special-pages/copyright/", "html", "nvm", "page"),
     "nvm-home": ("https://www.nvm.nl/", "html", "nvm", "page"),
     "vastgoedmarkt-kerncijfers-pdf": ("https://vmn-vastgoedmarkt.imgix.net/uploads/2024/07/kerncijfers-vastgoedmarkt-1974-2024.pdf", "pdf", "compilation", "pdf_table"),
@@ -55,6 +54,9 @@ CANDIDATES = {
     "bis-pp-selected-page": ("https://www.bis.org/statistics/pp_selected.htm", "html", "bis", "page"),
     "bis-pp-long-page": ("https://www.bis.org/statistics/pp_long.htm", "html", "bis", "page"),
     "bis-terms": ("https://www.bis.org/about/terms-conditions", "html", "bis", "page"),
+    "bis-legal": ("https://data.bis.org/help/legal", "html", "bis", "page"),
+    "bis-pp-selected-documentation-pdf": ("https://www.bis.org/statistics/pp_selected_documentation.pdf", "pdf", "bis", "pdf_text"),
+    "bis-pp-sources-pdf": ("https://www.bis.org/statistics/pp_sources.pdf", "pdf", "bis", "pdf_text"),
     "bis-data-portal-rpp": ("https://data.bis.org/topics/RPP", "html", "bis", "page"),
     # (c) OECD
     "oecd-hp-nld": (OECD + "NLD.....?format=csv", "csv", "oecd", "sdmx_csv"),
@@ -63,12 +65,14 @@ CANDIDATES = {
     "oecd-terms": ("https://www.oecd.org/en/about/terms-conditions.html", "html", "oecd", "page"),
     # (d) long-run academic / institutional
     "dallas-houseprice-page": ("https://www.dallasfed.org/research/international/houseprice", "html", "dallas", "page"),
-    "dallas-hp2606-xlsx": (DALLAS + "hp2606.xlsx", "xlsx", "dallas", "xlsx"),
-    "dallas-hp2603-xlsx": (DALLAS + "hp2603.xlsx", "xlsx", "dallas", "xlsx"),
+    "dallas-hp2604-xlsx": ("https://www.dallasfed.org/~/media/documents/research/international/houseprice/hp2604.xlsx", "xlsx", "dallas", "xlsx"),
+    "dallas-hp2603-xlsx": ("https://www.dallasfed.org/~/media/documents/research/international/houseprice/hp2603.xlsx", "xlsx", "dallas", "xlsx"),
     "jst-macrohistory-page": ("https://www.macrohistory.net/database/", "html", "jst", "page"),
     "jst-licence-terms": ("https://www.macrohistory.net/database/licence-terms/", "html", "jst", "page"),
     "jst-r6-xlsx": ("https://www.macrohistory.net/app/download/9834512569/JSTdatasetR6.xlsx?t=1763503850", "xlsx", "jst", "xlsx_panel"),
     "jst-r6-documentation-pdf": ("https://www.macrohistory.net/app/download/9834516169/JST_documentationR6.pdf?t=1676279836", "pdf", "jst", "pdf_text"),
+    "jst-r6-xlsx-cdn": ("https://sfff5b3ac9317c4be.jimcontent.com/download/version/1763503850/module/9834512569/name/JSTdatasetR6.xlsx", "xlsx", "jst", "xlsx_panel"),
+    "jst-r6-documentation-pdf-cdn": ("https://sfff5b3ac9317c4be.jimcontent.com/download/version/1676279836/module/9834516169/name/JST_documentationR6.pdf", "pdf", "jst", "pdf_text"),
     "jst-macrohistory-home": ("https://www.macrohistory.net/", "html", "jst", "page"),
     "imf-ghw-page": ("https://www.imf.org/en/Topics/Global-Housing-Watch", "html", "imf", "page"),
     "eurostat-hpi-q-nl": ("https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/PRC_HPI_Q/Q.TOTAL.I15_Q.NL?format=SDMX-CSV", "csv", "eurostat", "sdmx_csv"),
@@ -87,6 +91,7 @@ REFERENCES = {
     "ecb-rpp": "ECB residential property price statistics (RPP); start period expected well after 1990 [K], not fetched.",
 }
 
+PDF_SENTENCE_RE = r"house price|housing price|hpnom|hpreal|residential property|Netherlands|Dutch|Kadaster|NVM"
 PERIOD_RE = re.compile(r"(\d{4})(?:-?Q([1-4])|-(\d{2}))?")
 TIME_COLS = {"TIME_PERIOD", "Time period", "TIME PERIOD", "DATE"}
 OBS_COLS = {"OBS_VALUE", "Observation value", "Observation Value", "VALUE_OBS"}
@@ -161,6 +166,9 @@ def year_ranges(years):
 # ------------------------------------------------------------------ classification
 def detect_base(attrs):
     """Base period of an index from attribute text ('2010=100', 'Index, 2015 = 100', BASE_PER) or None."""
+    mu = re.fullmatch(r"I(\d{2})_[QA]", _code(attrs, "UNIT") or "")
+    if mu:
+        return "20" + mu.group(1)
     bp = _code(attrs, "BASE_PER")
     if bp and re.fullmatch(r"(19|20)\d\d", bp):
         return bp
@@ -184,6 +192,8 @@ def classify_unit(attrs):
     if _code(attrs, "VARIABLE") in {"HPNOM", "HPREAL"}:
         return "INDEX"  # inferred from the JST variable name only; confirmed or refuted by the documentation text in the same run
     if um in {"628", "IX"} or (um or "").startswith("IX"):
+        return "INDEX"
+    if re.fullmatch(r"I\d{2}_[QA]", (_code(attrs, "UNIT") or "")):
         return "INDEX"
     if um in {"771"} or (um or "").startswith(("PC", "PT")):
         return "RATE"
@@ -480,11 +490,15 @@ VM_HEADING = r"Gemiddelde\s+verkoopprijs\s+bestaande\s+woningen"
 
 
 def pdf_to_text(raw):
+    """-> (text or None, diagnostics). Pure in-memory: bytes via stdin, text via stdout."""
+    diag = {"magic": raw[:5].decode("latin-1")}
     try:
         p = subprocess.run(["pdftotext", "-layout", "-", "-"], input=raw, capture_output=True, timeout=60, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return p.stdout.decode("utf-8", "replace") if p.returncode == 0 and p.stdout else None
+    except (OSError, subprocess.SubprocessError) as exc:
+        diag["error"] = type(exc).__name__
+        return None, diag
+    diag.update({"returncode": p.returncode, "stdout_bytes": len(p.stdout), "stderr": p.stderr.decode("utf-8", "replace")[:160]})
+    return (p.stdout.decode("utf-8", "replace") if p.returncode == 0 and p.stdout else None), diag
 
 
 def parse_year_value_table(text, heading=VM_HEADING, window=7000):
@@ -646,6 +660,8 @@ def run_candidate(sid, results, store, cbs):
     entry.update({"fetch": "HTTP_200", "bytes": rec["bytes"], "sha256": rec["sha256"], "label": "REFERENCE_ONLY"})
     if kind == "page":
         entry["page"] = page_facts(raw, DEFINITION_KEYWORDS, r"xlsx|csv|zip|download|data|hp\d{4}|houseprice|\.pdf|licen|terms|copyright")
+        plain = strip_tags(raw.decode("utf-8", "replace"))
+        entry["nvm_sentences"] = [x[:300] for x in re.split(r"(?<=[.!?])\s+", plain) if "NVM" in x and re.search(r"mediaan|gemiddeld|prijs|gulden|transactie|vraagprijs|verkoop", x, re.I)][:5] if group in ("compilation", "nvm") else []
         q = licence_quotes(raw)
         entry["licence_quotes"] = q
         entry["rights_evidence"] = "OFFICIAL_TEXT_READ" if q else "NOT_RETRIEVED"
@@ -654,17 +670,17 @@ def run_candidate(sid, results, store, cbs):
     elif kind == "dataflow_list":
         entry["dataflows_matching"] = dataflow_names(raw, r"house|dwelling|property|residential|price", 25)
     elif kind == "pdf_text":
-        text = pdf_to_text(raw)
+        text, diag = pdf_to_text(raw)
         if text is None:
-            entry["text"] = {"status": "PDFTOTEXT_UNAVAILABLE_OR_FAILED"}
+            entry["text"] = {"status": "PDFTOTEXT_UNAVAILABLE_OR_FAILED", "diag": diag}
         else:
             plain = re.sub(r"\s+", " ", text)
-            sents = [x[:300] for x in re.split(r"(?<=[.!?])\s+", plain) if re.search(r"house price|housing price|hpnom|hpreal|residential property", x, re.I)]
-            entry["text"] = {"status": "OK", "chars": len(plain), "house_price_sentences": sents[:8]}
+            sents = [x[:300] for x in re.split(r"(?<=[.!?])\s+", plain) if re.search(PDF_SENTENCE_RE, x, re.I)]
+            entry["text"] = {"status": "OK", "chars": len(plain), "matching_sentences": sents[:10]}
     elif kind == "pdf_table":
-        text = pdf_to_text(raw)
+        text, diag = pdf_to_text(raw)
         if text is None:
-            entry["table"] = {"status": "PDFTOTEXT_UNAVAILABLE_OR_FAILED"}
+            entry["table"] = {"status": "PDFTOTEXT_UNAVAILABLE_OR_FAILED", "diag": diag}
         else:
             entry["pdf_text_chars"] = len(text)
             tab = parse_year_value_table(text)
@@ -682,6 +698,9 @@ def run_candidate(sid, results, store, cbs):
                     ov["level_ratio_vs_cbs_december"] = level_ratio({y: v for y, v in scale.items() if y >= 2000}, annual_from_cbs(cbs["nl_house_avg_eur"], "december"))
                     entry["overlap_vs_cbs"] = [ov]
             else:
+                if tab["status"] == "HEADING_NOT_FOUND":
+                    tab["lines_with_1975"] = [re.sub(r"\s+", " ", ln)[:90] for ln in text.splitlines() if "1975" in ln][:4]
+                    tab["lines_with_verkoopprijs"] = [re.sub(r"\s+", " ", ln)[:90] for ln in text.splitlines() if re.search("verkoopprijs", ln, re.I)][:4]
                 entry["table"] = tab
         entry["rights_evidence"] = "NOT_RETRIEVED"
     else:  # sdmx_csv / sdmx_zip / xlsx: strict machine parsing, defects propagate
@@ -740,6 +759,8 @@ def digest(doc):
             head["error"] = err[:60]
             head["probe"] = {k: v for k, v in (r.get("probe") or {}).items() if k in ("status", "location_host", "location_path")}
         lines.append("SRC " + json.dumps(head, sort_keys=True, separators=(",", ":")))
+        for q in r.get("nvm_sentences", [])[:5]:
+            lines.append("  NVMSENT " + q[:300])
         for q in r.get("licence_quotes", [])[:3]:
             lines.append("  QUOTE " + q[:260])
         pg = r.get("page")
