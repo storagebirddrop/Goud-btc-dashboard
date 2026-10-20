@@ -1,0 +1,42 @@
+name: CoinGecko full-month coverage (validation only)
+on:
+  workflow_dispatch:
+    inputs:
+      target_month:
+        description: 'Complete calendar month (YYYY-MM)'
+        required: true
+        default: '2026-09'
+        type: string
+      currency:
+        description: 'Quote currency'
+        required: true
+        default: EUR
+        type: choice
+        options:
+          - EUR
+          - USD
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Check full-month daily coverage
+        env:
+          TARGET_MONTH: ${{ inputs.target_month }}
+          QUOTE_CURRENCY: ${{ inputs.currency }}
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m etl.coingecko_monthly_probe
+      - name: Upload metadata-only report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coingecko-monthly-coverage
+          path: coingecko-monthly-report.json
+          if-no-files-found: warn
