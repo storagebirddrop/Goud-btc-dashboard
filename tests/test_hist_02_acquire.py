@@ -58,3 +58,37 @@ def test_missing_and_bad_status():
 def test_source_allowlist():
     with pytest.raises(AcquisitionError, match="UNAPPROVED_SOURCE"):
         validate_url("other", "https://example.com")
+
+def test_header_timeout_classified():
+    def opener_timeout(req, timeout):
+        assert timeout == 30
+        raise TimeoutError("header timeout")
+    with pytest.raises(AcquisitionError, match="NETWORK_TIMEOUT.*phase=response_headers"):
+        fetch("world-bank-gold-history", opener=opener_timeout)
+
+
+def test_body_timeout_classified():
+    class TimedResponse(Response):
+        def read(self, n):
+            assert n == MAX_BYTES + 1
+            raise TimeoutError("body timeout")
+    with pytest.raises(AcquisitionError, match="NETWORK_TIMEOUT.*phase=response_body"):
+        fetch("fred-exneus-history", opener=lambda req, timeout: TimedResponse(b"", SOURCES["fred-exneus-history"][0]))
+
+
+def test_dns_error_classified():
+    import socket
+    def failed(req, timeout):
+        raise socket.gaierror("DNS failure")
+    with pytest.raises(AcquisitionError, match="DNS_ERROR"):
+        fetch("fred-exneus-history", opener=failed)
+
+
+def test_diagnostic_dns_failure():
+    import socket
+    from tools.hist_02_acquire import diagnose
+    def failed(*args, **kwargs):
+        raise socket.gaierror("DNS failure")
+    result = diagnose("fred-exneus-history", resolver=failed)
+    assert result["dns"] == "DNS_ERROR"
+    assert result["tls"] == "NOT_VERIFIED"
