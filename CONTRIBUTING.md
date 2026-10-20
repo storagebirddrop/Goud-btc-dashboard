@@ -6,4 +6,4 @@
 4. Open a pull request. Require CI to pass and review before merge.
 5. Never commit API keys, `.env` files, generated SQL imports, or source CSV exports.
 
-Production deploys and scheduled D1 writes remain disabled until separately reviewed and configured.
+Production deploys remain a separate, reviewed step; a merge to `main` may trigger a Cloudflare Pages deployment.

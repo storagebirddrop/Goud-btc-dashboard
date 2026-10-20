@@ -44,7 +44,7 @@ goedgekeurde bronnen -> immutable raw snapshots -> normalisatie -> QA
 - Publicatie alleen met vooraf goedgekeurde bronlicenties en gecontroleerde attributie.
 
 ## 6. Legacy en documentatieconflicten
-`README.md` en `docs/static-pipeline.md` noemen statisch Pages zonder D1; `docs/next-phase.md` noemt nog staging-D1. Dit is verouderde/alternatieve informatie. **Vereiste repository-opruiming:** legacy documenten markeren of actualiseren; code niet verwijderen zonder afzonderlijk besluit.
+`README.md` en `docs/static-pipeline.md` noemen statisch Pages zonder D1; `docs/next-phase.md` noemt nog staging-D1. Dit is verouderde/alternatieve informatie. **Opruiming uitgevoerd (eigenaarbesluit 2026-10-20):** de D1-code (`etl/main.py`, `etl/d1_import.py`, `etl/validate.py`, `db/`), de Pages Function `frontend/functions/api/monthly.ts`, de twee D1-workflows en de bijbehorende tests zijn verwijderd; de frontend leest uitsluitend `/data/monthly.json`.
 
 ## 7. Ontbrekende bewijzen
 Exacte workflow-run-ID's, commit-SHA op moment van succes, volledige public JSON audit, Cloudflare deploy-status, end-to-end release-integriteit en rollbacktest ontbreken. Zie `VERIFICATION_LOG.md`.

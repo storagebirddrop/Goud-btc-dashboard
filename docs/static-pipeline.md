@@ -16,4 +16,4 @@ To refresh from GitHub, manually dispatch **Update static CBS dashboard data**, 
 
 Set up Cloudflare Pages with this GitHub repo, production branch `main`, root directory `frontend`, build command `npm ci && npm run build`, output directory `dist`. **No D1 binding, Cloudflare API token, or scheduled remote database write required.**
 
-Historical D1 code and tests are retained for now as optional legacy infrastructure; the UI does not use them. Gold/Bitcoin/CPI/fuel series require separate validated source pipelines; placeholders are `null`, never invented data. Review CBS attribution and data terms before public launch.
+The former Cloudflare D1 tooling and the `/api/monthly` Pages Function were removed (owner decision 2026-10-20, ADR-001): the UI reads only `/data/monthly.json`. Gold/Bitcoin/CPI/fuel series require separate validated source pipelines; placeholders are `null`, never invented data. Review CBS attribution and data terms before public launch.
