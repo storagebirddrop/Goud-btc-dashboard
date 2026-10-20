@@ -416,7 +416,7 @@ def status_snippets(html_text, limit=6, width=260):
     """Documentation sentences about discontinuation/history/euro (page text only, not data)."""
     text = re.sub(r"\s+", " ", re.sub(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", " ", html_text, flags=re.S | re.I))
     out = []
-    for sent in re.split(r"(?<=[.!?])\s+", text):
+    for sent in (x.strip() for x in re.split(r"(?<=[.!?])\s+", text)):
         if re.search(r"discontinu|no longer|euro\b|guilder|netherlands|historical", sent, re.I) and len(sent) >= 20:
             out.append(sent[:width])
         if len(out) >= limit:
