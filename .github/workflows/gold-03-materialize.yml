@@ -1,0 +1,55 @@
+# TEMPORARY (GOLD-03 preparation): removed in a follow-up commit before the PR is merged.
+# Builds the reviewed candidate with the repository tooling from the real World Bank/ECB
+# sources, verifies it independently, and commits ONLY the public JSON and the release record.
+name: GOLD-03 materialize (temporary)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: gold-03-materialize
+  cancel-in-progress: false
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/gold-03-publication-prep
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Build and independently verify the candidate (pinned bytes, null-gold baseline)
+        env:
+          GOLD02_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python -m tools.verify_gold_02_independent --output-dir "${RUNNER_TEMP}/gold-03-bundle"
+          sha256sum "${RUNNER_TEMP}/gold-03-bundle/"*
+      - name: Materialize public JSON and release record
+        run: |
+          python -m tools.gold_03_materialize --bundle "${RUNNER_TEMP}/gold-03-bundle" \
+            --review-run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          sha256sum frontend/public/data/monthly.json
+      - name: Upload review bundle (derived data only, no raw sources)
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-03-bundle
+          path: ${{ runner.temp }}/gold-03-bundle/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Commit only the two release files
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain | awk '{print $2}' | sort | tr '\n' ' ')"
+          test "$changed" = "data/gold-release-record.json frontend/public/data/monthly.json " || { echo "Unexpected changes: $changed"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/gold-release-record.json frontend/public/data/monthly.json
+          git commit -m "GOLD-03: generated release candidate bytes and release record (workflow run ${GITHUB_RUN_ID})"
+          for i in 1 2 3; do
+            git pull --rebase origin feat/gold-03-publication-prep && git push origin HEAD:feat/gold-03-publication-prep && exit 0
+            sleep 5
+          done
+          exit 1

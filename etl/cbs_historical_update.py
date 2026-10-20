@@ -15,7 +15,7 @@ from pathlib import Path
 
 from etl.cbs_historical_merge import (
     BASELINE_CSV_SHA256, BASELINE_JSON_SHA256, FIXTURE_SHA256,
-    digest, strict_json, verify_fixture,
+    digest, strict_json, verify_fixture, without_derived_gold,
 )
 from etl.data_quality import validate as validate_data_quality
 from etl.static_export import build
@@ -125,8 +125,8 @@ def generate(fixture_raw, provenance_raw, baseline_csv_raw, baseline_json_raw, l
         raise IntegrityError("Invalid approved JSON coverage")
     if [r["period"] for r in baseline["data"]] != old_dates:
         raise IntegrityError("Approved JSON order/coverage mismatch")
-    if any(set(r) != FIELDS or any(r[k] is not None for k in
-           ("gold_eur_oz", "gold_grams_per_house", "gold_index")) for r in baseline["data"]):
+    # GOLD-03: the approved JSON carries the two derived gold indicators; raw EUR/oz stays null.
+    if any(set(r) != FIELDS or r["gold_eur_oz"] is not None for r in baseline["data"]):
         raise IntegrityError("Approved JSON schema/gold gate mismatch")
     if baseline["data"][0]["hpi_index"] != 100:
         raise IntegrityError("January 2000 index basis changed")
@@ -157,7 +157,7 @@ def generate(fixture_raw, provenance_raw, baseline_csv_raw, baseline_json_raw, l
     if len(rows) != 60 + len(live_dates) or [r["period"] for r in rows[:60]] != [
             h["date"] for h in history]:
         raise IntegrityError("Historical coverage changed")
-    if rows[60:60 + len(old_dates)] != baseline["data"]:
+    if rows[60:60 + len(old_dates)] != without_derived_gold(baseline["data"]):
         raise IntegrityError("Approved JSON observations changed")
     if candidate_csv[len(header) + len(historic):][:len(suffix)] != suffix:
         raise IntegrityError("Approved CSV bytes changed")

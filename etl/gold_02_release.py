@@ -43,8 +43,13 @@ def make_bundle(housing_path, baseline_path, gold_candidate, *,
             changes.append({"period": current["period"], "fields": changed})
         if current["gold_eur_oz"] is not None:
             raise ValueError("Raw-derived EUR/oz cannot be published")
-    if len(changes) != len(candidate):
+    # Either every month gains the two indicators (null-gold baseline) or the baseline already
+    # is the published GOLD-03 artifact and the candidate must reproduce it exactly (0 changes).
+    if len(changes) not in (0, len(candidate)):
         raise ValueError("Incomplete gold release candidate")
+    if not changes and candidate_raw != baseline_raw:
+        raise ValueError("Candidate rows equal the baseline but bytes differ")
+    reproduces_published = not changes
     gold01 = json.loads(gold01_manifest_raw)
     manifest = {
         "schema": "GOLD-02-review-v1",
@@ -74,7 +79,8 @@ def make_bundle(housing_path, baseline_path, gold_candidate, *,
             "cbs_unchanged": "PASS", "json_v1": "PASS",
             "eur_oz_null": "PASS", "gold_only_diff": "PASS",
         },
-        "diff": {"changed_months": len(changes), "changed_fields": sorted(allowed)},
+        "diff": {"changed_months": len(changes), "changed_fields": sorted(allowed),
+                 "reproduces_published_bytes": reproduces_published},
         "source_rights": "Limited owner decision; third-party benchmark reuse uncertainty remains",
     }
     diff = {"status": "REVIEW_ONLY", "changed_months": len(changes), "changes": changes}
