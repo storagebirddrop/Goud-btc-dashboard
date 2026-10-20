@@ -114,7 +114,7 @@ function App(){
  const [open,setOpen]=React.useState(false);
  const [table,setTable]=React.useState(false);
  const dark=useDark();
- React.useEffect(()=>{fetch('/data/monthly.json').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}).then((j:{data:Point[]})=>{if(!Array.isArray(j.data))throw Error('Ongeldig dataformaat');setData(j.data)}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
+ React.useEffect(()=>{fetch('/data/monthly.json').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}).then((j:{data:Point[]}|null)=>{if(!j||!Array.isArray(j.data))throw Error('Ongeldig dataformaat');const rows=j.data.filter(p=>p&&typeof p.period==='string'&&/^\d{4}-\d{2}$/.test(p.period));if(rows.length!==j.data.length)throw Error('Ongeldig dataformaat (periode)');setData(rows)}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
 
  const avail=React.useMemo(()=>{const a=new Set<SeriesKey>();(Object.keys(SERIES) as SeriesKey[]).forEach(k=>{if(data.some(p=>ok(p[k])))a.add(k)});return a},[data]);
  const levelKeys=LEVEL_KEYS.filter(k=>avail.has(k));
