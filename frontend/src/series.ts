@@ -23,14 +23,17 @@ export type Kind='eur'|'index'|'gram'|'sat';
 export type Category='nominal'|'index'|'alternative';
 export type Publication='open'|'gated'|'withheld';
 export type BaseId='2000'|'2020';
-export type SeriesDef={label:string;short:string;kind:Kind;category:Category;publication:Publication;unit:string;base?:BaseId;light:string;dark:string;dash?:string;source:string;gold?:boolean};
+// An annotation marks a documented definition or source break of THAT series; it is drawn only in views that contain such a series.
+export type Annotation={period:string;label:string};
+export type SeriesDef={label:string;short:string;kind:Kind;category:Category;publication:Publication;unit:string;base?:BaseId;light:string;dark:string;dash?:string;source:string;gold?:boolean;annotations?:Annotation[]};
+const WB_GOLD_BREAK:Annotation[]=[{period:'2025-06',label:'jun 2025: bronwijziging goud'}];
 
 export const SERIES:Record<SeriesKey,SeriesDef>={
  house_eur:{label:'Gemiddelde verkoopprijs',short:'Verkoopprijs',kind:'eur',category:'nominal',publication:'open',unit:'EUR',light:'#2a78d6',dark:'#3987e5',source:'CBS StatLine 85773NED'},
  hpi:{label:'CBS-huizenprijsindex',short:'Prijsindex',kind:'index',category:'index',publication:'open',unit:'indexpunten, 2020 = 100',base:'2020',light:'#0e8a5f',dark:'#2fbf8c',source:'CBS StatLine 85773NED'},
  hpi_index:{label:'CBS-huizenprijsindex',short:'Prijsindex',kind:'index',category:'index',publication:'open',unit:'indexpunten, januari 2000 = 100',base:'2000',light:'#0e8a5f',dark:'#2fbf8c',source:'CBS StatLine 85773NED, eigen herbasering'},
- gold_index:{label:'Goudprijsindex',short:'Goudprijs',kind:'index',category:'index',publication:'gated',unit:'indexpunten, januari 2000 = 100',base:'2000',light:'#a87400',dark:'#eda100',dash:'6 3',source:'World Bank / ECB, eigen berekening',gold:true},
- gold_grams_per_house:{label:'Gram goud per woning',short:'Goud per woning',kind:'gram',category:'alternative',publication:'gated',unit:'gram',light:'#6250d6',dark:'#9085e9',dash:'6 3',source:'World Bank / ECB / CBS, eigen berekening',gold:true},
+ gold_index:{label:'Goudprijsindex',short:'Goudprijs',kind:'index',category:'index',publication:'gated',unit:'indexpunten, januari 2000 = 100',base:'2000',light:'#a87400',dark:'#eda100',dash:'6 3',source:'World Bank / ECB, eigen berekening',gold:true,annotations:WB_GOLD_BREAK},
+ gold_grams_per_house:{label:'Gram goud per woning',short:'Goud per woning',kind:'gram',category:'alternative',publication:'gated',unit:'gram',light:'#6250d6',dark:'#9085e9',dash:'6 3',source:'World Bank / ECB / CBS, eigen berekening',gold:true,annotations:WB_GOLD_BREAK},
  sat_per_house:{label:'Satoshi per woning',short:'Sat per woning',kind:'sat',category:'alternative',publication:'withheld',unit:'satoshi',light:'#c4541a',dark:'#ef8a55',dash:'2 3',source:'nog niet vastgesteld'}
 };
 
@@ -99,3 +102,16 @@ export function clampRange(r:Range,periods:string[]):Range|null{
  return {from,to};
 }
 export function sliceRange(data:Point[],r:Range):Point[]{return data.filter(p=>p.period>=r.from&&p.period<=r.to)}
+
+// Annotations for a chart: only those declared by the series in the view, and only when that series has values
+// on both sides of the break inside the shown rows (a break outside the data or the range is not drawn).
+export function viewAnnotations(keys:SeriesKey[],rows:Point[]):Annotation[]{
+ const out:Annotation[]=[];
+ for(const k of keys){
+  for(const a of SERIES[k].annotations??[]){
+   const spans=rows.some(r=>r.period<a.period&&ok(r[k]))&&rows.some(r=>r.period>=a.period&&ok(r[k]))&&rows.some(r=>r.period===a.period);
+   if(spans&&!out.some(o=>o.period===a.period&&o.label===a.label))out.push(a);
+  }
+ }
+ return out;
+}

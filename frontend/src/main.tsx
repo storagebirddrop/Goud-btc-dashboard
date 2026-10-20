@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer} from 'recharts';
 import './style.css';
 
-import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRange,sliceRange,MONTH_RE,ok} from './series';
+import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRange,sliceRange,viewAnnotations,MONTH_RE,ok} from './series';
 import type {SeriesKey,Point,Kind,Range,PresetId} from './series';
 
 const PRESETS:{id:PresetId;label:string}[]=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}];
@@ -62,13 +62,12 @@ function isoDot(rows:Point[],k:SeriesKey,color:string){
  return (p:{cx?:number;cy?:number;index?:number})=>{const i=p.index??-1;const iso=i>=0&&ok(rows[i]?.[k])&&!ok(rows[i-1]?.[k])&&!ok(rows[i+1]?.[k]);
   return iso&&p.cx!==undefined&&p.cy!==undefined?<circle key={`d-${k}-${i}`} cx={p.cx} cy={p.cy} r={4} fill={color}/>:<g key={`d-${k}-${i}`}/>}
 }
-function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,annotate,height}:{rows:Point[];keys:SeriesKey[];dark:boolean;ariaLabel:string;yLabel:string;baseLine?:boolean;annotate?:boolean;height:number}){
+function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,height}:{rows:Point[];keys:SeriesKey[];dark:boolean;ariaLabel:string;yLabel:string;baseLine?:boolean;height:number}){
  const kind=SERIES[keys[0]].kind;
  const years=rows.length/12;const step=years<=6?1:years<=12?2:years<=20?4:5;
  const ticks=rows.map(r=>r.period).filter(p=>p.endsWith('-01')&&Number(p.slice(0,4))%step===0);
  const grid=dark?'#3a3a38':'#e4e3df',axis=dark?'#c3c2b7':'#52514e';
- const goldKeys=keys.filter(k=>SERIES[k].gold);
- const hasJune=!!annotate&&goldKeys.some(k=>rows.some(r=>r.period<'2025-06'&&ok(r[k]))&&rows.some(r=>r.period>='2025-06'&&ok(r[k])))&&rows.some(r=>r.period==='2025-06');
+ const notes=viewAnnotations(keys,rows);
  return <figure className="chart" role="img" aria-label={ariaLabel}>
   <ResponsiveContainer width="100%" height={height}>
    <LineChart data={rows} accessibilityLayer margin={{top:8,right:16,bottom:4,left:4}}>
@@ -78,7 +77,7 @@ function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,annotate,height}:{rows:
     <Tooltip content={<Tip/>} cursor={{stroke:axis,strokeDasharray:'3 3'}}/>
     {keys.length>1&&<Legend verticalAlign="top" height={30} formatter={(_v,e)=>{const k=(e as {dataKey?:string}).dataKey as SeriesKey;return <span style={{color:axis}}>{SERIES[k].short}</span>}}/>}
     {baseLine&&<ReferenceLine y={100} stroke={axis} strokeDasharray="2 4" label={{value:'basis = 100',position:'insideBottomRight',fill:axis,fontSize:11}}/>}
-    {hasJune&&<ReferenceLine x="2025-06" stroke={axis} strokeDasharray="4 3" label={{value:'jun 2025: bronwijziging goud',position:'insideTopLeft',fill:axis,fontSize:11}}/>}
+    {notes.map(a=><ReferenceLine key={a.period+a.label} x={a.period} stroke={axis} strokeDasharray="4 3" label={{value:a.label,position:'insideTopLeft',fill:axis,fontSize:11}}/>)}
     {keys.map(k=><Line key={k} type="monotone" dataKey={k} name={SERIES[k].label} dot={isoDot(rows,k,colorOf(k,dark))} stroke={colorOf(k,dark)} strokeWidth={2} strokeDasharray={SERIES[k].dash} connectNulls={false} isAnimationActive={false} activeDot={{r:5,stroke:dark?'#1a1a19':'#fcfcfb',strokeWidth:2}}/>)}
    </LineChart>
   </ResponsiveContainer>
@@ -152,7 +151,7 @@ function App(){
    {catViews.length>1&&<div className="segs sub-segs" role="group" aria-label={curCat.id==='index'?'Indexbasis':'Reeks'}>{catViews.map(v=><button key={v.id} type="button" className="seg" aria-pressed={curView.id===v.id} onClick={()=>setViewId(v.id)}>{v.label}</button>)}</div>}
    <p className="cap">{curCat.caption}</p>
    <p className="cap">Eenheid: <strong>{curView.unit}</strong>{curView.keys[0]==='house_eur'&&<InfoHint id="hint-chart"/>}</p>
-   {chartHasData?<Chart rows={rows} keys={curView.keys} dark={dark} height={narrow?260:340} yLabel={curView.unit} baseLine={curView.baseLine} annotate ariaLabel={`Lijngrafiek, ${curView.unit}. ${summary(rows,curView.keys)}`}/>:<p className="notice" role="status">Geen gegevens voor deze weergave in de gekozen periode.</p>}
+   {chartHasData?<Chart rows={rows} keys={curView.keys} dark={dark} height={narrow?260:340} yLabel={curView.unit} baseLine={curView.baseLine} ariaLabel={`Lijngrafiek, ${curView.unit}. ${summary(rows,curView.keys)}`}/>:<p className="notice" role="status">Geen gegevens voor deze weergave in de gekozen periode.</p>}
    <p className="status">Bron: {sources}. Gebruik de pijltjestoetsen op de grafiek om waarden per maand te lezen; de tabel onder Bronnen &amp; methode bevat alle waarden.</p>
   </section>}
 
@@ -172,9 +171,9 @@ function App(){
     <p><strong>Definitiewijziging juni 2025:</strong> World Bank GOLD gebruikte tot en met mei 2025 London afternoon fixing (99,5% goud); vanaf juni 2025 gemiddelde dagelijkse spotprijzen. De goudreeks is daardoor niet volledig benchmarkhomogeen.</p></>}
     <h3>Gegevens als tabel</h3>
     <button type="button" className="seg" aria-expanded={table} aria-controls="data-table" onClick={()=>setTable(!table)}>{table?'Verberg tabel':'Toon als tabel'}</button>
-    {table&&<div className="table-wrap" tabIndex={0} role="region" aria-label="Maandgegevens (scrollbaar)"><table id="data-table"><caption>Maandelijkse waarden; leeg betekent geen gegevens.</caption>
+    {table&&<div className="table-wrap" tabIndex={0} role="region" aria-label="Maandgegevens (scrollbaar)"><table id="data-table"><caption>Maandelijkse waarden van {month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} {rows.length===1?'maand':'maanden'}, dezelfde periode als de grafiek); leeg betekent geen gegevens.</caption>
      <thead><tr><th scope="col">Maand</th>{shown.map(k=><th scope="col" key={k}>{SERIES[k].label} ({SERIES[k].unit})</th>)}</tr></thead>
-     <tbody>{data.map(p=><tr key={p.period}><th scope="row">{p.period}</th>{shown.map(k=><td key={k}>{ok(p[k])?fmt(SERIES[k].kind,p[k] as number):''}</td>)}</tr>)}</tbody></table></div>}
+     <tbody>{rows.map(p=><tr key={p.period}><th scope="row">{p.period}</th>{shown.map(k=><td key={k}>{ok(p[k])?fmt(SERIES[k].kind,p[k] as number):''}</td>)}</tr>)}</tbody></table></div>}
    </div>
   </details>
   </>}

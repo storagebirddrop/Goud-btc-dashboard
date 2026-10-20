@@ -7,11 +7,10 @@ TypeScript directly, execute the visibility gate itself.
 """
 import json
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+from _node_ts import run_series
 
 ROOT = Path(__file__).resolve().parents[1]
 SERIES_TS = ROOT / "frontend" / "src" / "series.ts"
@@ -121,41 +120,26 @@ def test_main_uses_the_registry_and_keeps_its_functionality():
     assert "from './series'" in text and "visibleKeys(data)" in text
     assert "const SERIES" not in text, "the registry lives in series.ts only"
     for needle in ("id=\"h-cards\"", "id=\"h-chart\"", "Bronnen &amp; methode", "Toon als tabel",
-                   "'Alles'", "'Sinds 2008'", "'Laatste 10 jaar'", "<Chart", "<Card", "baseLine={curView.baseLine} annotate",
-                   "jun 2025: bronwijziging goud", "fetch('/data/monthly.json')"):
+                   "'Alles'", "'Sinds 2008'", "'Laatste 10 jaar'", "<Chart", "<Card", "baseLine={curView.baseLine}",
+                   "fetch('/data/monthly.json')"):
         assert needle in text, needle
     for cat in ("nominal", "index", "alternative"):
         assert f"id:'{cat}'" in SERIES_TS.read_text(encoding="utf-8")
 
 
-def _node_can_strip_types():
-    node = shutil.which("node")
-    if not node:
-        return None
-    v = subprocess.run([node, "--version"], capture_output=True, text=True).stdout.strip().lstrip("v").split(".")
-    return node if (int(v[0]), int(v[1])) >= (22, 6) else None
-
-
-@pytest.mark.skipif(_node_can_strip_types() is None, reason="needs Node >= 22.6 to run TypeScript directly")
 def test_visibility_gate_executes_as_documented():
-    script = f"""
-import {{visibleKeys,BASES}} from {json.dumps(SERIES_TS.as_uri())};
-const row=(o)=>({{period:'2000-01',gold_eur_oz:null,house_eur:null,hpi:null,gold_grams_per_house:null,gold_index:null,hpi_index:null,...o}});
-const out={{
- empty:visibleKeys([]),
- cbs:visibleKeys([row({{house_eur:100,hpi:90,hpi_index:100}})]),
- gold:visibleKeys([row({{gold_index:100,gold_grams_per_house:5}})]),
- nan:visibleKeys([row({{house_eur:NaN,hpi:Infinity,gold_index:null}})]),
- sat:visibleKeys([row({{house_eur:1,sat_per_house:123456}})]),
- raw:visibleKeys([row({{gold_eur_oz:2000}})]),
- bases:BASES.map(b=>[b.id,b.keys]),
-}};
-console.log(JSON.stringify(out));
-"""
-    res = subprocess.run([_node_can_strip_types(), "--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", script],
-                         capture_output=True, text=True, timeout=60)
-    assert res.returncode == 0, res.stderr
-    out = json.loads(res.stdout.strip().splitlines()[-1])
+    out = run_series("""
+const row=(o)=>({period:'2000-01',gold_eur_oz:null,house_eur:null,hpi:null,gold_grams_per_house:null,gold_index:null,hpi_index:null,...o});
+console.log(JSON.stringify({
+ empty:S.visibleKeys([]),
+ cbs:S.visibleKeys([row({house_eur:100,hpi:90,hpi_index:100})]),
+ gold:S.visibleKeys([row({gold_index:100,gold_grams_per_house:5})]),
+ nan:S.visibleKeys([row({house_eur:NaN,hpi:Infinity,gold_index:null})]),
+ sat:S.visibleKeys([row({house_eur:1,sat_per_house:123456})]),
+ raw:S.visibleKeys([row({gold_eur_oz:2000})]),
+ bases:S.BASES.map(b=>[b.id,b.keys]),
+}));
+""")
     assert out["empty"] == []
     assert out["cbs"] == ["house_eur", "hpi", "hpi_index"]
     assert out["gold"] == ["gold_index", "gold_grams_per_house"]  # data present and not withheld

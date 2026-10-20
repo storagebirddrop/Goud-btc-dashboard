@@ -6,11 +6,7 @@ without duplicating them.
 """
 import json
 import re
-import shutil
-import subprocess
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SERIES_TS = ROOT / "frontend" / "src" / "series.ts"
@@ -18,28 +14,12 @@ MAIN_TSX = ROOT / "frontend" / "src" / "main.tsx"
 CSS = ROOT / "frontend" / "src" / "style.css"
 
 
-def _node():
-    node = shutil.which("node")
-    if not node:
-        return None
-    v = subprocess.run([node, "--version"], capture_output=True, text=True).stdout.strip().lstrip("v").split(".")
-    return node if (int(v[0]), int(v[1])) >= (22, 6) else None
+from _node_ts import run_series as _run
 
-
-def _run(body):
-    script = f"import * as S from {json.dumps(SERIES_TS.as_uri())};\n{body}"
-    res = subprocess.run([_node(), "--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", script],
-                         capture_output=True, text=True, timeout=60)
-    assert res.returncode == 0, res.stderr
-    return json.loads(res.stdout.strip().splitlines()[-1])
-
-
-needs_node = pytest.mark.skipif(_node() is None, reason="needs Node >= 22.6 to run TypeScript directly")
 
 MONTHS = "const months=(a,b)=>{const o=[];for(let y=a;y<=b;y++)for(let m=1;m<=12;m++)o.push(`${y}-${String(m).padStart(2,'0')}`);return o};"
 
 
-@needs_node
 def test_views_follow_the_visible_series_and_keep_the_three_categories_apart():
     out = _run("""
 const v=(ks)=>S.chartViews(ks).map(x=>[x.id,x.category,x.keys,x.unit,x.baseLine]);
@@ -60,7 +40,6 @@ console.log(JSON.stringify({
     assert out["none"] == []
 
 
-@needs_node
 def test_withheld_series_never_become_a_chart_view():
     out = _run("""
 const data=[{period:'2000-01',gold_eur_oz:null,house_eur:1,hpi:1,hpi_index:100,gold_index:null,gold_grams_per_house:null,sat_per_house:123456}];
@@ -69,7 +48,6 @@ console.log(JSON.stringify(S.chartViews(S.visibleKeys(data)).map(v=>v.id)));
     assert "sat_per_house" not in out and out == ["house_eur", "index-2000", "index-2020"]
 
 
-@needs_node
 def test_presets_cover_the_expected_ranges():
     out = _run(MONTHS + """
 const p=months(2000,2026).slice(0,320);
@@ -84,7 +62,6 @@ console.log(JSON.stringify({all:r('all'),y2008:r('2008'),y10:r('10y'),short:S.pr
     assert out["none"] is None
 
 
-@needs_node
 def test_free_month_selection_is_clamped_and_never_inverted():
     out = _run(MONTHS + """
 const p=months(2000,2026).slice(0,320);
@@ -108,7 +85,6 @@ console.log(JSON.stringify({
     assert out["empty"] is None
 
 
-@needs_node
 def test_slice_range_is_inclusive_and_does_not_fill_gaps():
     out = _run("""
 const d=[{period:'2000-01',x:1},{period:'2000-03',x:3},{period:'2000-04',x:4}];
@@ -117,7 +93,6 @@ console.log(JSON.stringify(S.sliceRange(d,{from:'2000-02',to:'2000-04'}).map(r=>
     assert out == ["2000-03", "2000-04"]
 
 
-@needs_node
 def test_index_bases_stay_separate_views():
     out = _run("console.log(JSON.stringify(S.BASES.map(b=>[b.id,b.caption,b.keys])));")
     assert out == [["2000", "januari 2000 = 100", ["hpi_index", "gold_index"]], ["2020", "2020 = 100 (CBS-basis)", ["hpi"]]]
@@ -150,3 +125,49 @@ def test_no_new_frontend_dependencies_or_data_paths():
     pkg = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
     assert set(pkg["dependencies"]) == {"react", "react-dom", "recharts"}
     assert set(pkg["devDependencies"]) == {"@types/react", "@types/react-dom", "typescript", "vite"}
+
+
+def test_table_follows_the_selected_period_and_never_fills_months():
+    text = MAIN_TSX.read_text(encoding="utf-8")
+    assert "<tbody>{rows.map(p=>" in text and "data.map(p=><tr" not in text
+    assert "dezelfde periode als de grafiek" in text  # caption names the shown range
+    # the same `rows` feed chart, cards and table; a missing month is simply absent, never invented
+    assert text.count("sliceRange(data,eff)") == 1
+
+
+def test_annotation_text_lives_in_the_registry_not_in_the_view_code():
+    main = MAIN_TSX.read_text(encoding="utf-8")
+    assert "2025-06" not in main and "jun 2025" not in main
+    assert "viewAnnotations(keys,rows)" in main and "annotate" not in main
+    series = SERIES_TS.read_text(encoding="utf-8")
+    reg = {m.group(1): m.group(2) for m in re.finditer(r"^ (\w+):\{(.*)\},?$", series, re.M)}
+    with_notes = {k for k, v in reg.items() if "annotations:" in v}
+    assert with_notes == {"gold_index", "gold_grams_per_house"}, "only the World Bank gold series carry the June 2025 break"
+    for k in ("house_eur", "hpi", "hpi_index", "sat_per_house"):
+        assert "annotations:" not in reg[k], k
+
+
+def test_annotations_are_series_specific_and_need_data_on_both_sides():
+    out = _run("""
+const row=(p,o)=>({period:p,gold_eur_oz:null,house_eur:null,hpi:null,gold_grams_per_house:null,gold_index:null,hpi_index:null,...o});
+const periods=['2025-04','2025-05','2025-06','2025-07'];
+const withGold=periods.map((p,i)=>row(p,{gold_index:100+i,gold_grams_per_house:50+i,house_eur:1,hpi:1,hpi_index:1}));
+const onlyBefore=periods.map((p,i)=>row(p,{gold_index:i<2?100:null,house_eur:1,hpi:1,hpi_index:1}));
+const noBreakRow=periods.filter(p=>p!=='2025-06').map((p,i)=>row(p,{gold_index:100+i}));
+const labels=(keys,rows)=>S.viewAnnotations(keys,rows).map(a=>a.period+'|'+a.label);
+console.log(JSON.stringify({
+ gold:labels(['gold_index'],withGold),
+ grams:labels(['gold_grams_per_house'],withGold),
+ both:labels(['hpi_index','gold_index'],withGold),
+ cbsOnly:labels(['house_eur'],withGold),
+ hpiOnly:labels(['hpi_index'],withGold),
+ satFuture:labels(['sat_per_house'],withGold),
+ beforeOnly:labels(['gold_index'],onlyBefore),
+ missingMonth:labels(['gold_index'],noBreakRow),
+ rangeAfter:labels(['gold_index'],withGold.slice(2)),
+}));
+""")
+    note = ["2025-06|jun 2025: bronwijziging goud"]
+    assert out["gold"] == note and out["grams"] == note and out["both"] == note
+    assert out["cbsOnly"] == [] and out["hpiOnly"] == [] and out["satFuture"] == []
+    assert out["beforeOnly"] == [] and out["missingMonth"] == [] and out["rangeAfter"] == []
