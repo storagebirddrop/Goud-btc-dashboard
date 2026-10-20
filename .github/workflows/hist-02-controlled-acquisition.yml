@@ -1,10 +1,14 @@
 name: HIST-02 controlled source acquisition (research only)
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/hist-02-controlled-acquisition.yml'
 permissions:
   contents: read
 jobs:
   research-acquisition:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'research/hist-02-source-pinning-annual-prototype')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
