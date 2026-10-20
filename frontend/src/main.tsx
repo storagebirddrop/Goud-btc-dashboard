@@ -27,7 +27,7 @@ const BASES:{id:string;label:string;caption:string;keys:SeriesKey[]}[]=[
 const PRESETS=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}] as const;
 type Preset=typeof PRESETS[number]['id'];
 const WARNING='De reeks toont de prijs van een gemiddeld verkochte bestaande koopwoning uitgedrukt in de gekozen rekeneenheid. De mix van verkochte woningen kan veranderen; de reeks meet geen constante woningkwaliteit of algemene betaalbaarheid. Dit is geen beleggingsadvies.';
-const MIX_HINT='Een gemiddelde prijs is gevoelig voor de transactiemix: welke woningen in een maand verkocht worden.';
+const MIX_HINT='De verandering van de gemiddelde verkoopprijs weerspiegelt niet alleen prijsontwikkeling. Ze hangt ook af van welke woningen in de begin- en eindmaand zijn verkocht (transactiemix) en van uitschieters in een afzonderlijke maand. De CBS-huizenprijsindex corrigeert voor kwaliteitsverschillen en is daarvoor de betere maatstaf.';
 
 const nf0=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:0});
 const nf1=new Intl.NumberFormat('nl-NL',{minimumFractionDigits:1,maximumFractionDigits:1});
@@ -46,37 +46,43 @@ const colorOf=(k:SeriesKey,dark:boolean)=>dark?SERIES[k].dark:SERIES[k].light;
 
 function InfoHint({id}:{id:string}){
  const [open,setOpen]=React.useState(false);
- return <span className="hint"><button type="button" className="hint-btn" aria-expanded={open} aria-controls={id} aria-label="Toelichting op gemiddelde prijs" onClick={()=>setOpen(!open)}>ⓘ</button>{open&&<span id={id} className="hint-text" role="note">{MIX_HINT}</span>}</span>
+ return <span className="hint"><button type="button" className="hint-btn" aria-expanded={open} aria-controls={id} aria-label="Toelichting: gemiddelde verkoopprijs en transactiemix" onClick={()=>setOpen(!open)}>ⓘ</button>{open&&<span id={id} className="hint-text" role="note">{MIX_HINT}</span>}</span>
 }
 
 function Card({k,rows}:{k:SeriesKey;rows:Point[]}){
  const s=SERIES[k];const vals=rows.filter(p=>ok(p[k]));
  const first=vals[0],last=vals[vals.length-1];
- const a=first[k] as number,b=last[k] as number;const ch=a!==0?b/a-1:null;
+ const a=first[k] as number,b=last[k] as number;const ch=vals.length>1&&a!==0?b/a-1:null;
  return <article className="card" aria-labelledby={`c-${k}`}>
-  <h3 id={`c-${k}`}>{s.label}{k==='house_eur'&&<InfoHint id="hint-card"/>}</h3>
+  <h3><span id={`c-${k}`}>{s.label}</span>{k==='house_eur'&&<InfoHint id="hint-card"/>}</h3>
   <p className="big">{fmt(s.kind,b)}</p>
-  <p className="sub">{month(last.period)} · {s.unit}</p>
+  <p className="sub">{month(last.period)} · {s.kind==='eur'?'EUR, nominaal':s.unit}</p>
   <dl>
    <div><dt>Begin periode, {month(first.period)}</dt><dd>{fmt(s.kind,a)}</dd></div>
-   <div><dt>Verandering</dt><dd className="delta">{ch===null?'n.v.t.':pct.format(ch)}</dd></div>
+   <div><dt>Verandering sinds begin periode</dt><dd className="delta">{ch===null?'n.v.t.':pct.format(ch)}</dd></div>
   </dl>
-  <p className="status">Bron: {s.source}. {vals.length} maanden met gegevens.</p>
+  <p className="status">Bron: {s.source}. {vals.length} {vals.length===1?'maand':'maanden'} met gegevens.</p>
  </article>
 }
 
 type TipProps={active?:boolean;payload?:{dataKey:string;value:number}[];label?:string};
 function Tip({active,payload,label}:TipProps){
  if(!active||!payload?.length||!label)return null;
- return <div className="tip"><strong>{month(label)}</strong>{payload.filter(p=>ok(p.value)).map(p=>{const s=SERIES[p.dataKey as SeriesKey];return <div key={p.dataKey}>{s.short}: <b>{fmt(s.kind,p.value)}</b>{s.kind==='index'&&<small> indexpunten</small>}</div>})}</div>
+ return <div className="tip"><strong>{month(label)}</strong>{payload.filter(p=>ok(p.value)).map(p=>{const s=SERIES[p.dataKey as SeriesKey];return <div key={p.dataKey}>{s.short}: <b>{fmt(s.kind,p.value)}</b>{s.kind==='index'&&<small> ({s.unit})</small>}</div>})}</div>
 }
 
+function isoDot(rows:Point[],k:SeriesKey,color:string){
+ // Isolated finite values (no finite neighbour) would be invisible as a line; show them as a dot.
+ return (p:{cx?:number;cy?:number;index?:number})=>{const i=p.index??-1;const iso=i>=0&&ok(rows[i]?.[k])&&!ok(rows[i-1]?.[k])&&!ok(rows[i+1]?.[k]);
+  return iso&&p.cx!==undefined&&p.cy!==undefined?<circle key={`d-${k}-${i}`} cx={p.cx} cy={p.cy} r={4} fill={color}/>:<g key={`d-${k}-${i}`}/>}
+}
 function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,annotate}:{rows:Point[];keys:SeriesKey[];dark:boolean;ariaLabel:string;yLabel:string;baseLine?:boolean;annotate?:boolean}){
  const kind=SERIES[keys[0]].kind;
  const years=rows.length/12;const step=years<=6?1:years<=12?2:years<=20?4:5;
  const ticks=rows.map(r=>r.period).filter(p=>p.endsWith('-01')&&Number(p.slice(0,4))%step===0);
  const grid=dark?'#3a3a38':'#e4e3df',axis=dark?'#c3c2b7':'#52514e';
- const hasJune=annotate&&rows.some(r=>r.period==='2025-06');
+ const goldKeys=keys.filter(k=>SERIES[k].gold);
+ const hasJune=!!annotate&&goldKeys.some(k=>rows.some(r=>r.period<'2025-06'&&ok(r[k]))&&rows.some(r=>r.period>='2025-06'&&ok(r[k])))&&rows.some(r=>r.period==='2025-06');
  return <figure className="chart" role="img" aria-label={ariaLabel}>
   <ResponsiveContainer width="100%" height={340}>
    <LineChart data={rows} margin={{top:8,right:16,bottom:4,left:4}}>
@@ -87,7 +93,7 @@ function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,annotate}:{rows:Point[]
     {keys.length>1&&<Legend verticalAlign="top" height={30} formatter={(_v,e)=>{const k=(e as {dataKey?:string}).dataKey as SeriesKey;return <span style={{color:axis}}>{SERIES[k].short}</span>}}/>}
     {baseLine&&<ReferenceLine y={100} stroke={axis} strokeDasharray="2 4" label={{value:'basis = 100',position:'insideBottomRight',fill:axis,fontSize:11}}/>}
     {hasJune&&<ReferenceLine x="2025-06" stroke={axis} strokeDasharray="4 3" label={{value:'jun 2025: bronwijziging goud',position:'insideTopLeft',fill:axis,fontSize:11}}/>}
-    {keys.map(k=><Line key={k} type="monotone" dataKey={k} name={SERIES[k].label} dot={false} stroke={colorOf(k,dark)} strokeWidth={2} strokeDasharray={SERIES[k].dash} connectNulls={false} isAnimationActive={false} activeDot={{r:5,stroke:dark?'#1a1a19':'#fcfcfb',strokeWidth:2}}/>)}
+    {keys.map(k=><Line key={k} type="monotone" dataKey={k} name={SERIES[k].label} dot={isoDot(rows,k,colorOf(k,dark))} stroke={colorOf(k,dark)} strokeWidth={2} strokeDasharray={SERIES[k].dash} connectNulls={false} isAnimationActive={false} activeDot={{r:5,stroke:dark?'#1a1a19':'#fcfcfb',strokeWidth:2}}/>)}
    </LineChart>
   </ResponsiveContainer>
   <figcaption className="ycap">Verticale as: {yLabel}</figcaption>
@@ -136,7 +142,7 @@ function App(){
    <span className="muted">{month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} maanden)</span>
   </div>
 
-  <section aria-label="Kerncijfers" className="cards">{cardKeys.map(k=><Card key={k} k={k} rows={rows}/>)}</section>
+  <section aria-labelledby="h-cards"><h2 id="h-cards" className="sec-h">Prijsontwikkeling in de gekozen periode</h2><p className="cap">Nominale waarden en procentuele verandering tussen de eerste en laatste maand met gegevens. Dit is geen maat voor betaalbaarheid of koopkracht.</p><div className="cards">{cardKeys.map(k=><Card key={k} k={k} rows={rows}/>)}</div></section>
 
   <aside className="warn" role="note"><strong>Let op bij interpretatie.</strong> {WARNING}</aside>
 
@@ -151,7 +157,7 @@ function App(){
    <div className="panel-head"><h2 id="h-idx">Relatieve verandering (index)</h2>
     {bases.length>1&&<div className="segs" role="group" aria-label="Indexbasis">{bases.map(b=><button key={b.id} type="button" className="seg" aria-pressed={curBase.id===b.id} onClick={()=>setBaseId(b.id)}>{b.label}</button>)}</div>}</div>
    <p className="cap">Relatieve verandering, indexbasis {curBase.caption}. Dit is geen prijs in euro.</p>
-   <Chart rows={rows} keys={curBase.keys} dark={dark} yLabel={`index, ${curBase.caption}`} baseLine annotate={hasGold} ariaLabel={`Lijngrafiek, indexbasis ${curBase.caption}. ${summary(rows,curBase.keys)}`}/>
+   <Chart rows={rows} keys={curBase.keys} dark={dark} yLabel={`index, ${curBase.caption}`} baseLine annotate ariaLabel={`Lijngrafiek, indexbasis ${curBase.caption}. ${summary(rows,curBase.keys)}`}/>
   </section>}
 
   <details className="sources" open={open} onToggle={e=>setOpen((e.currentTarget as HTMLDetailsElement).open)}>
