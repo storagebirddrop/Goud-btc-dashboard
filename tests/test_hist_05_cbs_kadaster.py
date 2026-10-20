@@ -303,3 +303,19 @@ def test_report_lines_compact_and_report_cli(tmp_path, monkeypatch, capsys):
     assert any(l.startswith("CMP ") for l in lines) and lines[-1] == "DEFECTS []"
     assert m.main(["--report", str(out)]) == 0
     assert "TAB 85773NED" in capsys.readouterr().out
+
+
+def test_discovered_table_with_odd_values_is_finding_not_defect(tmp_path, monkeypatch):
+    m.register_table("70003NED")
+    base = _routes()
+    odd = json.dumps({"value": [{"Perioden": "1995MM01", "Prijs_1": "."}]}).encode()
+
+    def fake(sid, opener=None):
+        if sid.startswith("cbs3-70003NED-"):
+            return base(sid.replace("70003NED", "85773NED"), opener) if not sid.endswith("data") else (odd, {"source_id": sid, "status": "FETCHED", "http_status": 200, "bytes": len(odd), "sha256": "0" * 64})
+        return base(sid, opener)
+    monkeypatch.setattr(m, "fetch_status", fake)
+    results, defects, missing, store = [], [], [], {}
+    m.run_tables(["70003NED"], results, defects, missing, store)
+    t = [r["table_analysis"] for r in results if "table_analysis" in r][0]
+    assert t["status"] == "DISCOVERED_TABLE_NOT_PARSEABLE" and "INVALID_NUMERIC" in t["reason"] and defects == []

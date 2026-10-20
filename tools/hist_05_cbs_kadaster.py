@@ -145,7 +145,7 @@ def to_value(v, where):
     if v is None or v == "":
         return None
     if isinstance(v, bool) or isinstance(v, str):
-        raise Hist05Error(f"INVALID_NUMERIC {where}")
+        raise Hist05Error(f"INVALID_NUMERIC {where} type={type(v).__name__} sample={str(v)[:8]!r}")
     try:
         d = v if isinstance(v, Decimal) else Decimal(str(v))
     except InvalidOperation as exc:
@@ -446,9 +446,11 @@ def run_tables(tids, results, defects, missing, parsed_store):
             msg = str(exc)
             if msg in ("NOT_JSON", "MISSING_VALUE_ARRAY", "NO_PERIOD_OR_TOPICS"):  # wrong shape/endpoint: finding
                 res, parsed = {"table_id": tid, "status": "FORMAT_NOT_USABLE", "reason": msg}, None
-            else:  # duplicates, invalid numerics, non-positive levels: real integrity defects
+            elif tid in FIXED_TABLES:  # duplicates, invalid numerics, non-positive levels in a core table: real integrity defects
                 res, parsed = {"table_id": tid, "status": "DEFECT", "defect": msg[:200]}, None
                 defects.append(f"{tid}:{msg[:80]}")
+            else:  # exploratory, catalogue-discovered table with an unexpected value convention: finding, not a pipeline defect
+                res, parsed = {"table_id": tid, "status": "DISCOVERED_TABLE_NOT_PARSEABLE", "reason": msg[:200]}, None
         results.append({"table_analysis": res})
         if parsed:
             parsed_store[tid] = parsed
