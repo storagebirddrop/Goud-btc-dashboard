@@ -219,3 +219,33 @@ def test_cbs_baseline_overlap_end_to_end(monkeypatch, tmp_path):
     assert m.main(["--summary-out", str(out), "--only", "bis-spp-q-nl", "--cbs-csv", str(base)]) == 0
     ov = json.loads(out.read_text())["results"][0]["overlap_vs_cbs"][0]
     assert ov["status"] == "COMPARED" and ov["vs_cbs_hpi_annual_mean"]["common_growth_years"] == 4
+
+
+def test_code_only_sdmx_attributes_are_classified():
+    assert m.classify_unit({"UNIT_MEASURE": "628", "VALUE": "N"}) == "INDEX"
+    assert m.classify_unit({"UNIT_MEASURE": "771"}) == "RATE"
+    assert m.classify_unit({"UNIT_MEASURE": "IX", "MEASURE": "HPI"}) == "INDEX"
+    assert m.classify_real_nominal({"VALUE": "R"}) == "REAL" and m.classify_real_nominal({"VALUE": "N"}) == "NOMINAL"
+    assert m.classify_real_nominal({"MEASURE": "RHP"}) == "REAL" and m.classify_real_nominal({"MEASURE": "HPI"}) == "NOMINAL"
+    assert m.detect_base({"BASE_PER": "2015"}) == "2015"
+
+
+def test_xlsx_panel_scan_blanks_missing_and_duplicates():
+    rows = [["country", "year", "hpnom", "hpreal", "gdp"], ["Netherlands", "1900", "", "", "5"], ["Netherlands", "1970", "10", "20", "5"],
+            ["Netherlands", "1971", "11", "21", "5"], ["Belgium", "1970", "99", "99", "5"]]
+    res = m.scan_xlsx_panel(_xlsx(rows, sheet="Data"))
+    by = {s["variable"]: s for s in res["nl_series"]}
+    assert set(by) == {"hpnom", "hpreal"} and by["hpnom"]["n_obs"] == 2 and by["hpnom"]["missing_markers"] == 1
+    assert by["hpnom"]["first"] == "1970" and by["hpnom"]["real_or_nominal"] == "NOMINAL" and by["hpreal"]["real_or_nominal"] == "REAL"
+    with pytest.raises(m.HousingSourceError, match="DUPLICATE"):
+        m.scan_xlsx_panel(_xlsx(rows + [["Netherlands", "1970", "12", "22", "5"]], sheet="Data"))
+    with pytest.raises(m.HousingSourceError, match="INVALID_VALUE"):
+        m.scan_xlsx_panel(_xlsx([["country", "year", "hpnom"], ["Netherlands", "1970", "x"]], sheet="Data"))
+
+
+def test_digest_is_compact(monkeypatch, tmp_path):
+    monkeypatch.setattr(m.hist_02_acquire, "fetch", _fake_fetch({"bis-spp-q-nl": LONG.encode()}))
+    out = tmp_path / "s.json"
+    m.main(["--summary-out", str(out), "--only", "bis-spp-q-nl"])
+    lines = m.digest(json.loads(out.read_text()))
+    assert lines[0].startswith("STATUS") and any(line.startswith("  S0") for line in lines)

@@ -22,7 +22,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        run: |
+          python -m pip install -r requirements.txt
+          sudo apt-get install -y --no-install-recommends poppler-utils
       - name: Offline tests (synthetic, prove code only)
         run: python -m pytest -q tests/test_hist_05_other_sources.py tests/test_hist_02_acquire.py
       - name: Probe sources (unreachable sources exit 0 as PARTIAL; parser/integrity defects exit 1)
@@ -31,7 +33,7 @@ jobs:
         if: always()
         run: |
           if [ -f "$RUNNER_TEMP/hist-05-other-sources.json" ]; then
-            python -c "import json,sys; d=json.load(open(sys.argv[1])); print('STATUS', d['status'], d['missing_sources'], d['defects']); [print('RESULT', json.dumps(r, sort_keys=True, separators=(',',':'))[:3000]) for r in d['results']]; [print('MATRIX', json.dumps(r, sort_keys=True, separators=(',',':'))) for r in d['coverage_matrix']]" "$RUNNER_TEMP/hist-05-other-sources.json"
+            python -m tools.hist_05_other_sources --digest "$RUNNER_TEMP/hist-05-other-sources.json"
           fi
       - name: Metadata-only review artifact
         if: always()
