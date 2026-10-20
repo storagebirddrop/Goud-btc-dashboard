@@ -1,5 +1,8 @@
 # Cloudflare deployment plan
 
+> **LEGACY / SUPERSEDED - do not provision.** Under ADR-001 (`DECIDED`) the runtime is GitHub Actions + static JSON + Cloudflare Pages, **without D1 in production**. Do not create a D1 database or a `DB` binding in the Pages project, and do not set `LEGACY_D1_API_ENABLED`. The current deployment plan is in [static-pipeline.md](static-pipeline.md). The Pages Function `frontend/functions/api/monthly.ts` is retained legacy code: it answers 404 unless `LEGACY_D1_API_ENABLED=true` and never returns gold values (the gold publication gate must not be bypassed). The runbook below is kept for history only.
+
+
 This project has **no Cloudflare account credentials, D1 binding, or deployed site** yet. The following commands are a runbook, not actions already performed.
 
 ## 1. Provision D1
