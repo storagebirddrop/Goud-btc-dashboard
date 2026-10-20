@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Only items marked `DECIDED`/`ACCEPTED` in [DECISIONS.md](docs/governance/DECISIONS.md) are normative. `PROPOSED` is never a decision, and `VERIFIED_REPO` claims in docs do not prove anything about the current HEAD. See [DOCUMENT_HIERARCHY.md](docs/governance/DOCUMENT_HIERARCHY.md).
 - Data integrity: no silent interpolation, forward-fill (including FX weekend/holiday carry-forward), backfill, source switching, or FX assumptions. Missing data stays `null`. Never invent values.
 - Work on a task branch and open a PR. Merge only with explicit, prior delegation. Do not merge PR #40 silently. Final reports follow the AGENTS.md format (max 12 lines, `NIET UITGEVOERD` where evidence is missing).
-- Docs and governance text are in Dutch; match that language when editing them.
+- Documentation languages are mixed. `AGENTS.md` and the core governance documents (DECISIONS, METHODOLOGY, CHANGE_CONTROL, DOCUMENT_HIERARCHY, …) are Dutch. `README.md`, most technical docs under `docs/`, and several governance records (DATA_01_*, GOLD_02_RELEASE_CHECKLIST, BRANCH_PROTECTION_CLOSURE) are English. Keep the existing language of the file you edit, and do not translate documents as a side effect.
 
 ## Commands
 
