@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Governance comes first
 
-[AGENTS.md](AGENTS.md) is the binding operating instruction for agents (written in Dutch) and takes precedence over defaults. Key points:
+[AGENTS.md](AGENTS.md) is the binding operating instruction for agents (written in Dutch) and takes precedence over defaults. This file only summarizes it; if they ever disagree, AGENTS.md wins. Key points:
 - Classify every change by **semantic impact** as GROEN / ORANJE / ROOD ([CHANGE_CONTROL.md](docs/governance/CHANGE_CONTROL.md)). ROOD covers changes to economic definitions, price/time aggregation, source priority, scope, publication meaning, historical data replacement, and security boundaries. For ROOD, research and propose only. Make no substantive change until the owner decides.
 - Only items marked `DECIDED`/`ACCEPTED` in [DECISIONS.md](docs/governance/DECISIONS.md) are normative. `PROPOSED` is never a decision, and `VERIFIED_REPO` claims in docs do not prove anything about the current HEAD. See [DOCUMENT_HIERARCHY.md](docs/governance/DOCUMENT_HIERARCHY.md).
 - Data integrity: no silent interpolation, forward-fill (including FX weekend/holiday carry-forward), backfill, source switching, or FX assumptions. Missing data stays `null`. Never invent values.
@@ -47,9 +47,9 @@ There is no linter or formatter configured.
 Decided runtime (ADR-001): GitHub Actions → validated CSV → deterministic static JSON → React/Vite → Cloudflare Pages. **No D1 in production.** `etl/main.py`, `etl/d1_import.py`, `db/`, and `frontend/functions/api/monthly.ts` are legacy D1 code that is kept but unused by the UI.
 
 Data flow:
-- `etl/sources/cbs.py` fetches CBS OData v4 table 85773NED (`nl_hpi`, `nl_house_avg_eur`). The committed provenance snapshot is `data/cbs-housing.csv` (`date,series,value`). Pre-2000 history (1995–1999, house price only, no HPI) comes from the pinned fixture `data/fixtures/cbs-1995-1999-i1*.json`.
+- `etl/sources/cbs.py` fetches CBS OData v4 table 85773NED (`nl_hpi`, `nl_house_avg_eur`). The committed provenance snapshot is `data/cbs-housing.csv` (`date,series,value`). The public data covers 2000-01 onward. Pre-2000 history (1995–1999, house price only, no HPI) exists only in the pinned fixture `data/fixtures/cbs-1995-1999-i1*.json`, which the review-only update pipeline merges into a 380-month candidate. It is not published.
 - `etl/static_export.py` `build()` turns the CSV into `frontend/public/data/monthly.json` (`{"data":[{period, gold_eur_oz, house_eur, hpi, gold_grams_per_house, gold_index, hpi_index}]}`). It is strict: exact columns, no gaps or duplicates, positive finite values, and `hpi_index` based on 2000-01 = 100.
-- `etl/data_quality.py` re-runs `build()` and requires byte-level equality with the committed JSON. Any change to the CSV, the export logic, or the JSON must keep all three consistent. Gold fields must be `null` in the committed JSON.
+- `etl/data_quality.py` re-runs `build()` and requires the parsed committed JSON to equal its output exactly. Any change to the CSV, the export logic, or the JSON must keep all three consistent. Gold fields must be `null` in the committed JSON.
 - The frontend (`frontend/src/main.tsx`, single file) fetches `/data/monthly.json` and charts one metric with Recharts.
 
 Fail-closed, review-only pipelines. These produce workflow artifacts and must not change public files:
