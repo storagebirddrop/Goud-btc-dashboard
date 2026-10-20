@@ -21,12 +21,12 @@ def test_candidates_registered_exact_https():
 
 # ---- table info
 def test_table_info_v3_fields_and_missing_are_not_retrieved():
-    info = m.parse_table_info({"value": [{"Title": "T", "Period": "1995 - 2026", "Summary": " ", "Modified": "2026-09-01T00:00:00", "Description": "x" * 5000}]})
+    info = m.parse_table_info({"value": [{"Title": "T", "Period": "1995 - 2026", "Summary": " ", "Modified": "2026-09-01T00:00:00", "Description": "x" * 12000}]})
     f = info["fields"]
     assert f["Title"] == {"status": "OFFICIAL_CONFIRMED", "value": "T"}
     assert f["Summary"]["status"] == "NOT_RETRIEVED" and f["Summary"]["value"] is None
     assert f["ReleaseDate"]["status"] == "NOT_RETRIEVED" and f["Source"]["status"] == "NOT_RETRIEVED"
-    assert len(f["Description"]["value"]) == 1500
+    assert len(f["Description"]["value"]) == 9000
     assert info["retrieved"] == 4
 
 
@@ -214,7 +214,16 @@ def test_report_lines_render_minimal_summary():
     s = {"facts": m.extract_facts(CORPUS), "table_metadata": {"T": m.parse_table_info({"value": [{"Title": "T"}]})},
          "measure_details": {"T": m.parse_property_details(PROPS)}, "perioden_status": {}, "catalog_entries_of_known_tables": {},
          "catalog_title_hits": [], "revision_comparison": {}, "break_statistics": {}, "guilder_numbers_derived": {}, "price_keys": {},
-         "index_keys": {}, "rights": {}, "results": [], "findings": [], "missing_sources": [], "defects": []}
+         "index_keys": {}, "rights": {}, "results": [], "findings": [], "missing_sources": [], "defects": [],
+         "description_excerpts": {"T": ["x"]}, "method_history": {}, "kadaster_excerpts": {}, "kadaster_page_rights_quotes": {}, "rights_windows": {}}
     lines = m.report_lines(s)
     assert any(l.startswith("FACT guilder_or_conversion NOT_RETRIEVED") for l in lines)
     json.dumps(lines)
+
+
+def test_focus_sentences_and_window():
+    text = "Eerste zin zonder inhoud hier voor de test. De gemiddelde verkoopprijs is een gemiddelde. Nog een lange neutrale zin hier."
+    assert m.focus_sentences(text, r"verkoopprijs") == ["De gemiddelde verkoopprijs is een gemiddelde."]
+    assert m.focus_sentences("", r"x") == []
+    assert m.window_after("a TERMS b TERMS c", "TERMS", 7) == "TERMS c"
+    assert m.window_after("a TERMS b", "ABSENT") == ""

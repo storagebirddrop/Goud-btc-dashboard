@@ -99,7 +99,7 @@ class Hist05DefError(ValueError):
 # ---------------------------------------------------------------- metadata parsers
 INFO_FIELDS = ("Title", "ShortTitle", "ShortDescription", "Description", "Summary", "Period", "Frequency", "Modified",
                "ReleaseDate", "Updated", "Source", "Language", "Status", "MetaDataModified", "DefaultPresentation")
-LONG_FIELDS = {"ShortDescription": 700, "Description": 1500, "Summary": 700}
+LONG_FIELDS = {"ShortDescription": 1500, "Description": 9000, "Summary": 700}
 
 
 def _field(row, name):
@@ -225,7 +225,7 @@ def sentences(text):
     return [s.strip() for s in SENT_SPLIT.split(text or "") if 25 <= len(s.strip()) <= 700]
 
 
-def extract_facts(corpus, specs=None, max_quotes=3):
+def extract_facts(corpus, specs=None, max_quotes=14):
     """corpus: {source_id: plain text}. Returns {fact: {status, quotes:[{source, quote}], sources_with_text}}.
     OFFICIAL_CONFIRMED means a matching sentence was READ in a retrieved text (not that the claim is true in general);
     nothing matched => NOT_RETRIEVED."""
@@ -242,6 +242,27 @@ def extract_facts(corpus, specs=None, max_quotes=3):
     return out
 
 
+def focus_sentences(text, regex, limit=14, maxlen=320):
+    """Distinct sentences of one text that match REGEX (document order), shortened; used to read definition sections."""
+    pat, out = re.compile(regex, re.I), []
+    for s in sentences(text):
+        if pat.search(s) and s[:maxlen] not in out:
+            out.append(s[:maxlen])
+        if len(out) >= limit:
+            break
+    return out
+
+
+def window_after(text, anchor, n=1800, occurrence=-1):
+    """Text window after the chosen occurrence (default: last) of ANCHOR; '' when the anchor is absent (NOT_RETRIEVED)."""
+    idx = [mm.start() for mm in re.finditer(re.escape(anchor), text or "")]
+    return text[idx[occurrence]: idx[occurrence] + n] if idx else ""
+
+
+DESC_FOCUS = (r"verkoopprijs|revisie|herzien|definitief|voorlopig|eerste publicatie|gecorrigeerd|bronnen|methode|Kadaster|euro|gulden|NLG|"
+              r"omgerekend|1995|gewicht|WOZ|SPAR|particulier|koopsom|nieuwbouw|vraagprijs")
+METHOD_FOCUS = r"vanaf|sinds|gewicht|herzien|revisie|WIK|Repeat|SPAR|2005|2008|2013|gulden|euro|Kadaster|1995"
+KADASTER_FOCUS = r"koopsom|PBK|prijsindex|NVM|kwaliteit|correctie|gemiddelde|notari|registr|verschil"
 RIGHTS_SPEC = re.compile(r"toegestaan|permitted|permissible|free|vrij|unrestricted|CC[ -]?BY|CC0|Public Domain|licen[cs]e?|bronvermelding|"
                          r"naamsvermelding|cite|credit|must|verplicht|obliged|not permitted|prohibit|written permission|toestemming|"
                          r"commercial|hergebruik|re-?use|reproduc", re.I)
@@ -426,10 +447,13 @@ def main(argv=None):
         entry["text_chars"] = len(text or "")
         if group.startswith("rights_"):
             rights_text[sid] = text or ""
+            entry["window_terms"] = window_after(text, "Terms of permitted use of BIS statistics", 1800) if sid.startswith("bis-") else ""
             entry["rights_evidence"] = rights_level(text)
             entry["rights_quotes"] = rights_quotes(text)
         else:
             corpus[sid] = text or ""
+            if group == "kadaster_def":
+                entry["rights_quotes"] = rights_quotes(text)
         results.append(entry)
     # 2. table metadata, property details, Perioden status
     for tid in CORE + OLDER:
@@ -530,8 +554,15 @@ def main(argv=None):
     nlg = {t: guilder_numbers(month_range(c["price"], "1995-01", "1998-12")) for t, c in sorted(core.items()) if c.get("price")}
     nlg["fixture_1995_1998"] = guilder_numbers(month_range(fixture, "1995-01", "1998-12"))
     facts = extract_facts(corpus)
+    description_excerpts = {t: focus_sentences(m["fields"]["Description"]["value"], DESC_FOCUS, 16) for t, m in sorted(metadata.items())
+                            if t in CORE or t.replace("_v4", "") in CORE}
+    method_history = {sid: focus_sentences(corpus.get(sid, ""), METHOD_FOCUS, 14) for sid in ("cbs-method-pbk-2010", "cbs-method-pbk-2015", "cbs-method-regio", "cbs-background-2005", "cbs-faq-woningprijzen", "cbs-method-pdf-2008", "cbs-method-pdf-2018", "cbs-method-pdf-2024")}
+    kadaster_excerpts = {sid: focus_sentences(corpus.get(sid, ""), KADASTER_FOCUS, 10) for sid in sorted(PAGES) if PAGES[sid][2] == "kadaster_def"}
     summary = {"status": "DONE", "nothing_approved": True, "publication_authorized": False, "rights_status": "UNVERIFIED",
-               "facts": facts, "table_metadata": metadata,
+               "facts": facts, "table_metadata": metadata, "description_excerpts": description_excerpts,
+               "method_history": method_history, "kadaster_excerpts": kadaster_excerpts,
+               "rights_windows": {r["source_id"]: r["window_terms"] for r in results if r.get("window_terms")},
+               "kadaster_page_rights_quotes": {r["source_id"]: r["rights_quotes"] for r in results if PAGES.get(r["source_id"], ("", "", ""))[2] == "kadaster_def"},
                "measure_details": {t: {k: v for k, v in m.items()} for t, m in units.items() if t in CORE or t in OLDER or t in [r["id"] for r in extra]},
                "perioden_status": perioden, "catalog_entries_of_known_tables": catalog_ids,
                "catalog_title_hits": catalogue_hits[:60], "catalog_extra_fetched": [r["id"] for r in extra],
@@ -557,12 +588,22 @@ def report_lines(summary):
     for t, m in sorted(summary["table_metadata"].items()):
         fl = m["fields"]
         out.append(f"INFO {t} " + " | ".join(f"{k}={(fl[k]['value'] or 'NOT_RETRIEVED')[:110]}" for k in ("Title", "Period", "Frequency", "Modified", "ReleaseDate", "Source", "Status")))
-        for k in ("ShortDescription", "Summary", "Description"):
+        for k in ("ShortDescription", "Summary"):
             if fl[k]["value"]:
-                out.append(f"  {k}: {fl[k]['value'][:600]}")
+                out.append(f"  {k}: {fl[k]['value'][:1500]}")
     for t, m in sorted(summary["measure_details"].items()):
         for k, v in m.items():
-            out.append(f"MEAS {t} {k}|{v['title'][:50]}|unit={v['unit']}|{v['unit_parsed']['status']}:{v['unit_parsed']['currency']}/{v['unit_parsed']['kind']}|dec={v['decimals']}|desc={(v['description']['value'] or 'NOT_RETRIEVED')[:260]}")
+            out.append(f"MEAS {t} {k}|{v['title'][:50]}|unit={v['unit']}|{v['unit_parsed']['status']}:{v['unit_parsed']['currency']}/{v['unit_parsed']['kind']}|dec={v['decimals']}|desc={(v['description']['value'] or 'NOT_RETRIEVED')[:700]}")
+    for t, lst in sorted(summary["description_excerpts"].items()):
+        out += [f"DESC {t} {q}" for q in lst]
+    for sid, lst in sorted(summary["method_history"].items()):
+        out += [f"METH {sid} {q}" for q in lst]
+    for sid, lst in sorted(summary["kadaster_excerpts"].items()):
+        out += [f"KAD {sid} {q}" for q in lst]
+    for sid, lst in sorted(summary["kadaster_page_rights_quotes"].items()):
+        out += [f"KADRIGHTS {sid} {q[:300]}" for q in lst[:4]]
+    for sid, w in sorted(summary["rights_windows"].items()):
+        out.append(f"BISWINDOW {sid} {w}")
     out.append("PERIODEN " + json.dumps(summary["perioden_status"], sort_keys=True, separators=(",", ":")))
     out.append("CATALOG " + json.dumps(summary["catalog_entries_of_known_tables"], sort_keys=True, separators=(",", ":"))[:2500])
     for r in summary["catalog_title_hits"]:
@@ -571,9 +612,9 @@ def report_lines(summary):
         out.append(f"{key.upper()} " + json.dumps(summary[key], sort_keys=True, separators=(",", ":")))
     for sid, r in sorted(summary["rights"].items()):
         out.append(f"RIGHTS {sid} {r['level']}")
-        out += [f"  Q {q}" for q in r["quotes"][:4]]
+        out += [f"  Q {q}" for q in r["quotes"][:6]]
     for r in summary["results"]:
-        out.append(f"SRC {r['source_id']} {r['status']} http={r.get('http_status')} bytes={r.get('bytes')} sha={(r.get('sha256') or '')[:16]}")
+        out.append(f"SRC {r['source_id']} {r['status']} http={r.get('http_status')} bytes={r.get('bytes')} sha={(r.get('sha256') or '')[:16]} err={str(r.get('error') or '')[:90]} pdf={json.dumps(r.get('pdf'), sort_keys=True) if r.get('pdf') else ''}")
     out.append("FINDINGS " + json.dumps(summary["findings"], sort_keys=True, default=str)[:2000])
     out.append("MISSING " + json.dumps(summary["missing_sources"]))
     out.append("DEFECTS " + json.dumps(summary["defects"]))
