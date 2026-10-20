@@ -213,7 +213,7 @@ def test_catalog_info_rows_defaults_not_retrieved():
 def test_report_lines_render_minimal_summary():
     s = {"facts": m.extract_facts(CORPUS), "table_metadata": {"T": m.parse_table_info({"value": [{"Title": "T"}]})},
          "measure_details": {"T": m.parse_property_details(PROPS)}, "perioden_status": {}, "catalog_entries_of_known_tables": {},
-         "catalog_title_hits": [], "revision_comparison": {}, "weighted_annual_check": {}, "pdf_tables": {}, "break_statistics": {}, "guilder_numbers_derived": {}, "price_keys": {},
+         "catalog_title_hits": [], "revision_comparison": {}, "weighted_annual_check": {}, "pdf_tables": {}, "pdf_windows": {}, "break_statistics": {}, "guilder_numbers_derived": {}, "price_keys": {},
          "index_keys": {}, "rights": {}, "results": [], "findings": [], "missing_sources": [], "defects": [],
          "description_excerpts": {"T": ["x"]}, "method_history": {}, "kadaster_excerpts": {}, "kadaster_page_rights_quotes": {}, "rights_windows": {}}
     lines = m.report_lines(s)
@@ -272,3 +272,8 @@ def test_core_analysis_picks_count_and_annual():
 def test_pdf_year_rows_only_exact_three_column_rows():
     text = "Jaar  aantal  prijs\n 1995      154.568      93.750\n1996  1.2 3\n 1999   199.000   123.456  \ntekst 2000 1 2 3\n"
     assert m.pdf_year_rows(text) == [{"year": "1995", "col_a": "154.568", "col_b": "93.750"}, {"year": "1999", "col_a": "199.000", "col_b": "123.456"}]
+
+
+def test_window_around():
+    assert m.window_around("0123456789", "45", 2, 2) == "234567"
+    assert m.window_around("0123456789", "zz") == ""

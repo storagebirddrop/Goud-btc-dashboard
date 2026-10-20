@@ -31,7 +31,7 @@ from tools import hist_02_acquire
 from tools.hist_05_cbs_kadaster import (Hist05Error, classify_measure, compare_series, fetch_status, level_continuity,
                                         load_fixture, load_json, parse_props, parse_typed, periods_between,
                                         pick_price_measure, strip_tags)
-from tools.hist_05_other_sources import pdf_to_text
+from tools.hist_05_other_sources import pdf_context, pdf_to_text
 
 ODATA3 = "https://opendata.cbs.nl/ODataApi/OData/"
 ODATA4 = "https://datasets.cbs.nl/odata/v1/CBS/"
@@ -75,8 +75,8 @@ PAGES = {
     "bis-terms-statistics": ("https://www.bis.org/terms_statistics.htm", "html", "rights_bis"),
     "bis-permitted-use-statistics": ("https://www.bis.org/about/legal/permitted-use-statistics", "html", "rights_bis"),
     "bis-data-help-legal": ("https://data.bis.org/help/legal", "html", "rights_bis"),
-    "bis-terms-conditions": ("https://www.bis.org/terms_conditions.htm", "html", "rights_bis"),
-    "bis-permission-requests": ("https://www.bis.org/permission_requests.htm", "html", "rights_bis"),
+    "bis-terms-conditions": ("https://www.bis.org/about/terms-conditions", "html", "rights_bis"),
+    "bis-permission-requests": ("https://www.bis.org/about/legal/permission-request", "html", "rights_bis"),
 }
 CANDIDATES = dict(PAGES)
 for _t in CORE + OLDER:
@@ -275,6 +275,12 @@ def probe_redirect(sid, opener=None):
         return {"http": None, "error": type(exc).__name__}
     with resp:
         return {"http": getattr(resp, "status", None), "location": None}
+
+
+def window_around(text, anchor, before=1500, after=1200):
+    """Text window around the first occurrence of ANCHOR ('' when absent => NOT_RETRIEVED)."""
+    i = (text or "").find(anchor)
+    return text[max(0, i - before): i + len(anchor) + after] if i >= 0 else ""
 
 
 def window_after(text, anchor, n=1800, occurrence=0):
@@ -615,6 +621,11 @@ def main(argv=None):
     nlg = {t: guilder_numbers(month_range(c["price"], "1995-01", "1998-12")) for t, c in sorted(core.items()) if c.get("price")}
     nlg["fixture_1995_1998"] = guilder_numbers(month_range(fixture, "1995-01", "1998-12"))
     facts = extract_facts(corpus)
+    pdf_windows = {}
+    for sid in ("cbs-method-pdf-2008", "cbs-method-pdf-2018", "cbs-method-pdf-2024"):
+        txt = corpus.get(sid, "")
+        pdf_windows[sid] = {"around_table_1993_1994": window_around(txt, "81.037", 1800, 1500),
+                            "average_price_contexts": pdf_context(txt, r"gemiddelde verkoopprijs|verkoopprijs", r"gemiddeld|euro|gulden", 350, 4)}
     pdf_tables = {sid: pdf_year_rows(corpus.get(sid, "")) for sid in ("cbs-method-pdf-2008", "cbs-method-pdf-2018", "cbs-method-pdf-2024")}
     description_excerpts = {t: focus_sentences(m["fields"]["Description"]["value"], DESC_FOCUS, 16) for t, m in sorted(metadata.items())
                             if t in CORE or t.replace("_v4", "") in CORE}
@@ -629,7 +640,7 @@ def main(argv=None):
                "perioden_status": perioden, "catalog_entries_of_known_tables": catalog_ids,
                "catalog_title_hits": catalogue_hits[:60], "catalog_extra_fetched": [r["id"] for r in extra],
                "price_keys": {t: c["price_key"] for t, c in core.items()}, "index_keys": {t: c["index_keys"] for t, c in core.items()},
-               "revision_comparison": revisions, "weighted_annual_check": weighted_annual_check(core) if not defects else {}, "pdf_tables": pdf_tables, "break_statistics": breaks, "guilder_numbers_derived": nlg,
+               "revision_comparison": revisions, "weighted_annual_check": weighted_annual_check(core) if not defects else {}, "pdf_tables": pdf_tables, "pdf_windows": pdf_windows, "break_statistics": breaks, "guilder_numbers_derived": nlg,
                "rights": {sid: {"level": rights_level(t), "quotes": rights_quotes(t)} for sid, t in sorted(rights_text.items())},
                "results": results, "findings": findings, "missing_sources": sorted(set(missing)), "defects": defects}
     out = Path(args.summary_out)
@@ -670,6 +681,9 @@ def report_lines(summary):
     out.append("CATALOG " + json.dumps(summary["catalog_entries_of_known_tables"], sort_keys=True, separators=(",", ":"))[:2500])
     for r in summary["catalog_title_hits"]:
         out.append(f"HIT {r['id']}|{r['period']}|{r['frequency']}|{r['modified']}|{r['title'][:100]}")
+    for sid, w in sorted(summary["pdf_windows"].items()):
+        out.append(f"PDFWIN {sid} TABLE {w['around_table_1993_1994']}")
+        out += [f"PDFWIN {sid} CTX {c}" for c in w["average_price_contexts"]]
     for key in ("weighted_annual_check", "pdf_tables", "revision_comparison", "break_statistics", "guilder_numbers_derived", "price_keys", "index_keys"):
         out.append(f"{key.upper()} " + json.dumps(summary[key], sort_keys=True, separators=(",", ":")))
     for sid, r in sorted(summary["rights"].items()):
