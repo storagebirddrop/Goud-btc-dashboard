@@ -11,8 +11,7 @@ The authoritative version-controlled governance framework is [AGENTS.md](AGENTS.
 ## Repository structure
 
 - `frontend/` — React/Vite UI loading static JSON from Pages
-- `etl/` — CBS API ingestion, historical CSV validation, static JSON generation; legacy SQL tooling retained
-- `db/migrations/` — optional legacy Cloudflare D1 schema (not needed for static deployment)
+- `etl/` — CBS API ingestion, CSV validation, static JSON generation
 - `tests/` — Python ETL tests
 - `.github/workflows/ci.yml` — pull request checks; no deployment
 
@@ -43,22 +42,15 @@ Supply reviewed, licensed CSV files with columns `date,series,value`. See [data/
 date,series,value
 2000-01,nl_hpi,100
 2000-01,nl_house_avg_eur,150000
-2000-01,gold_eur_oz,280
 ```
 
 Example values above are illustrative, **not historical facts**.
 
-To generate a local SQL import:
-
-```sh
-python -m etl.main --input data/validated.csv --output data/upsert.sql
-```
-
-This does **not** import to D1. The SQL is generated locally and excluded from Git.
+The static JSON is generated and checked with `python -m etl.static_export` and `python -m etl.data_quality` (see [static data pipeline](docs/static-pipeline.md)).
 
 ## Deployment
 
-The preferred deployment is Git-integrated **Cloudflare Pages without D1**. See [static data pipeline](docs/static-pipeline.md). The legacy D1 binding remains commented out. Source attribution, licensing and data QA must be reviewed before public launch.
+Deployment is **Cloudflare Pages without D1 or Functions**: the dashboard reads only the static `/data/monthly.json`. See [static data pipeline](docs/static-pipeline.md). Source attribution, licensing and data QA must be reviewed before public launch.
 
 ## Contribution and security
 

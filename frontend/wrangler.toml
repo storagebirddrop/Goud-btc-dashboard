@@ -2,8 +2,4 @@ name = "goud-btc-dashboard"
 compatibility_date = "2026-09-01"
 pages_build_output_dir = "dist"
 
-# Static site: no D1 database or binding required. Legacy example retained below.
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "gold-housing"
-# database_id = "REPLACE_WITH_REAL_DATABASE_ID"
+# Static site (ADR-001): no Functions, no D1 or other bindings.

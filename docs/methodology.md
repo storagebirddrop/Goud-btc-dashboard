@@ -29,7 +29,7 @@ For gold, use the approved ADR-004 monthly ECB USD-per-EUR mean from available v
 3. Validate missing months, duplicates, non-finite values, and implausible outliers.
 4. Align index base dates and document index rebasing.
 5. Check sample months manually against source publications.
-6. Test migration and API with seeded D1 data.
+6. Run the static export and `python -m etl.data_quality` on the committed CSV/JSON.
 7. Require passing CI, reviewed dependency lockfile, and approval before merging.
 8. Enable production credentials and scheduled ETL only in a separate reviewed change.
 

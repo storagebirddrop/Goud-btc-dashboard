@@ -44,7 +44,7 @@ There is no linter or formatter configured.
 
 ## Architecture
 
-Decided runtime (ADR-001): GitHub Actions → validated CSV → deterministic static JSON → React/Vite → Cloudflare Pages. **No D1 in production.** `etl/main.py`, `etl/d1_import.py`, `db/`, and `frontend/functions/api/monthly.ts` are legacy D1 code that is kept but unused by the UI.
+Decided runtime (ADR-001): GitHub Actions → validated CSV → deterministic static JSON → React/Vite → Cloudflare Pages. **No D1 and no Pages Functions.** The former D1 tooling and the `/api/monthly` function were removed (owner decision 2026-10-20); `tests/test_static_architecture.py` guards that the frontend reads only `/data/monthly.json`.
 
 Data flow:
 - `etl/sources/cbs.py` fetches CBS OData v4 table 85773NED (`nl_hpi`, `nl_house_avg_eur`). The committed provenance snapshot is `data/cbs-housing.csv` (`date,series,value`). The public data covers 2000-01 onward. Pre-2000 history (1995–1999, house price only, no HPI) exists only in the pinned fixture `data/fixtures/cbs-1995-1999-i1*.json`, which the review-only update pipeline merges into a 380-month candidate. It is not published.
