@@ -131,6 +131,14 @@ class Hist04FxTests(unittest.TestCase):
         self.assertEqual((r["time_first"], r["time_last"], r["values"]), ("1999M01", "1999M03", 2))
         self.assertEqual(fx.status_snippets("<p>The series was discontinued when the euro replaced the guilder.</p>")[0][:10], "The series")
 
+    def test_jsonstat_series_and_compare(self):
+        j = (b'{"value":{"0":1.1,"2":1.2},"dimension":{"time":{"category":{"index":{"1999-01":0,"1999-02":1,"1999-03":2}}}}}')
+        s = fx.jsonstat_series(j)
+        self.assertEqual(s, {"1999-01": D("1.1"), "1999-03": D("1.2")})  # null month stays absent
+        self.assertEqual(fx.compare_monthly(s, {"1999-01": D("1.1")})["months_dev_gt_1e-4"], 0)
+        with self.assertRaises(fx.FxError):
+            fx.jsonstat_series(j.replace(b"1.1", b"-1.1"))
+
     def test_extract_links_filters_and_dedupes(self):
         html = '<a href="/datadownload/Choose.aspx?rel=G5">a</a><a href="/about.htm">b</a><a href="/datadownload/Choose.aspx?rel=G5">c</a>'
         self.assertEqual(fx.extract_links(html), ["/datadownload/Choose.aspx?rel=G5"])

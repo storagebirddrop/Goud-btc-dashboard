@@ -446,6 +446,39 @@ def jsonstat_summary(raw):
             "time_points": len(keys), "values": n, "error": d.get("error")}
 
 
+def jsonstat_series(raw):
+    """Eurostat JSON-stat (single time dimension) -> {YYYY-MM: Decimal}; positive values only, nulls stay absent."""
+    d = json.loads(decode(raw), parse_float=Decimal)
+    idx = d["dimension"]["time"]["category"]["index"]
+    out = {}
+    for t, pos in idx.items():
+        v = d.get("value", {}).get(str(pos))
+        if v is None:
+            continue
+        m = re.fullmatch(r"(\d{4})[-M](\d{2})", t)
+        if not m:
+            raise FxError("UNPARSEABLE_PERIOD")
+        k = f"{m.group(1)}-{m.group(2)}"
+        v = Decimal(v)
+        if v <= 0:
+            raise FxError("NON_POSITIVE_VALUE")
+        if k in out:
+            raise FxError("DUPLICATE_PERIOD")
+        out[k] = v
+    return out
+
+
+def compare_monthly(a, b):
+    """Relative deviation of two monthly dicts (same direction) on common months."""
+    common = sorted(set(a) & set(b))
+    if not common:
+        return {"common_months": 0}
+    devs = [(abs(a[m] - b[m]) / b[m], m) for m in common]
+    w = max(devs)
+    return {"common_months": len(common), "first": common[0], "last": common[-1], "max_rel_dev": f"{w[0]:.3E}",
+            "max_dev_month": w[1], "months_dev_gt_1e-4": sum(1 for x, _ in devs if x > Decimal("1e-4"))}
+
+
 def fed_url(series_hash):
     return (FED_BASE + "Output.aspx?rel=G5&series=" + series_hash +
             "&lastobs=&from=&to=&filetype=csv&label=include&layout=seriescolumn")
@@ -500,6 +533,12 @@ def main(argv=None):
             entry = {"sha256": rec["sha256"], "bytes": rec["bytes"]}
             if sid in EUROSTAT_PROBES:
                 entry.update(jsonstat_summary(raw))
+                if sid == "eurostat-usd-m":
+                    es_m = jsonstat_series(raw)
+                    entry["coverage"] = coverage(es_m)
+                    entry["vs_ecb_monthly"] = compare_monthly(es_m, ecb_m) if ecb_m else "NO_ECB_MONTHLY"
+                    entry["anchors_usd_per_eur"] = {k: str(es_m[k]) for k in ("1998-12", "1999-01") if k in es_m}
+                    entry["pre_1999_months"] = sum(1 for k in es_m if k < "1999-01")
             entry["status_snippets"] = status_snippets(raw.decode("utf-8", "replace")) if sid == "fed-ddp-g5a" else None
             s["alt_probes"][sid] = entry
         except Exception as exc:  # diagnostics only
