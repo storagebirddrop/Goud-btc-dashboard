@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer} from 'recharts';
 import './style.css';
 
-import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRange,sliceRange,viewAnnotations,MONTH_RE,ok} from './series';
+import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRange,sliceRange,viewAnnotations,viewHasGold,goldPeriod,GOLD_SOURCE_ASOF,GOLD_SOURCE_LINKS,GOLD_OWN_CALC_TEXT,GOLD_METHOD_TEXT,GOLD_BREAK_TEXT,METHODOLOGY_URL,MONTH_RE,ok} from './series';
 import type {SeriesKey,Point,Kind,Range,PresetId} from './series';
 
 const PRESETS:{id:PresetId;label:string}[]=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}];
@@ -49,6 +49,19 @@ function Card({k,rows}:{k:SeriesKey;rows:Point[]}){
   </dl>
   <p className="status">Bron: {s.source}. {vals.length} {vals.length===1?'maand':'maanden'} met gegevens.</p>
  </article>
+}
+
+function asOfText(){const [y,m,d]=GOLD_SOURCE_ASOF.date.split('-').map(Number);return new Date(Date.UTC(y,m-1,d)).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'})}
+function GoldSources({data,keys}:{data:Point[];keys:SeriesKey[]}){
+ const per=goldPeriod(data,keys);
+ return <aside className="gold-src" aria-labelledby="h-gold-src">
+  <h3 id="h-gold-src">Bronnen en methode van de goudreeksen</h3>
+  <ul>{GOLD_SOURCE_LINKS.map(l=><li key={l.url}>{l.name}, {l.detail}: <a href={l.url}>{l.linkText}</a></li>)}</ul>
+  <p>{GOLD_OWN_CALC_TEXT}</p>
+  <p>Periode goudreeks: {per?`${month(per.from)} t/m ${month(per.to)} (${per.months} ${per.months===1?'maand':'maanden'})`:'geen gegevens'}. Peildatum bronstand: <time dateTime={GOLD_SOURCE_ASOF.date}>{asOfText()}</time>.</p>
+  <p><strong>Methode.</strong> {GOLD_METHOD_TEXT.join(' ')} <a href={METHODOLOGY_URL}>Volledige methodologie</a></p>
+  <p className="gold-break">{GOLD_BREAK_TEXT}</p>
+ </aside>
 }
 
 type TipProps={active?:boolean;payload?:{dataKey:string;value:number}[];label?:string};
@@ -152,6 +165,7 @@ function App(){
    <p className="cap">{curCat.caption}</p>
    <p className="cap">Eenheid: <strong>{curView.unit}</strong>{curView.keys[0]==='house_eur'&&<InfoHint id="hint-chart"/>}</p>
    {chartHasData?<Chart rows={rows} keys={curView.keys} dark={dark} height={narrow?260:340} yLabel={curView.unit} baseLine={curView.baseLine} ariaLabel={`Lijngrafiek, ${curView.unit}. ${summary(rows,curView.keys)}`}/>:<p className="notice" role="status">Geen gegevens voor deze weergave in de gekozen periode.</p>}
+   {viewHasGold(curView.keys)&&<GoldSources data={data} keys={curView.keys}/>}
    <p className="status">Bron: {sources}. Gebruik de pijltjestoetsen op de grafiek om waarden per maand te lezen; de tabel onder Bronnen &amp; methode bevat alle waarden.</p>
   </section>}
 
@@ -168,7 +182,8 @@ function App(){
     <p>De CBS-gemiddelde verkoopprijs is gevoelig voor de samenstelling van verkochte woningen. De prijsindex corrigeert voor kwaliteitsverschillen en is geschikter voor prijsontwikkeling.</p>
     {hasGold&&<><h3>Goud</h3>
     <p><a href="https://www.worldbank.org/en/research/commodity-markets">World Bank Commodity Markets (Pink Sheet), GOLD, USD per troy ounce</a>. Valutakoers: <a href="https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.USD.EUR.SP00.A">ECB EXR.D.USD.EUR.SP00.A</a>, USD per EUR. Maandgemiddelden, omrekening, indexering en gram per woning zijn eigen berekeningen; geen bronorganisatie onderschrijft deze toepassing.</p>
-    <p><strong>Definitiewijziging juni 2025:</strong> World Bank GOLD gebruikte tot en met mei 2025 London afternoon fixing (99,5% goud); vanaf juni 2025 gemiddelde dagelijkse spotprijzen. De goudreeks is daardoor niet volledig benchmarkhomogeen.</p></>}
+    <p>{GOLD_METHOD_TEXT.join(' ')} <a href={METHODOLOGY_URL}>Volledige methodologie</a>. Peildatum bronstand: {asOfText()}.</p>
+    <p>{GOLD_BREAK_TEXT}</p></>}
     <h3>Gegevens als tabel</h3>
     <button type="button" className="seg" aria-expanded={table} aria-controls="data-table" onClick={()=>setTable(!table)}>{table?'Verberg tabel':'Toon als tabel'}</button>
     {table&&<div className="table-wrap" tabIndex={0} role="region" aria-label="Maandgegevens (scrollbaar)"><table id="data-table"><caption>Maandelijkse waarden van {month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} {rows.length===1?'maand':'maanden'}, dezelfde periode als de grafiek); leeg betekent geen gegevens.</caption>

@@ -38,7 +38,7 @@ De README noemt een **vroege ontwikkelfase**, initieel goud versus Nederlandse w
 Een fase is gereed als: (a) beslissingen geregistreerd, (b) bronlicentie en dataset-ID vastgesteld, (c) tests en onafhankelijk gecontroleerde ankerpunten geslaagd, (d) versieerbaar datacontract nageleefd, (e) frontend-labels juist, (f) release en rollback getest, (g) verificatielog bijgewerkt.
 
 ## Expliciete blokkades
-`BLOCKED`: geen vrijgave van goud/BTC-indicator zonder gevalideerde bronprijzen en publicatierechten. `UNVERIFIED`: exacte CI- en Cloudflare deploy-status.
+`BLOCKED` voor BTC: geen vrijgave van een BTC-indicator zonder gevalideerde bronprijzen en publicatierechten. Voor goud geldt sinds het eigenaarbesluit GOLD-03 (2026-10-20, zie [DECISIONS.md](DECISIONS.md)): HOLD opgeheven voor `gold_index` en `gold_grams_per_house` vanaf 2000-01 met geregistreerd restrisico op derdepartijrechten; release wacht op afzonderlijke toestemming. `UNVERIFIED`: exacte CI- en Cloudflare deploy-status.
 
 ## Update v2.1 — BTC-tijddekking
 De tradingrepository is nu een **geverifieerde kandidaat** voor dagelijkse BTC/USD-slotkoersen van **2014-09-17 t/m 2026-10-12** (4.409 opeenvolgende kalenderdagen, auditrun 39050246824). Dit is de bewezen dekking van **die bron**, niet de economische startdatum van Bitcoin en niet de dekkingsgarantie voor een publieke BTC/EUR-maandreeks. De periode vóór 2014-09-17 en de 1.267 BTC-dagen zonder dezelfde-dag FX vereisen expliciete methodologische keuzes. M2 blijft `BLOCKED` voor publicatie wegens FX, licentie en onafhankelijke broncontrole.
