@@ -39,7 +39,8 @@ V4_TABLES = ["85773NED", "83906NED"]
 CATALOG_KEYWORDS = ["woning", "koopwoning", "verkoopprijs", "prijsindex", "woningprijs", "huizenprijs",
                     "historisch", "eeuw", "dwelling", "house", "prijs", "grond", "onroerend", "koopsom", "woz", "vastgoed", "hypotheek"]
 HOUSING_TITLE = re.compile(r"woning|woon|huis|koop|verkoop|onroerend|vastgoed|eigen|hypotheek|dwelling|house|housing|real estate|purchase", re.I)
-MAX_DISCOVERED = 12
+PRICE_TITLE = re.compile(r"prijs|koop|verkoop|transactie|waarde|index|indices|vastgoed|onroerend|hypotheek|price|value|purchase|sale", re.I)
+MAX_DISCOVERED = 30
 TABLE_ID_RE = re.compile(r"[0-9A-Za-z]{4,10}")
 
 # id -> (url, format, group); groups: page, catalog, table
@@ -349,6 +350,10 @@ RIGHTS_RE = re.compile(r"CC[ -]?BY|Creative Commons|CC0|bronvermelding|source|li
 LINK_RE = re.compile(r"kadaster|prijs|woning|woningmarkt|koopwoning|historisch|reeks|tijdreeks|eeuw|jaarboek|statline|opendata|odata", re.I)
 
 
+ASSET_RE = re.compile(r"\.(css|js|png|jpe?g|gif|ico|svg|woff2?)(\?|$)|/combo|/o/", re.I)
+KEYWORD_RE = re.compile(r"woningprijs|koopwoning|verkoopprijs|huizenprijs|prijsindex|woningmarkt|historisch|tijdreeks|vanaf 19|sinds 19|1995", re.I)
+
+
 def page_facts(raw, max_quotes=6, max_links=25):
     text = raw.decode("utf-8", "replace")
     title = re.search(r"(?is)<title[^>]*>(.*?)</title>", text)
@@ -359,10 +364,11 @@ def page_facts(raw, max_quotes=6, max_links=25):
             quotes.append(s[:300])
     links = []
     for h in re.findall(r"""(?i)href\s*=\s*["']([^"'#\s]+)""", text):
-        if LINK_RE.search(h) and h not in links:
+        if LINK_RE.search(h.split("?")[0]) and not ASSET_RE.search(h) and h not in links:
             links.append(h[:170])
+    kw = [s[:260] for s in re.split(r"(?<=[.!?])\s+", plain) if KEYWORD_RE.search(s) and 40 <= len(s)][:max_quotes]
     return {"html_title": strip_tags(title.group(1))[:120] if title else None, "text_chars": len(plain), "rights_quotes": quotes,
-            "matching_links": links[:max_links], "matching_link_count": len(links)}
+            "matching_links": links[:max_links], "matching_link_count": len(links), "keyword_sentences": kw}
 
 
 def rights_level(entry):
@@ -391,7 +397,8 @@ def pick_discovered(rows, exclude, limit=MAX_DISCOVERED):
     """Housing-related tables with a start year before 2000 that are not already fixed candidates (oldest first)."""
     seen, picked = set(exclude), []
     for r in sorted(rows, key=lambda r: (r["start_year"] or 9999, r["id"])):
-        if r["id"] in seen or r["start_year"] is None or r["start_year"] >= 2000 or not HOUSING_TITLE.search(r["title"]):
+        if (r["id"] in seen or r["start_year"] is None or r["start_year"] >= 2000 or not HOUSING_TITLE.search(r["title"])
+                or not PRICE_TITLE.search(r["title"])):
             continue
         seen.add(r["id"])
         picked.append(r)
@@ -516,7 +523,9 @@ def report_lines(summary):
             t = r["table_analysis"]
             info = t.get("info", {})
             out.append(f"TAB {t['table_id']} {t.get('route', 'v3')} {t['status']} | {info.get('Title', '')[:90]} | {info.get('Period', '')} | {info.get('Frequency', '')} | dims={t.get('dimensions')} | {info.get('Source', '')}")
-            for k, mm in ((t.get("summary") or {}).get("measures") or {}).items():
+            shown = [(k, mm) for k, mm in ((t.get("summary") or {}).get("measures") or {}).items()
+                     if mm["kind"] in ("PRICE_LEVEL", "INDEX") or PRICE_TITLE.search(mm["title"] or "")][:14]
+            for k, mm in shown:
                 for combo in mm["shown"][:2]:
                     fr = ";".join(f"{f}:{v.get('first')}..{v.get('last')} n={v.get('observations')} gaps={v.get('gap_count')} nulls={v.get('null_values')}" for f, v in combo["frequencies"].items())
                     out.append(f"  M {k}|{mm['title'][:45]}|{mm['unit']}|{mm['kind']}|{mm['base']}|{mm['currency']}|dim={combo['dimensions']}/{mm['dimension_combinations']}| {fr}")
@@ -524,6 +533,7 @@ def report_lines(summary):
             p = r["page"]
             out.append(f"PAGE {r['source_id']} http={r['http_status']} bytes={r['bytes']} sha={r['sha256'][:16]} title={p['html_title']!r} rights={r['rights_evidence']}")
             out += [f"  Q {q[:260]}" for q in p["rights_quotes"][:4]]
+            out += [f"  K {q[:240]}" for q in p.get("keyword_sentences", [])[:5]]
             out += [f"  L {link}" for link in p["matching_links"][:14]]
         else:
             out.append(f"SRC {r['source_id']} {r['status']} http={r.get('http_status')} bytes={r.get('bytes')} sha={(r.get('sha256') or '')[:16]} rows={r.get('catalog_rows')}")

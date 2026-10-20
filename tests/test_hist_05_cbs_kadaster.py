@@ -182,8 +182,8 @@ def test_catalog_rows_and_discovery_filter():
     assert [r["id"] for r in rows_] == ["70001NED", "70002NED", "70003NED", "85773NED", "80004NED"]
     assert rows_[2]["start_year"] == 1965 and rows_[2]["end_year"] == 1999
     picked = m.pick_discovered(rows_, exclude=["85773NED"])
-    assert [r["id"] for r in picked] == ["70003NED", "70001NED"]  # oldest first; CPI and post-2000 excluded
-    assert m.pick_discovered(rows_, [], limit=1) and len(m.pick_discovered(rows_, [], limit=1)) == 1
+    assert [r["id"] for r in picked] == ["70003NED"]  # price-related housing only; stock, CPI and post-2000 excluded
+    assert len(m.pick_discovered(rows_, [], limit=1)) == 1
 
 
 def test_register_table_validates_and_allowlists():
