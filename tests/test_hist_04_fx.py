@@ -94,6 +94,37 @@ class Hist04FxTests(unittest.TestCase):
         html = f'<a href="x?series={h1}">Netherlands -- Spot Exchange rate</a> <a href="x?series={h2}">Japan</a>'
         self.assertEqual([h for h, _ in fx.discover_series(html, width=60)], [h1])
 
+    def _zip(self, xml):
+        import io
+        import zipfile
+        b = io.BytesIO()
+        with zipfile.ZipFile(b, "w") as z:
+            z.writestr("data.xml", xml)
+        return b.getvalue()
+
+    def test_fed_xml_zip_nl_series_nd_and_other_series_ignored(self):
+        xml = ('<root><Series CURRENCY="NLG" FREQ="9" SERIES_NAME="RXI_N.B.NL">'
+               '<Obs TIME_PERIOD="1998-12-30" OBS_VALUE="1.9000"/><Obs TIME_PERIOD="1998-12-31" OBS_VALUE="ND"/></Series>'
+               '<Series CURRENCY="JPY" SERIES_NAME="RXI_N.B.JA"><Obs TIME_PERIOD="1998-12-30" OBS_VALUE="115"/></Series></root>')
+        r = fx.parse_fed_xml_zip(self._zip(xml))
+        self.assertEqual(len(r["nl_series"]), 1)
+        n = r["nl_series"][0]
+        self.assertEqual(n["points"], {"1998-12-30": D("1.9000")})
+        self.assertEqual(n["nd"], 1)
+        self.assertEqual(r["attribute_values"]["CURRENCY"], ["JPY", "NLG"])
+
+    def test_fed_xml_zip_fail_closed(self):
+        with self.assertRaises(fx.FxError):
+            fx.parse_fed_xml_zip(b"not a zip")
+        with self.assertRaises(fx.FxError):
+            fx.parse_fed_xml_zip(self._zip('<!DOCTYPE x [<!ENTITY a "b">]><x/>'))
+        dup = ('<r><S CURRENCY="NLG"><O TIME_PERIOD="1998-12-30" OBS_VALUE="1.9"/>'
+               '<O TIME_PERIOD="1998-12-30" OBS_VALUE="1.8"/></S></r>')
+        with self.assertRaises(fx.FxError):
+            fx.parse_fed_xml_zip(self._zip(dup))
+        with self.assertRaises(fx.FxError):
+            fx.parse_fed_xml_zip(self._zip('<r><S CURRENCY="NLG"><O TIME_PERIOD="1998-12-30" OBS_VALUE="-1"/></S></r>'))
+
     def test_extract_links_filters_and_dedupes(self):
         html = '<a href="/datadownload/Choose.aspx?rel=G5">a</a><a href="/about.htm">b</a><a href="/datadownload/Choose.aspx?rel=G5">c</a>'
         self.assertEqual(fx.extract_links(html), ["/datadownload/Choose.aspx?rel=G5"])

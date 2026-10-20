@@ -30,14 +30,16 @@ VALUE_RE = re.compile(r"\d+(\.\d+)?")
 FED_BASE = "https://www.federalreserve.gov/datadownload/"
 ECB_BASE = "https://data-api.ecb.europa.eu/service/data/EXR/"
 ECB_DAILY, ECB_MONTHLY = "ecb-exr-d-usd", "ecb-exr-m-usd"
-DISCOVERY_PAGES = {
-    "fed-g5-choose": (FED_BASE + "Choose.aspx?rel=G5", "html"),
+FED_ZIP = "fed-g5-xml-zip"
+DISCOVERY_PAGES = {  # Choose/Build.aspx?rel=G5 answered HTTP 400 in CI run 39437923033; kept out
     "fed-g5-release": ("https://www.federalreserve.gov/releases/g5/default.htm", "html"),
-    "fed-g5-build": (FED_BASE + "Build.aspx?rel=G5", "html"),
+    "fed-g5-current": ("https://www.federalreserve.gov/releases/g5/current/default.htm", "html"),
+    "fed-g5a-current": ("https://www.federalreserve.gov/releases/g5a/current/default.htm", "html"),
 }
 STATIC_SOURCES = {
     ECB_DAILY: (ECB_BASE + "D.USD.EUR.SP00.A?format=csvdata", "csv"),
     ECB_MONTHLY: (ECB_BASE + "M.USD.EUR.SP00.A?format=csvdata", "csv"),
+    FED_ZIP: ("https://www.federalreserve.gov/releases/g5/data/FRB_g5_xml.zip", "zip"),
     **DISCOVERY_PAGES,
 }
 hist_02_acquire.SOURCES.update(STATIC_SOURCES)
@@ -322,16 +324,92 @@ def probe_status(url):
         return {"error_class": type(exc).__name__}
 
 
-PROBE_URLS = [
-    FED_BASE + "Choose.aspx?rel=G5", FED_BASE + "Build.aspx?rel=G5", FED_BASE + "Download.aspx?rel=G5",
-    FED_BASE + "Output.aspx?rel=G5&filetype=csv&label=include&layout=seriescolumn",
-    "https://www.federalreserve.gov/releases/g5/", "https://www.federalreserve.gov/releases/g5a/",
-    "https://www.federalreserve.gov/releases/g5/current/default.htm",
-    "https://www.federalreserve.gov/releases/g5/about.htm",
-    "https://www.federalreserve.gov/datadownload/",
-    "https://fred.stlouisfed.org/graph/fredgraph.csv?id=EXNEUS",
-    "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXNLUS",
+PROBE_URLS = [  # statuses from run 39438156672: DDP Choose/Build/Download/Output rel=G5 -> 400; FRED probes timed out
+    "https://www.federalreserve.gov/releases/g5/data/FRB_g5_xml.zip",
+    "https://www.federalreserve.gov/releases/g5a/",
+    "https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H10",
 ]
+
+
+MAX_UNZIPPED = 150_000_000
+NL_VALUE_RE = re.compile(r"(^NLG$)|netherlands|guilder|\.NL\b", re.I)
+
+
+def _local(tag):
+    return tag.rsplit("}", 1)[-1]
+
+
+def parse_fed_xml_zip(raw):
+    """Inspect the Fed G.5 XML package (FRB_g5_xml.zip): structure summary plus Netherlands/NLG series observations.
+
+    Generic over element names: an element carrying TIME_PERIOD and OBS_VALUE attributes is an observation of the
+    nearest ancestor that has attributes. Observations are collected only for series whose attributes look like
+    NLG/Netherlands. ND (non-numeric OBS_VALUE) stays absent and is counted. Fail closed on DOCTYPE/ENTITY,
+    oversized archives, duplicate periods, bad numbers.
+    """
+    import zipfile
+    from xml.etree import ElementTree as ET
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile as exc:
+        raise FxError("NOT_A_ZIP") from exc
+    infos = zf.infolist()
+    if sum(i.file_size for i in infos) > MAX_UNZIPPED:
+        raise FxError("ZIP_TOO_LARGE_UNCOMPRESSED")
+    res = {"members": [{"name": i.filename, "bytes": i.file_size} for i in infos][:20], "tags": {}, "attr_names": {},
+           "series_total": 0, "attribute_values": {}, "nl_series": []}
+    for info in infos:
+        if not info.filename.lower().endswith(".xml"):
+            continue
+        data = zf.read(info)
+        if b"<!ENTITY" in data or b"<!DOCTYPE" in data:
+            raise FxError("XML_DTD_REJECTED")
+        stack = []
+        for ev, el in ET.iterparse(io.BytesIO(data), events=("start", "end")):
+            name = _local(el.tag)
+            if ev == "start":
+                res["tags"][name] = res["tags"].get(name, 0) + 1
+                attrs = {_local(k): v for k, v in el.attrib.items()}
+                for k in attrs:
+                    res["attr_names"].setdefault(name, set()).add(k)
+                if "TIME_PERIOD" in attrs and "OBS_VALUE" in attrs:
+                    parent = next((f for f in reversed(stack) if f["attrs"]), None)
+                    if parent is not None and parent["nl"]:
+                        k = attrs["TIME_PERIOD"].strip()
+                        if k in parent["seen"]:
+                            raise FxError("DUPLICATE_PERIOD")
+                        parent["seen"].add(k)
+                        v = attrs["OBS_VALUE"].strip()
+                        if v in FED_MISSING:
+                            parent["nd"] += 1
+                            parent["nd_values"].add(v[:12])
+                        else:
+                            parent["points"][k] = to_decimal(v)  # raises on anything not a positive decimal
+                    stack.append({"attrs": {}, "nl": False})
+                    continue
+                nl = any(NL_VALUE_RE.search(str(v)) for v in attrs.values())
+                if attrs and "TIME_PERIOD" not in attrs:
+                    res["series_total"] += 1
+                    for key in ("CURRENCY", "UNIT", "FREQ", "SERIES_NAME", "UNIT_MULT", "DATA_TYPE"):
+                        if key in attrs and key != "SERIES_NAME":
+                            res["attribute_values"].setdefault(key, set()).add(attrs[key])
+                frame = {"attrs": attrs, "nl": nl, "points": {}, "seen": set(), "nd": 0, "nd_values": set()}
+                stack.append(frame)
+                if nl:
+                    res["nl_series"].append(frame)
+            else:
+                stack.pop()
+                el.clear()
+    res["attr_names"] = {k: sorted(v) for k, v in res["attr_names"].items()}
+    res["attribute_values"] = {k: sorted(v)[:40] for k, v in res["attribute_values"].items()}
+    nl = []
+    for f in res["nl_series"]:
+        if f["points"] or f["nd"]:
+            nl.append({"attrs": f["attrs"], "observations": len(f["points"]), "nd": f["nd"], "nd_values": sorted(f["nd_values"]),
+                       "first": min(f["points"]) if f["points"] else None, "last": max(f["points"]) if f["points"] else None,
+                       "points": f["points"]})
+    res["nl_series"] = nl
+    return res
 
 
 def fed_url(series_hash):
@@ -382,6 +460,20 @@ def main(argv=None):
             fail(sid, exc)
 
     fed = {}
+    try:
+        raw, rec = hist_02_acquire.fetch(FED_ZIP)
+        z = parse_fed_xml_zip(raw)
+        s["fed_xml_zip"] = {"sha256": rec["sha256"], "bytes": rec["bytes"], "members": z["members"], "tags": z["tags"],
+                            "attr_names": z["attr_names"], "attributed_elements": z["series_total"],
+                            "attribute_values": z["attribute_values"],
+                            "nl_series": [{k: v for k, v in n.items() if k != "points"} for n in z["nl_series"]]}
+        for n in z["nl_series"]:
+            freq = {"D": "D", "B": "D", "M": "M", "A": "A"}.get(str(n["attrs"].get("FREQ", ""))[:1].upper())
+            if freq is None:
+                continue
+            fed.setdefault(freq, {"meta": n["attrs"], "points": n["points"], "nd": n["nd"], "rec": rec})
+    except (hist_02_acquire.AcquisitionError, FxError, Exception) as exc:  # diagnostics must not abort the run
+        fail(FED_ZIP, exc)
     for h in dict.fromkeys(hashes):
         sid = "fed-g5-" + h[:8]
         hist_02_acquire.SOURCES[sid] = (fed_url(h), "csv")
