@@ -1,0 +1,43 @@
+name: HIST-05 NVM and other house-price sources (research only)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/hist-05-nl-housing-prices-pre-2000
+    paths:
+      - '.github/workflows/hist-05-other-sources.yml'
+      - 'tools/hist_05_other_sources.py'
+      - 'tests/test_hist_05_other_sources.py'
+permissions:
+  contents: read
+jobs:
+  other-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_05_other_sources.py tests/test_hist_02_acquire.py
+      - name: Probe sources (unreachable sources exit 0 as PARTIAL; parser/integrity defects exit 1)
+        run: python -m tools.hist_05_other_sources --cbs-csv data/cbs-housing.csv --summary-out "$RUNNER_TEMP/hist-05-other-sources.json"
+      - name: Print aggregates-only summary (no raw third-party data)
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/hist-05-other-sources.json" ]; then
+            python -c "import json,sys; d=json.load(open(sys.argv[1])); print('STATUS', d['status'], d['missing_sources'], d['defects']); [print('RESULT', json.dumps(r, sort_keys=True, separators=(',',':'))[:3000]) for r in d['results']]; [print('MATRIX', json.dumps(r, sort_keys=True, separators=(',',':'))) for r in d['coverage_matrix']]" "$RUNNER_TEMP/hist-05-other-sources.json"
+          fi
+      - name: Metadata-only review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-05-other-sources-summary-review-only
+          path: ${{ runner.temp }}/hist-05-other-sources.json
+          if-no-files-found: warn
+          retention-days: 14
