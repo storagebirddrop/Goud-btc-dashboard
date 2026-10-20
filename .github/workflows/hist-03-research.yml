@@ -1,0 +1,57 @@
+name: HIST-03 World Bank GOLD research (validation, second source, precision)
+# Consolidates hist-03-worldbank-validation, hist-03-second-source and hist-03-precision.
+# The World Bank workbook is downloaded ONCE through tools.hist_02_acquire (allowlist, https,
+# 15 MB limit, sha256) into $RUNNER_TEMP (outside the repository); the three tools read it
+# with --workbook and recompute sha256 and the canonical series hash from those bytes.
+# Research only: aggregates/metadata artifacts, no writes to data/ or frontend/public.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/hist-04-gold-fx-consolidated
+    paths:
+      - '.github/workflows/hist-03-research.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/hist-03-research.yml'
+      - 'tools/hist_03_*.py'
+      - 'tools/hist_02_acquire.py'
+      - 'tools/hist_02_coverage.py'
+      - 'tests/test_hist_03_*.py'
+      - 'tests/test_hist_02_*.py'
+permissions:
+  contents: read
+jobs:
+  hist-03-research:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Install second parser (CI job only; requirements.txt unchanged)
+        run: python -m pip install "openpyxl==3.1.5"
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_03_worldbank_validate.py tests/test_hist_03_independent_parse.py tests/test_hist_03_second_source.py tests/test_hist_03_precision.py tests/test_hist_03_quality_contract.py tests/test_hist_02_acquire.py tests/test_hist_02_coverage.py
+      - name: Download World Bank workbook once (hardened fetch, ephemeral, outside repository)
+        run: python -m tools.hist_02_acquire --ephemeral-directory "$RUNNER_TEMP/wb" --source world-bank-gold-history
+      - name: Validate World Bank GOLD 1975-1999 with independent openpyxl re-parse
+        run: python -m tools.hist_03_worldbank_validate --workbook "$RUNNER_TEMP/wb/world-bank-gold-history.xlsx" --independent-parser openpyxl --summary-out "$RUNNER_TEMP/out/hist-03-summary.json"
+      - name: Precision analysis (aggregates/metadata only)
+        run: python -m tools.hist_03_precision --workbook "$RUNNER_TEMP/wb/world-bank-gold-history.xlsx" --summary-out "$RUNNER_TEMP/out/hist-03-precision.json"
+      - name: Second gold source comparison (aggregates only)
+        run: python -m tools.hist_03_second_source --workbook "$RUNNER_TEMP/wb/world-bank-gold-history.xlsx" --summary-out "$RUNNER_TEMP/out/hist-03-second-source.json"
+      - name: Metadata-only review artifacts (raw workbook is not uploaded)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-03-research-summaries-review-only
+          path: ${{ runner.temp }}/out/*.json
+          if-no-files-found: warn
+          retention-days: 14

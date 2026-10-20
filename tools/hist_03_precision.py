@@ -378,13 +378,14 @@ def workbook_metadata(raw):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--workbook", help="read this local workbook instead of downloading it")
     args = ap.parse_args(argv)
-    from tools.hist_02_acquire import fetch, AcquisitionError
-    from tools.hist_03_worldbank_validate import parse
+    from tools.hist_02_acquire import AcquisitionError
+    from tools.hist_03_worldbank_validate import parse, load_workbook
     out = Path(args.summary_out)
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        raw, record = fetch("world-bank-gold-history")
+        raw, record = load_workbook(args.workbook)
     except AcquisitionError as exc:
         out.write_text(json.dumps({"status": "ACQUISITION_FAILED", "error": str(exc)}, indent=2) + "\n")
         print("ACQUISITION_FAILED", exc)
