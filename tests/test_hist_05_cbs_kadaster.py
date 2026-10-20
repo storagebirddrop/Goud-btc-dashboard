@@ -292,3 +292,14 @@ def test_main_html_instead_of_json_is_a_finding_not_a_defect(tmp_path, monkeypat
     s = json.loads(out.read_text())
     t = [r["table_analysis"] for r in s["results"] if "table_analysis" in r and r["table_analysis"]["table_id"] == "85773NED"][0]
     assert t["status"] == "FORMAT_NOT_USABLE"
+
+
+def test_report_lines_compact_and_report_cli(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(m, "fetch_status", _routes())
+    out = tmp_path / "s.json"
+    assert m.main(["--summary-out", str(out)]) == 0
+    lines = m.report_lines(json.loads(out.read_text()))
+    assert any(l.startswith("TAB 85773NED v3 OBTAINED") for l in lines) and any(l.startswith("  M Prijs_1|") for l in lines)
+    assert any(l.startswith("CMP ") for l in lines) and lines[-1] == "DEFECTS []"
+    assert m.main(["--report", str(out)]) == 0
+    assert "TAB 85773NED" in capsys.readouterr().out

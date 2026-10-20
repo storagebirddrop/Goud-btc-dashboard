@@ -37,7 +37,7 @@ FIXTURE_PATH = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "cbs-
 FIXED_TABLES = ["85773NED", "83906NED", "83913NED", "81884NED", "82101NED"]
 V4_TABLES = ["85773NED", "83906NED"]
 CATALOG_KEYWORDS = ["woning", "koopwoning", "verkoopprijs", "prijsindex", "woningprijs", "huizenprijs",
-                    "historisch", "eeuw", "dwelling", "house"]
+                    "historisch", "eeuw", "dwelling", "house", "prijs", "grond", "onroerend", "koopsom", "woz", "vastgoed", "hypotheek"]
 HOUSING_TITLE = re.compile(r"woning|woon|huis|koop|verkoop|onroerend|vastgoed|eigen|hypotheek|dwelling|house|housing|real estate|purchase", re.I)
 MAX_DISCOVERED = 12
 TABLE_ID_RE = re.compile(r"[0-9A-Za-z]{4,10}")
@@ -505,10 +505,45 @@ def run_v4(tid, results, missing, defects, v4_store, props3=None):
         v4_store[tid] = single_series(series, key, "M")
 
 
+def report_lines(summary):
+    """Compact one-line-per-fact rendering of a summary (aggregates only), for CI logs."""
+    out = []
+    for key in ("catalog_housing_tables_start_before_2000", "catalog_other_tables_start_before_2000"):
+        for r in summary.get(key, []):
+            out.append(f"CAT {key[8:13]} {r['id']}|{r['start_year']}-{r['end_year']}|{r['frequency']}|{r['language']}|{r['title'][:100]}")
+    for r in summary["results"]:
+        if "table_analysis" in r:
+            t = r["table_analysis"]
+            info = t.get("info", {})
+            out.append(f"TAB {t['table_id']} {t.get('route', 'v3')} {t['status']} | {info.get('Title', '')[:90]} | {info.get('Period', '')} | {info.get('Frequency', '')} | dims={t.get('dimensions')} | {info.get('Source', '')}")
+            for k, mm in ((t.get("summary") or {}).get("measures") or {}).items():
+                for combo in mm["shown"][:2]:
+                    fr = ";".join(f"{f}:{v.get('first')}..{v.get('last')} n={v.get('observations')} gaps={v.get('gap_count')} nulls={v.get('null_values')}" for f, v in combo["frequencies"].items())
+                    out.append(f"  M {k}|{mm['title'][:45]}|{mm['unit']}|{mm['kind']}|{mm['base']}|{mm['currency']}|dim={combo['dimensions']}/{mm['dimension_combinations']}| {fr}")
+        elif "page" in r:
+            p = r["page"]
+            out.append(f"PAGE {r['source_id']} http={r['http_status']} bytes={r['bytes']} sha={r['sha256'][:16]} title={p['html_title']!r} rights={r['rights_evidence']}")
+            out += [f"  Q {q[:260]}" for q in p["rights_quotes"][:4]]
+            out += [f"  L {link}" for link in p["matching_links"][:14]]
+        else:
+            out.append(f"SRC {r['source_id']} {r['status']} http={r.get('http_status')} bytes={r.get('bytes')} sha={(r.get('sha256') or '')[:16]} rows={r.get('catalog_rows')}")
+    out.append("CMP " + json.dumps(summary.get("comparisons"), sort_keys=True, separators=(",", ":")))
+    out.append("MISSING " + json.dumps(summary.get("missing_sources")))
+    out.append("DEFECTS " + json.dumps(summary.get("defects")))
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--summary-out")
+    ap.add_argument("--report", help="print a compact aggregates-only report of an existing summary file and exit")
     args = ap.parse_args(argv)
+    if args.report:
+        for line in report_lines(json.loads(Path(args.report).read_text())):
+            print(line)
+        return 0
+    if not args.summary_out:
+        ap.error("--summary-out is required")
     results, missing, defects, parsed_store, v4_store = [], [], [], {}, {}
     catalog_found = {}
     for sid, (url, fmt, group) in sorted(CANDIDATES.items()):
@@ -546,7 +581,10 @@ def main(argv=None):
     cmp_ = comparisons(parsed_store, v4_store, fixture) if not defects else {}
     summary = {"status": "DONE", "nothing_approved": True, "rights_status": "UNVERIFIED", "publication_authorized": False,
                "source_approved": False, "catalog_distinct_tables": len(catalog_found),
-               "catalog_housing_tables_start_before_2000": pre2000[:60], "discovered_fetched": [r["id"] for r in discovered],
+               "catalog_housing_tables_start_before_2000": pre2000[:80],
+               "catalog_other_tables_start_before_2000": sorted((r for r in catalog_found.values() if r["start_year"] is not None and r["start_year"] < 2000
+                                                                 and not HOUSING_TITLE.search(r["title"])), key=lambda r: (r["start_year"], r["id"]))[:80],
+               "discovered_fetched": [r["id"] for r in discovered],
                "results": results, "comparisons": cmp_, "missing_sources": sorted(missing), "defects": defects}
     out = Path(args.summary_out)
     out.parent.mkdir(parents=True, exist_ok=True)
