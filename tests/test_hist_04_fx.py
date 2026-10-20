@@ -125,6 +125,12 @@ class Hist04FxTests(unittest.TestCase):
         with self.assertRaises(fx.FxError):
             fx.parse_fed_xml_zip(self._zip('<r><S CURRENCY="NLG"><O TIME_PERIOD="1998-12-30" OBS_VALUE="-1"/></S></r>'))
 
+    def test_jsonstat_and_snippets(self):
+        j = b'{"value":{"0":1.1,"2":1.2},"dimension":{"time":{"category":{"index":{"1999M01":0,"1999M02":1,"1999M03":2}}}}}'
+        r = fx.jsonstat_summary(j)
+        self.assertEqual((r["time_first"], r["time_last"], r["values"]), ("1999M01", "1999M03", 2))
+        self.assertEqual(fx.status_snippets("<p>The series was discontinued when the euro replaced the guilder.</p>")[0][:10], "The series")
+
     def test_extract_links_filters_and_dedupes(self):
         html = '<a href="/datadownload/Choose.aspx?rel=G5">a</a><a href="/about.htm">b</a><a href="/datadownload/Choose.aspx?rel=G5">c</a>'
         self.assertEqual(fx.extract_links(html), ["/datadownload/Choose.aspx?rel=G5"])

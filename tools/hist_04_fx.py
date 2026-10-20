@@ -412,6 +412,40 @@ def parse_fed_xml_zip(raw):
     return res
 
 
+def status_snippets(html_text, limit=6, width=260):
+    """Documentation sentences about discontinuation/history/euro (page text only, not data)."""
+    text = re.sub(r"\s+", " ", re.sub(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", " ", html_text, flags=re.S | re.I))
+    out = []
+    for sent in re.split(r"(?<=[.!?])\s+", text):
+        if re.search(r"discontinu|no longer|euro\b|guilder|netherlands|historical", sent, re.I) and len(sent) >= 20:
+            out.append(sent[:width])
+        if len(out) >= limit:
+            break
+    return out
+
+
+EUROSTAT_BASE = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/"
+EUROSTAT_PROBES = {
+    "eurostat-usd-m": EUROSTAT_BASE + "ert_bil_eur_m?format=JSON&lang=EN&currency=USD&statinfo=AVG&unit=NAC",
+    "eurostat-nlg-m": EUROSTAT_BASE + "ert_bil_eur_m?format=JSON&lang=EN&currency=NLG&statinfo=AVG&unit=NAC",
+}
+hist_02_acquire.SOURCES.update({k: (v, "json") for k, v in EUROSTAT_PROBES.items()})
+EXTRA_PAGES = {"fed-ddp-g5a": (FED_BASE + "Choose.aspx?rel=G5A", "html"),
+               "fed-h10-zip": ("https://www.federalreserve.gov/releases/h10/data/FRB_h10_xml.zip", "zip")}
+hist_02_acquire.SOURCES.update(EXTRA_PAGES)
+
+
+def jsonstat_summary(raw):
+    """Eurostat JSON-stat: time range and non-null count (structure only, no values kept)."""
+    d = json.loads(decode(raw))
+    idx = d.get("dimension", {}).get("time", {}).get("category", {}).get("index", {})
+    keys = sorted(idx) if isinstance(idx, dict) else sorted(idx or [])
+    vals = d.get("value", {})
+    n = len(vals) if hasattr(vals, "__len__") else None
+    return {"time_first": keys[0] if keys else None, "time_last": keys[-1] if keys else None,
+            "time_points": len(keys), "values": n, "error": d.get("error")}
+
+
 def fed_url(series_hash):
     return (FED_BASE + "Output.aspx?rel=G5&series=" + series_hash +
             "&lastobs=&from=&to=&filetype=csv&label=include&layout=seriescolumn")
@@ -459,6 +493,24 @@ def main(argv=None):
         except hist_02_acquire.AcquisitionError as exc:
             fail(sid, exc)
 
+    s["alt_probes"] = {}
+    for sid in list(EUROSTAT_PROBES) + list(EXTRA_PAGES):
+        try:
+            raw, rec = hist_02_acquire.fetch(sid)
+            entry = {"sha256": rec["sha256"], "bytes": rec["bytes"]}
+            if sid in EUROSTAT_PROBES:
+                entry.update(jsonstat_summary(raw))
+            entry["status_snippets"] = status_snippets(raw.decode("utf-8", "replace")) if sid == "fed-ddp-g5a" else None
+            s["alt_probes"][sid] = entry
+        except Exception as exc:  # diagnostics only
+            s["alt_probes"][sid] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}",
+                                    "probe": probe_status(hist_02_acquire.SOURCES[sid][0])}
+    for sid in DISCOVERY_PAGES:
+        try:
+            raw, _ = hist_02_acquire.fetch(sid)
+            s["discovery"][sid]["status_snippets"] = status_snippets(raw.decode("utf-8", "replace"))
+        except Exception:
+            pass
     fed = {}
     try:
         raw, rec = hist_02_acquire.fetch(FED_ZIP)
