@@ -3,14 +3,64 @@
 This module verifies internal consistency, not independent source accuracy.
 """
 import argparse
+import hashlib
 import json
 import math
+import re
 from pathlib import Path
 
 from etl.static_export import build, gold_enabled
 
 
-def validate(csv_path, json_path, *, gold_candidate=None, gold_approved=False):
+GOLD_PUBLIC_FIELDS = ("gold_grams_per_house", "gold_index")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def _finite_positive(value):
+    return (not isinstance(value, bool) and isinstance(value, (int, float))
+            and math.isfinite(value) and value > 0)
+
+
+def _check_pinned_public_gold(rows, expected_rows):
+    """Structural checks of a pinned public JSON-v1 gold payload, no private inputs.
+
+    Every non-gold field must equal build(csv) exactly (gold_eur_oz stays null).
+    gold_index and gold_grams_per_house must form a contiguous block from 2000-01
+    (trailing months may be null: pending publication), index base 2000-01 == 100,
+    and satisfy grams * index / house_eur == constant (ADR-004: grams = house /
+    (EUR/oz / g-per-oz), index = 100 * EUR/oz / EUR/oz[2000-01]). This cannot prove
+    the raw gold/FX inputs; the sha256 pin identifies the reviewed bytes.
+    """
+    if len(rows) != len(expected_rows):
+        raise ValueError("Pinned gold JSON month coverage differs from CSV")
+    const = None
+    gap = False
+    for index, (row, exp) in enumerate(zip(rows, expected_rows)):
+        if not isinstance(row, dict) or set(row) != set(exp):
+            raise ValueError("Unexpected monthly record schema")
+        if any(row[k] != exp[k] for k in exp if k not in GOLD_PUBLIC_FIELDS):
+            raise ValueError(f"Non-gold field differs from validated CSV at {exp['period']}")
+        idx, grams = row["gold_index"], row["gold_grams_per_house"]
+        if idx is None and grams is None:
+            gap = True
+            continue
+        if idx is None or grams is None or gap or row["period"] < "2000-01":
+            raise ValueError(f"Gold fields missing, partial, non-contiguous or pre-2000 at {row['period']}")
+        if not (_finite_positive(idx) and _finite_positive(grams)):
+            raise ValueError(f"Invalid gold value at {row['period']}")
+        if row["period"] == "2000-01" and idx != 100:
+            raise ValueError("Incorrect gold index basis")
+        k = grams * idx / row["house_eur"]
+        if const is None:
+            const = k
+        elif abs(k - const) > abs(const) * 1e-9:
+            raise ValueError(f"Gold index / grams-per-house inconsistent at {row['period']}")
+    if const is None or next(r for r in rows if r["gold_index"] is not None)["period"] != "2000-01":
+        raise ValueError("Gold index basis 2000-01 missing")
+
+
+def validate(csv_path, json_path, *, gold_candidate=None, gold_approved=False,
+             gold_public_sha256=None):
     """Validate the public JSON against the source CSV.
 
     Default (gold_candidate None, gold_approved False): behaviour is unchanged,
@@ -23,15 +73,25 @@ def validate(csv_path, json_path, *, gold_candidate=None, gold_approved=False):
     gold_index / gold_grams_per_house may be filled. Any partial combination is
     rejected rather than silently falling back.
     """
-    gold_mode = gold_candidate is not None or gold_approved is not False
+    gold_mode = (gold_candidate is not None or gold_approved is not False
+                 or gold_public_sha256 is not None)
+    pinned = gold_public_sha256 is not None
     if gold_mode:
-        if gold_approved is not True or gold_candidate is None or not gold_enabled():
+        if (gold_approved is not True or (gold_candidate is None) == (not pinned)
+                or not gold_enabled()):
             raise ValueError("Gold validation requires approval flag, GOLD_PUBLICATION_ENABLED=true, "
-                             "GOLD_PUBLICATION_APPROVAL=APPROVED and a gold candidate")
+                             "GOLD_PUBLICATION_APPROVAL=APPROVED and exactly one of a gold candidate "
+                             "or a pinned public JSON sha256")
+        if pinned and not (isinstance(gold_public_sha256, str) and _SHA256.fullmatch(gold_public_sha256)):
+            raise ValueError("Pinned public JSON sha256 must be 64 lowercase hex characters")
+    if gold_mode and not pinned:
         expected = build(csv_path, gold_candidate=gold_candidate, gold_publication_approved=True)
     else:
         expected = build(csv_path)
-    raw = Path(json_path).read_text(encoding="utf-8")
+    raw_bytes = Path(json_path).read_bytes()
+    if pinned and hashlib.sha256(raw_bytes).hexdigest() != gold_public_sha256:
+        raise ValueError("Public JSON bytes differ from pinned sha256")
+    raw = raw_bytes.decode("utf-8")
     payload = json.loads(raw, parse_constant=lambda token: (_ for _ in ()).throw(
         ValueError(f"Non-finite JSON number: {token}")))
     if not isinstance(payload, dict) or set(payload) != {"data"}:
@@ -39,7 +99,9 @@ def validate(csv_path, json_path, *, gold_candidate=None, gold_approved=False):
     rows = payload["data"]
     if not isinstance(rows, list) or not rows:
         raise ValueError("Empty or invalid public data")
-    if payload != expected:
+    if pinned:
+        _check_pinned_public_gold(rows, expected["data"])
+    elif payload != expected:
         raise ValueError("Public JSON differs from validated source CSV or calculated indices")
     if any(set(row) != {"period", "gold_eur_oz", "house_eur", "hpi",
                        "gold_grams_per_house", "gold_index", "hpi_index"} for row in rows):
@@ -71,12 +133,16 @@ def main():
     parser.add_argument("--output", default="frontend/public/data/monthly.json")
     parser.add_argument("--gold-candidate", default=None)
     parser.add_argument("--approve-gold", action="store_true")
+    parser.add_argument("--gold-public-sha256", default=None,
+                        help="validate a reviewed public JSON-v1 gold payload pinned by sha256 "
+                             "(alternative to --gold-candidate; also needs --approve-gold and env flags)")
     args = parser.parse_args()
     candidate = None
     if args.gold_candidate:
         candidate = json.loads(Path(args.gold_candidate).read_text(encoding="utf-8"))
     count = validate(args.input, args.output, gold_candidate=candidate,
-                     gold_approved=args.approve_gold)
+                     gold_approved=args.approve_gold,
+                     gold_public_sha256=args.gold_public_sha256)
     print(f"Validated {count} consecutive months, both CBS series, schema and JSON/CSV parity")
 
 
