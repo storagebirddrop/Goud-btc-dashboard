@@ -5,7 +5,9 @@ on:
     paths:
       - '.github/workflows/hist-03-worldbank-validation.yml'
       - 'tools/hist_03_worldbank_validate.py'
+      - 'tools/hist_03_independent_parse.py'
       - 'tests/test_hist_03_worldbank_validate.py'
+      - 'tests/test_hist_03_independent_parse.py'
 permissions:
   contents: read
 jobs:
@@ -22,10 +24,12 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Install second parser (CI job only; requirements.txt unchanged)
+        run: python -m pip install "openpyxl==3.1.5"
       - name: Offline tests (synthetic, prove code only)
-        run: python -m pytest -q tests/test_hist_03_worldbank_validate.py tests/test_hist_02_acquire.py
-      - name: Validate World Bank GOLD 1975-1999 (metadata only, raw stays in memory)
-        run: python -m tools.hist_03_worldbank_validate --summary-out "$RUNNER_TEMP/hist-03-summary.json"
+        run: python -m pytest -q tests/test_hist_03_worldbank_validate.py tests/test_hist_03_independent_parse.py tests/test_hist_02_acquire.py
+      - name: Validate World Bank GOLD 1975-1999 with independent openpyxl re-parse (metadata only, raw stays in memory)
+        run: python -m tools.hist_03_worldbank_validate --independent-parser openpyxl --summary-out "$RUNNER_TEMP/hist-03-summary.json"
       - name: Metadata-only review artifact
         if: always()
         uses: actions/upload-artifact@v4

@@ -75,11 +75,15 @@ def parse(raw, start=START, end=END):
     header = next((i for i, r in enumerate(rows) if any(str(v).strip().upper() == "GOLD" for v in r.values())), None)
     if header is None:
         raise ValidationError("GOLD_COLUMN_NOT_FOUND")
-    goldcol = next(k for k, v in rows[header].items() if str(v).strip().upper() == "GOLD")
+    gold_cols = [k for k, v in rows[header].items() if str(v).strip().upper() == "GOLD"]
+    if len(gold_cols) != 1:
+        raise ValidationError("AMBIGUOUS_GOLD_COLUMN " + repr(gold_cols))  # fail closed, never pick one silently
+    goldcol = gold_cols[0]
     if goldcol == "A":
         raise ValidationError("DATE_COLUMN_OVERLAPS_GOLD")
     series, all_periods, bad_dates, invalid, dups, unit_texts = {}, [], [], [], [], []
     seen_data = False
+    all_values = {}  # every parseable observation (any period); used only for aggregate precision statistics
     for n, r in enumerate(rows[header + 1:], header + 2):
         d = str(r.get("A", "")).strip()
         v = str(r.get(goldcol, "")).strip()
@@ -94,6 +98,10 @@ def parse(raw, start=START, end=END):
         if period in all_periods:
             dups.append(period)
         all_periods.append(period)
+        try:
+            all_values[period] = Decimal(v)
+        except InvalidOperation:
+            pass
         if start <= period <= end:
             try:
                 val = Decimal(v)
@@ -105,7 +113,7 @@ def parse(raw, start=START, end=END):
             series[period] = val
     return {"gold_column": goldcol, "header_text": rows[header][goldcol], "unit_texts": unit_texts,
             "series": series, "all_periods": all_periods, "bad_dates": bad_dates,
-            "invalid": invalid, "duplicates": dups}
+            "invalid": invalid, "duplicates": dups, "all_values": all_values}
 
 
 def expected_months(start=START, end=END):
@@ -121,6 +129,18 @@ def expected_months(start=START, end=END):
 def canonical_sha256(series, months):
     text = "".join(f"{p},{format(series[p], 'f')}\n" for p in months)
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+def precision_stats(values, start=START, end=END):
+    """Aggregate decimal-place histograms per segment (counts only, never values)."""
+    seg = {"before_range": {}, "in_range": {}, "after_range": {}}
+    for period, v in values.items():
+        if not v.is_finite():
+            continue
+        name = "before_range" if period < start else ("in_range" if period <= end else "after_range")
+        places = str(max(0, -v.as_tuple().exponent))
+        seg[name][places] = seg[name].get(places, 0) + 1
+    return seg
 
 
 def validate(raw, start=START, end=END):
@@ -153,6 +173,8 @@ def validate(raw, start=START, end=END):
         "unparseable_dates": p["bad_dates"],
         "min": str(min(s.values())) if s else None, "max": str(max(s.values())) if s else None,
         "anchors": [{"month": m, "value": str(s[m])} for m in ANCHORS if m in s][:12],
+        "non_integer_count_in_range": sum(1 for v in s.values() if v != v.to_integral_value()),
+        "decimal_places_histogram": precision_stats(p["all_values"], start, end),
         "problems": problems, "rights_status": "UNVERIFIED", "publication_authorized": False,
     }
     if not problems:
@@ -164,6 +186,8 @@ def validate(raw, start=START, end=END):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--independent-parser", choices=["openpyxl"],
+                    help="re-parse the same bytes with a second parser; any difference fails the run")
     args = ap.parse_args(argv)
     from tools.hist_02_acquire import fetch, AcquisitionError
     out = Path(args.summary_out)
@@ -179,6 +203,11 @@ def main(argv=None):
     except Exception as exc:  # parse failure: report class, no fallback
         summary = {"status": "PARSE_FAILED", "error_class": type(exc).__name__, "error": str(exc),
                    "workbook_sha256": record["sha256"], "bytes": record["bytes"]}
+    if args.independent_parser and summary["status"] == "VALIDATED":
+        from tools.hist_03_independent_parse import crosscheck
+        summary["independent_parser"] = crosscheck(raw)
+        if summary["independent_parser"]["status"] != "MATCH":
+            summary["status"] = "CROSSCHECK_FAILED"
     summary["fetch"] = {k: record[k] for k in ("url", "sha256", "bytes", "http_status")}
     out.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2, sort_keys=True))
