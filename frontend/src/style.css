@@ -58,3 +58,7 @@ tbody th{text-align:left;font-weight:600}
 @media (pointer:coarse){.seg,.field input,.hint-btn{min-height:44px}}
 @media (max-width:560px){.toolbar{gap:8px}.field{flex:1 1 100%}.field span{min-width:6.5em}.field input{flex:1 1 auto;width:100%}.seg{padding:6px 12px}.panel-head{align-items:flex-start}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+.gold-src{margin-top:12px;padding:10px 14px;border:1px solid var(--line);border-left:4px solid var(--warn-line);border-radius:8px;font-size:.88rem;color:var(--ink2)}
+.gold-src h3{font-size:.95rem;color:var(--ink)}
+.gold-src ul{margin:6px 0;padding-left:1.2em}
+.gold-src a,.gold-src p{overflow-wrap:anywhere}
