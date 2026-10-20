@@ -74,15 +74,23 @@ def test_every_quote_from_page_is_short():
     rec, missing = m.probe_one("wb-dataset-terms", _fetch_for(HTML.encode()))
     assert missing is None and rec["evidence_level"] == "OFFICIAL_TEXT_READ"
     got = {q["topic"]: q["quote"] for q in rec["quotes"]}
-    assert "CC BY 4.0" in got["default_licence"] and got["endorsement"] == "NOT_RETRIEVED"
+    assert "CC BY 4.0" in got["labelled_otherwise"] and got["endorsement"] == "NOT_RETRIEVED"
     assert all(len(q["quote"].split()) <= m.MAX_QUOTE_WORDS for q in rec["quotes"])
     assert "var a" not in json.dumps(rec)
 
 
-def test_quote_cap_per_source():
+def test_quote_cap_per_source(monkeypatch):
+    monkeypatch.setattr(m, "MAX_QUOTES", 3)
     topics = {f"t{i}": r"word" for i in range(12)}
     qs = m.quotes_for("a word here", topics)
-    assert sum(1 for q in qs if q["quote"] not in ("NOT_RETRIEVED", "OMITTED_QUOTE_CAP")) == m.MAX_QUOTES
+    assert sum(1 for q in qs if q["quote"] not in ("NOT_RETRIEVED", "OMITTED_QUOTE_CAP")) == 3
+    assert sum(1 for q in qs if q["quote"] == "OMITTED_QUOTE_CAP") == 9
+
+
+def test_second_quote_needs_distance():
+    text = "licence one. " + "x " * 200 + "licence two."
+    assert m.short_quote(text, r"licence", 0).startswith("licence one") and "licence two" in m.short_quote(text, r"licence", 1)
+    assert m.short_quote("licence a. licence b.", r"licence", 1) is None
 
 
 @pytest.mark.parametrize("msg", ["DNS_ERROR source=x phase=response_headers elapsed_seconds=0.1", "NETWORK_TIMEOUT source=x", "UNEXPECTED_HTTP_STATUS",
@@ -134,7 +142,7 @@ def test_workbook_notes_found_and_price_rows_not_stored():
     out = m.analyse_workbook(raw)
     assert out["sheet_names"] == ["Monthly Prices", "Description"] and out["data_sheet_present"]
     q = {x["topic"]: x["quote"] for x in out["notes_sheets"][0]["quotes"]}
-    assert "London" in q["provider"] and "Permission" in q["rights"]
+    assert "London" in q["gold_provider"] and "Permission" in q["rights"]
     blob = json.dumps(out)
     assert "35.27" not in blob and "1960M01" not in blob
 

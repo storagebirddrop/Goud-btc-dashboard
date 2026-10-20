@@ -27,7 +27,9 @@ from tools import hist_02_acquire
 
 RETRIEVAL_DATE = "2026-10-20"
 MAX_QUOTE_WORDS = 25
-MAX_QUOTES = 8
+MAX_QUOTES = 24
+QUOTES_PER_TOPIC = 2
+SPREAD = 300
 MAX_PAGE_BYTES = 6_000_000
 WORKBOOK_ID = "world-bank-gold-history"
 DATA_SHEET = "Monthly Prices"
@@ -42,11 +44,14 @@ PAGES = {
     "wb-permissions": ("https://www.worldbank.org/en/about/legal/permissions", "html", "wb"),
     "wb-pink-sheet-2025-06": ("https://thedocs.worldbank.org/en/doc/18675f1d1639c7a34d463f59263ba0a2-0050012025/related/CMO-Pink-Sheet-June-2025.pdf", "pdf", "wb"),
     "ice-iba-lbma": ("https://www.ice.com/iba/lbma-precious-metals", "html", "iba"),
-    "ice-iba-about": ("https://www.ice.com/iba/about", "html", "iba"),
+    "ice-iba-licensing": ("https://www.ice.com/iba/licensing", "html", "iba"),
+    "ecb-eurofxref-short": ("https://www.ecb.europa.eu/stats/eurofxref", "html", "ecb"),
+    "ecb-fx-framework": ("https://www.ecb.europa.eu/stats/pdf/exchange/Frameworkfortheeuroforeignexchangereferencerates.en.pdf", "pdf", "ecb"),
+    "ice-iba-about":("https://www.ice.com/iba/about", "html", "iba"),
     "ice-iba-fee-schedule-2026": ("https://www.ice.com/publicdocs/IBA_MLA_Licensing_Data_Fee_Schedule_2026.pdf", "pdf", "iba"),
-    "lbma-prices-data": ("https://www.lbma.org.uk/prices-and-data/precious-metal-prices", "html", "lbma"),
+    "lbma-prices-data": ("https://www.lbma.org.uk/prices-and-data/lbma-precious-metal-prices", "html", "lbma"),
+    "lbma-tables-moving": ("https://www.lbma.org.uk/articles/lbma-benchmark-prices-data-tables-are-moving", "html", "lbma"),
     "lbma-gold-price": ("https://www.lbma.org.uk/prices-and-data/lbma-gold-price", "html", "lbma"),
-    "lbma-terms": ("https://www.lbma.org.uk/terms-and-conditions", "html", "lbma"),
     "ecb-usage-policy": ("https://www.ecb.europa.eu/stats/ecb_statistics/governance_and_quality_framework/html/usage_policy.en.html", "html", "ecb"),
     "ecb-disclaimer": ("https://www.ecb.europa.eu/services/using-our-site/disclaimer/html/index.en.html", "html", "ecb"),
     "ecb-eurofxref": ("https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html", "html", "ecb"),
@@ -60,19 +65,30 @@ ALL_IDS = [WORKBOOK_ID] + list(PAGES)
 
 # topic -> regex; first match per topic yields at most one <= 25-word quote.
 TOPICS = {
-    "wb": {"default_licence": r"Creative Commons Attribution 4\.0|CC BY 4\.0", "labelled_otherwise": r"labell?ed otherwise|specifically labell?ed|unless otherwise",
-           "third_party": r"third[- ]part(y|ies)", "attribution": r"attribut", "modification": r"modif|adapt|derivative",
-           "endorsement": r"endors", "gold_source": r"\bgold\b.{0,80}(LBMA|London|fixing|spot)|(LBMA|London|fixing).{0,80}\bgold\b"},
-    "iba": {"derived": r"derived", "redistribution": r"redistribut", "licence": r"licen[cs]", "historical": r"histor",
-            "lbma_gold_price": r"LBMA Gold Price", "third_party": r"third[- ]part(y|ies)"},
-    "lbma": {"historic": r"histor", "licence": r"licen[cs]", "portal": r"members?[' ]*(area|portal)|portal", "iba": r"\bIBA\b|ICE Benchmark",
-             "derived": r"derived", "redistribution": r"redistribut|republish"},
-    "ecb": {"reuse": r"re-?us|reproduc", "source": r"acknowledg|credit|source", "information_only": r"information purposes",
-            "commercial": r"commercial", "third_party": r"third[- ]part(y|ies)", "alteration": r"alter|modif|distort|own calculation"},
-    "cbs": {"reproduction": r"reproduc|verveelvoudig|overnemen", "source": r"bronvermelding|source", "licence": r"CC[ -]?BY|Creative Commons|licen[cs]"},
+    "wb": {"default_licence": r"Creative Commons Attribution 4\.0", "labelled_otherwise": r"labell?ed otherwise",
+           "third_party_consent": r"consent of the original|original data provider|provided by third parties|third[- ]party (data|content|material)",
+           "attribution_format": r"Dataset name|Data source \(if|attribution should|When you download or use",
+           "changes": r"indicate (if )?changes|changes were made|you (modify|adapt)|derivative",
+           "endorsement": r"endors", "no_warranty": r"no (warranty|representation)|as is\b",
+           "terms_pointer": r"Terms of Use|terms and conditions|copyright",
+           "gold_source": r"\bgold\b.{0,120}(LBMA|London|fixing|spot)|(LBMA|London|fixing).{0,120}\bgold\b"},
+    "iba": {"derived": r"derived (benchmark|indices|index)", "redistribution": r"redistribut", "usage_licence": r"usage licen[cs]e|licen[cs]e from IBA|available under licen[cs]e",
+            "historical_access": r"historical (access|data)", "lbma_gold_price": r"LBMA Gold Price",
+            "reserves_rights": r"reserves all rights|all rights", "non_commercial": r"non-commercial|educational|internal use|personal use",
+            "contact": r"IBA-Licensing|contact us"},
+    "lbma": {"historic_tables": r"histor", "licence": r"licen[cs]e", "portal": r"members?[' ]*(area|portal)|portal|self-certif", "iba": r"\bIBA\b|ICE Benchmark",
+             "derived": r"derived", "redistribution": r"redistribut|republish", "non_commercial": r"non-commercial|educational"},
+    "ecb": {"free_reuse": r"free reuse|reuse of", "source_condition": r"acknowledg|duly|source is|cite the source|credit",
+            "not_modified": r"not (been )?(modified|altered)|are not modified|distort", "information_only": r"information purposes",
+            "commercial": r"commercial", "third_party": r"third[- ]part(y|ies) (data|content|material)|originator",
+            "user_modification": r"modified by the user|calculation of growth rates|stated explicitly",
+            "copyright": r"copyright|©|licen[cs]e"},
+    "cbs": {"reproduction": r"reproduc|verveelvoudig|overnemen", "source": r"bronvermelding|sourced from CBS|state that the data", "licence": r"CC[ -]?BY|Creative Commons",
+            "exception": r"covered by copyright|not permitted|niet toegestaan"},
 }
-WORKBOOK_TOPICS = {"gold": r"\bgold\b", "provider": r"LBMA|London|Reuters|\bICE\b|\bIBA\b|Platts|Metal Bulletin|fixing|spot",
-                   "rights": r"licen[cs]|copyright|terms of use|attribut|third[- ]part|permission|reproduc|redistribut|cite|citation|source"}
+WORKBOOK_TOPICS = {"gold_definition": r"\bgold\b", "gold_provider": r"\bgold\b.{0,200}(LBMA|London|Reuters|\bICE\b|\bIBA\b|Platts|Metal Bulletin|fixing|spot)",
+                   "rights": r"licen[cs]e|copyright|terms of use|attribut|third[- ]part|permission|reproduc|redistribut|citation|creative commons|CC BY",
+                   "source_line": r"Source:|Notes?:"}
 UNREACHABLE_PREFIXES = ("NETWORK_", "TLS_ERROR", "DNS_ERROR", "HTTP_STATUS_ERROR", "UNEXPECTED_HTTP_STATUS")
 
 
@@ -95,45 +111,47 @@ def enforce_quote_limit(quote):
     return quote
 
 
-def short_quote(text, pattern):
-    """First match of `pattern` -> verbatim window of <= MAX_QUOTE_WORDS words, aligned to a sentence start when possible.
-    None when there is no match (NOT_RETRIEVED)."""
-    m = re.search(pattern, text, re.I | re.S)
-    if not m:
-        return None
-    before = len(text[:m.start()].split())
+def _window(text, pos):
+    before = len(text[:pos].split())
     words = text.split()
     start = max(0, before - 4)
     for j in range(before - 1, max(-1, before - 11), -1):
         if j >= 0 and re.search(r"[.!?:;]$", words[j]):
             start = j + 1
             break
-    window = words[start:start + MAX_QUOTE_WORDS]
     if before >= start + MAX_QUOTE_WORDS:  # match fell outside the window: re-centre on the match
-        window = words[before:before + MAX_QUOTE_WORDS]
-    return enforce_quote_limit(" ".join(window))
+        start = before
+    return enforce_quote_limit(" ".join(words[start:start + MAX_QUOTE_WORDS]))
+
+
+def short_quote(text, pattern, nth=0):
+    """nth match of `pattern` (matches closer than SPREAD chars to the previous kept one are skipped) -> verbatim window of
+    <= MAX_QUOTE_WORDS words aligned to a sentence start when possible. None when there is no such match (NOT_RETRIEVED)."""
+    last, kept = -10**9, 0
+    for m in re.finditer(pattern, text, re.I | re.S):
+        if m.start() - last < SPREAD:
+            continue
+        if kept == nth:
+            return _window(text, m.start())
+        kept, last = kept + 1, m.start()
+    return None
 
 
 def quotes_for(text, topics):
-    out = []
+    out, n = [], 0
     for topic, pat in topics.items():
-        q = short_quote(text, pat)
-        out.append({"topic": topic, "quote": q if q else "NOT_RETRIEVED"})
-    found = [q for q in out if q["quote"] != "NOT_RETRIEVED"]
-    return out if len(found) <= MAX_QUOTES else _cap(out)
-
-
-def _cap(quotes):
-    kept, n = [], 0
-    for q in quotes:
-        if q["quote"] == "NOT_RETRIEVED":
-            kept.append(q)
-        elif n < MAX_QUOTES:
-            kept.append(q)
+        for nth in range(QUOTES_PER_TOPIC):
+            q = short_quote(text, pat, nth)
+            if q is None:
+                if nth == 0:
+                    out.append({"topic": topic, "quote": "NOT_RETRIEVED"})
+                break
+            if n >= MAX_QUOTES:
+                out.append({"topic": topic, "quote": "OMITTED_QUOTE_CAP"})
+                break
+            out.append({"topic": topic, "quote": q})
             n += 1
-        else:
-            kept.append({"topic": q["topic"], "quote": "OMITTED_QUOTE_CAP"})
-    return kept
+    return out
 
 
 # ---------------------------------------------------------------- content validation
@@ -209,9 +227,11 @@ def analyse_workbook(raw):
     out = {"sheet_names": names, "data_sheet_present": DATA_SHEET in names, "notes_sheets": []}
     for name, rows in sheets:
         if name == DATA_SHEET:
-            head = [r for r in rows[:12] if re.search(r"gold", r, re.I)]
-            # only the header cell(s) naming gold, shortened; never the price rows
-            out["data_sheet_gold_header"] = [enforce_quote_limit(" ".join(h.split()[:MAX_QUOTE_WORDS])) for h in head[:2]] or "NOT_RETRIEVED"
+            cells = [c for r in rows[:12] for c in r.split(" | ")]
+            # header cells only (never the price rows): cells naming gold, and whether a troy-oz unit appears in the header block
+            out["data_sheet_gold_header"] = [enforce_quote_limit(" ".join(c.split()[:MAX_QUOTE_WORDS])) for c in cells if re.match(r"gold", c, re.I)][:3] or "NOT_RETRIEVED"
+            out["data_sheet_troy_oz_unit_in_header"] = any(re.search(r"troy\s*oz", c, re.I) for c in cells)
+            out["data_sheet_footer_quotes"] = quotes_for(re.sub(r"\s+", " ", " ".join(r for r in rows[-15:] if re.search(r"[A-Za-z]{5}", r))), {"footer": r"Source|Note|World Bank|licen[cs]e"})
             continue
         text = re.sub(r"\s+", " ", " ".join(rows))
         out["notes_sheets"].append({"sheet": name, "rows": len(rows), "text_chars": len(text), "quotes": quotes_for(text, WORKBOOK_TOPICS)})
