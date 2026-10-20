@@ -172,7 +172,7 @@ def test_only_append_review():
     assert x["validation_status"]=="APPEND_REVIEW"
 
 def test_only_pending():
-    x=check(old=[],new=[row("2026-10")])
+    x=check(old=[row("2026-09")],new=[row("2026-09"),row("2026-10")],approved_through="2026-09")
     assert x["validation_status"]=="PENDING"
 
 def test_append_plus_pending_priority():
@@ -188,6 +188,6 @@ def test_append_plus_blocked_priority():
     assert x["validation_status"]=="BLOCKED"
 
 def test_running_month_does_not_hide_historical_revision():
-    x=check(new=[row(value="101"),row("2026-10")])
+    x=check(new=[row(value="101"),row("2026-09"),row("2026-10")])
     assert "REVISION_REVIEW" in kinds(x)
     assert x["validation_status"]=="REVIEW_REQUIRED"
