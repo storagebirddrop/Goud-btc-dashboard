@@ -7,7 +7,7 @@ The published dataset is checked before each deployment and refresh.
 - Every month from 2000-01 to the latest published month exists exactly once for **both** CBS measures.
 - No duplicate observations, unsupported series, invalid month strings, NaN, infinity, zero or negative housing values.
 - Public JSON has the exact expected schema and matches the deterministic CSV exporter, including the normalized HPI index.
-- Unverified gold fields remain null until a separate reviewed pipeline is implemented.
+- Gold fields remain null in the committed public JSON until a release is separately approved (owner decision GOLD-03, 2026-10-20, lifted the HOLD for `gold_index` and `gold_grams_per_house` only); `gold_eur_oz` stays null.
 - CI checks the **committed** CSV and JSON, not only generated temporary fixtures.
 - The scheduled refresh checks generated CSV/JSON consistency before committing and pushing.
 
