@@ -4,6 +4,13 @@ name: HIST-08 BTC monthly definition research (read-only)
 # published or deployed. Nothing here authorizes Bitcoin publication.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - hist-08-btc-definition
+    paths:
+      - 'tools/hist_08_btc_definition.py'
+      - 'tests/test_hist_08_btc_definition.py'
+      - '.github/workflows/hist-08-btc-definition.yml'
   pull_request:
     paths:
       - 'tools/hist_08_btc_definition.py'
