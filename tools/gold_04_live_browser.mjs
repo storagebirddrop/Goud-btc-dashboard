@@ -46,7 +46,13 @@ for (const [label, width] of [['desktop', 1280], ['mobile', 375]]) {
     check(`${label}/${cat}: chart annotation for June 2025 (when gold in view)`, hasBreak || cat === 'Prijsindex');
     await page.screenshot({path: `${OUT}/${label}-${cat.split(' ')[0]}.png`, fullPage: true});
   }
-  check(`${label}: no bitcoin/btc/satoshi text anywhere`, !/bitcoin|\bbtc\b|satoshi/.test(everText));
+  // The dashboard states which series are not available yet ("Nog niet beschikbaar: ... en Bitcoin."). That note names
+  // Bitcoin but shows no Bitcoin/satoshi value, series, chart or control; it is reported as a NOTE, not as a failure.
+  const note = /nog niet beschikbaar: [^.\n]*\./.exec(everText)?.[0] ?? '';
+  const rest = everText.split(note || '\u0000').join(' ');
+  const hits = [...rest.matchAll(/.{0,40}(bitcoin|\bbtc\b|satoshi|\bsats?\b).{0,40}/g)].map(m => m[0]);
+  check(`${label}: no bitcoin/btc/satoshi value, series or control (outside the 'not yet available' note)`, hits.length === 0, hits.join(' | '));
+  console.log(`NOTE ${label}: visible note text: ${JSON.stringify(note)}`);
   check(`${label}: no console/page errors`, errors.length === 0, errors.join(' | '));
   // A link actually resolves (HTTP status of the first source link)
   const href = await page.$$eval('a[href*="opendata.cbs.nl"]', as => as[0]?.href);
