@@ -47,6 +47,6 @@ jobs:
         if: always()
         run: >
           python -m tools.hist_08_gold_validate --print-summary "$RUNNER_TEMP/hist-08/summary.json"
-          --keys "${HIST08_KEYS:-status,checks_failed,defects,missing_sources,not_performed,worldbank.wb_vs_boe_rounding_consistency,overlap_1999_2001,adr004_production_vs_independent,grams_per_home_1995_1999,fixed_rate_sensitivity_example_1998_06,changeover_step,fx_direction.continuity_1998H2_vs_1999H1,unit_consistency}"
+          --keys "${HIST08_KEYS:-status,flags,checks_failed,defects,missing_sources,fx_provenance.bis_a_vs_reciprocal_ecb_1999_on,aggregation_sensitivity.ecb_end_of_month_vs_mean_c4_effect,aggregation_sensitivity.bis_end_of_period_vs_average,worldbank.regime_1968_1974,worldbank.coverage,sources}"
         env:
           HIST08_KEYS: ''
