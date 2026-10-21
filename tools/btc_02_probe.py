@@ -387,12 +387,12 @@ def job_exchanges():
 
 # ---------------------------------------------------------------- archives job
 
-ARCHIVES = ["mtgoxUSD", "mtgoxEUR", "bitstampUSD", "bitstampEUR", "krakenEUR", "krakenUSD", "coinbaseUSD"]
+ARCHIVES = ["mtgoxUSD", "bitstampUSD", "mtgoxEUR"]
 MAX_ARCHIVE_BYTES = 700_000_000
 
 
 def stream_trades(run, url):
-    r = S.get(url, stream=True, timeout=120)
+    r = S.get(url, stream=True, timeout=(10, 120))
     run.http.append(r.status_code)
     info = {"status": r.status_code, "len": r.headers.get("Content-Length"), "lm": r.headers.get("Last-Modified")}
     if r.status_code != 200:
@@ -424,8 +424,15 @@ def job_archives(ref_usd=None):
     usd, usd_vol = fetch_bitstamp("btcusd", "USD")
     ref = usd.as_dict() if usd else {}
     for name in ARCHIVES:
-        for base in ("https://api.bitcoincharts.com/v1/csv/", "http://api.bitcoincharts.com/v1/csv/"):
-            url = f"{base}{name}.csv.gz"
+        origin = f"api.bitcoincharts.com/v1/csv/{name}.csv.gz"
+        cands = [f"https://{origin}"]
+        wr = get(Run("wayback-resolve", "x"), "https://archive.org/wayback/available", {"url": origin}, tries=1, timeout=30)
+        if wr is not None:
+            snap = wr.json().get("archived_snapshots", {}).get("closest")
+            if snap and snap.get("available"):
+                # id_ = raw bytes as archived, no wayback rewriting
+                cands.append(f"https://web.archive.org/web/{snap['timestamp']}id_/http://{origin}")
+        for url in cands:
             run = Run(f"bitcoincharts {name}", url)
             try:
                 gen, info = stream_trades(run, url)
