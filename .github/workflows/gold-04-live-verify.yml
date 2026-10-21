@@ -1,0 +1,54 @@
+name: GOLD-04 live production verification (read-only)
+# Read-only GET requests against the public production site plus a browser check. Never commits, never deploys.
+# Manual or on changes to the verification tooling itself.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/gold_04_live_verify.py'
+      - 'tools/gold_04_live_browser.mjs'
+      - '.github/workflows/gold-04-live-verify.yml'
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - name: Build frontend from this checkout (reference asset names)
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          ls -la dist/assets
+      - name: Revision under test
+        run: |
+          git rev-parse HEAD
+          git log -1 --format='%H %s'
+      - name: HTTP layer (headers, JSON identity, bundle, asset names)
+        run: python tools/gold_04_live_verify.py --local-dist frontend/dist
+      - name: Browser layer (desktop 1280 px and mobile 375 px)
+        run: |
+          mkdir -p "$RUNNER_TEMP/bw" && cd "$RUNNER_TEMP/bw"
+          npm init -y >/dev/null && npm install --no-audit --no-fund playwright-core@1.49.1 >/dev/null
+          cp "$GITHUB_WORKSPACE/tools/gold_04_live_browser.mjs" .
+          CHROME_PATH="$(command -v google-chrome || command -v chromium-browser || command -v chromium)" \
+          OUT_DIR="$RUNNER_TEMP/gold04-shots" node gold_04_live_browser.mjs
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-04-live-screenshots
+          path: ${{ runner.temp }}/gold04-shots/
+          if-no-files-found: ignore
+          retention-days: 14
