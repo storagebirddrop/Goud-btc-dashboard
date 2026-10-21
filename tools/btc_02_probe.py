@@ -387,7 +387,7 @@ def job_exchanges():
 
 # ---------------------------------------------------------------- archives job
 
-ARCHIVES = ["mtgoxUSD", "bitstampUSD", "mtgoxEUR"]
+ARCHIVES = ["mtgoxUSD", "mtgoxEUR", "krakenEUR", "krakenUSD", "bitstampEUR"]
 MAX_ARCHIVE_BYTES = 700_000_000
 
 
@@ -422,16 +422,24 @@ def stream_trades(run, url):
 
 def job_archives(ref_usd=None):
     usd, usd_vol = fetch_bitstamp("btcusd", "USD")
+    eur_ref, _ = fetch_bitstamp("btceur", "EUR")
+    ecb = fetch_ecb()
+    v1ref = {r["month"]: r["value"] for r in H.v1_ratio_of_means(usd, ecb) if r["value"] is not None}
     ref = usd.as_dict() if usd else {}
     for name in ARCHIVES:
         origin = f"api.bitcoincharts.com/v1/csv/{name}.csv.gz"
         cands = [f"https://{origin}"]
-        wr = get(Run("wayback-resolve", "x"), "https://archive.org/wayback/available", {"url": origin}, tries=1, timeout=30)
-        if wr is not None:
-            snap = wr.json().get("archived_snapshots", {}).get("closest")
-            if snap and snap.get("available"):
-                # id_ = raw bytes as archived, no wayback rewriting
-                cands.append(f"https://web.archive.org/web/{snap['timestamp']}id_/http://{origin}")
+        cr = get(Run("cdx", "x"), "https://web.archive.org/cdx/search/cdx",
+                 {"url": origin, "output": "json", "filter": "statuscode:200", "fl": "timestamp,length,digest", "limit": 40}, tries=2, timeout=40)
+        caps = []
+        if cr is not None:
+            try:
+                caps = cr.json()[1:]
+            except Exception:
+                caps = []
+        print(f"CDX {name}: captures={len(caps)} newest={caps[-1] if caps else None} oldest={caps[0] if caps else None}")
+        for ts, length, digest in list(reversed(caps))[:4]:
+            cands.append(f"https://web.archive.org/web/{ts}id_/http://{origin}")
         for url in cands:
             run = Run(f"bitcoincharts {name}", url)
             try:
@@ -464,6 +472,9 @@ def job_archives(ref_usd=None):
                 print(f"  notional/day({ccy}) sustained>=1e5 from {H.sustained_from(n, Decimal(10) ** 5)}; >=1e6 from "
                       f"{H.sustained_from(n, Decimal(10) ** 6)}; max month notional {float(max(n.values())):.3g}")
                 print(f"  top jumps {H.top_jumps(closes, 4)}")
+                if ccy == "EUR":
+                    cmp_print(f"{name} vs Bitstamp EUR (complete months in both)", H.complete_monthly_mean(s), H.complete_monthly_mean(eur_ref), by_year=True)
+                    cmp_print(f"{name} vs V1(Bitstamp USD)", H.complete_monthly_mean(s), v1ref, by_year=True)
                 if ccy == "USD" and ref:
                     cmp_print(f"{name} vs Bitstamp USD (complete months in both)", H.complete_monthly_mean(s), H.complete_monthly_mean(usd), by_year=True)
                     cmp_matched(f"{name} vs Bitstamp USD", closes, ref)
