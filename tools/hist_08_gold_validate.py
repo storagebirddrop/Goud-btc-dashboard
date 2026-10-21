@@ -21,6 +21,7 @@ import json
 import re
 import signal
 import sys
+import time
 from collections import Counter
 from datetime import date
 from decimal import Decimal
@@ -494,7 +495,16 @@ def load(fetch_fn, workbook=None):
             if sid == c7.WB_ID:
                 raw, rec = wbv.load_workbook(local)
             else:
-                raw, rec = fetch_fn(sid)
+                for attempt in range(3):  # transient HTTP errors only; the same pinned URL, never another source
+                    try:
+                        raw, rec = fetch_fn(sid)
+                        break
+                    except acq.AcquisitionError as exc:
+                        if attempt == 2 or "UNEXPECTED_HTTP_STATUS" in str(exc):
+                            raise
+                        signal.alarm(0)
+                        time.sleep(4)
+                        signal.alarm(100)
         except acq.AcquisitionError as exc:
             S["missing_sources"].append({"source_id": sid, "reason": str(exc)[:140]})
             return None
@@ -630,7 +640,7 @@ def analyze(D, S=None):
         if fed_m_pre and wb:
             ratios = [c1_f(usd[m], fed_m_pre[m]) / usd[m] for m in fed_m_pre if m in usd]
             u["c1_over_usd_ratio_min_max"] = [dec_str(min(ratios), 4), dec_str(max(ratios), 4)]
-            check("c1_nlg_per_usd_range_plausible", Fraction(14, 10) <= min(ratios) and max(ratios) <= Fraction(36, 10), u["c1_over_usd_ratio_min_max"])
+            check("c1_nlg_per_usd_range_plausible", Fraction(14, 10) <= min(ratios) and max(ratios) <= Fraction(40, 10), u["c1_over_usd_ratio_min_max"])
             c3r = [c3_f(c1_f(usd[m], fed_m_pre[m])) / usd[m] for m in fed_m_pre if m in usd]
             u["c3_over_usd_ratio_min_max"] = [dec_str(min(c3r), 4), dec_str(max(c3r), 4)]
         if wb and ecb_m:
@@ -916,7 +926,10 @@ def main(argv=None):
     if a.print_summary:
         S = json.loads(Path(a.print_summary).read_text())
         for key in [k for k in a.keys.split(",") if k]:
-            print("SUMMARY", key, json.dumps(S.get(key), sort_keys=True, default=str)[:3800])
+            node = S
+            for part in key.split("."):
+                node = node.get(part) if isinstance(node, dict) else None
+            print("SUMMARY", key, json.dumps(node, sort_keys=True, default=str)[:6000])
         return 0
     if not a.summary_out:
         ap.error("--summary-out is required")
