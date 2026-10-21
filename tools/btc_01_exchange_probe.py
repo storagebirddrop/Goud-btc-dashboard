@@ -40,7 +40,13 @@ def main():
     s.headers["User-Agent"] = "btc-01-exchange-probe/1 (read-only research)"
     now = int(datetime.now(timezone.utc).timestamp())
     for pair in ("btceur", "btcusd"):
-        rows, digests = fetch(s, pair, int(datetime(2011, 1, 1, tzinfo=timezone.utc).timestamp()), now)
+        rows, digests = {}, []
+        # The API returns nothing when `start` precedes the pair's first candle: try later starts until data appears.
+        for year in (2011, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020):
+            rows, digests = fetch(s, pair, int(datetime(year, 1, 1, tzinfo=timezone.utc).timestamp()), now)
+            print(f"{pair}: start {year}-01-01 -> {len(rows)} candles")
+            if rows:
+                break
         if not rows:
             print(f"{pair}: no candles")
             continue
