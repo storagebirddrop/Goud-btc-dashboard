@@ -25,6 +25,8 @@ import sys
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 from decimal import Decimal, InvalidOperation, getcontext
 from pathlib import Path
 
@@ -406,6 +408,9 @@ DATA_CANDIDATES = {
     "stooq-aex-d": ("https://stooq.com/q/d/l/?s=%5Eaex&i=d", "csv", "stooq", "Stooq ^AEX daily"),
     "yahoo-gspc-d": (_yahoo("%5EGSPC"), "json", "yahoo", "Yahoo ^GSPC daily, price return"),
     "yahoo-spxtr-d": (_yahoo("%5ESPXTR"), "json", "yahoo", "Yahoo ^SPXTR daily, total return"),
+    "yahoo-sp500tr-d": (_yahoo("%5ESP500TR"), "json", "yahoo", "Yahoo ^SP500TR daily, total return"),
+    "yahoo-sp500ntr-d": (_yahoo("%5ESP500NTR"), "json", "yahoo", "Yahoo ^SP500NTR daily, net total return"),
+    "yahoo-aexgr-d": (_yahoo("%5EAEXGR"), "json", "yahoo", "Yahoo ^AEXGR daily (probe: may not exist)"),
     "yahoo-aex-d": (_yahoo("%5EAEX"), "json", "yahoo", "Yahoo ^AEX daily, price return"),
 }
 # Official documents: (url, kind, keyword list)
@@ -419,7 +424,7 @@ DOC_CANDIDATES = {
     "fred-sp500-notes-page": ("https://fred.stlouisfed.org/series/SP500", "html",
                               ["10 years", "copyright", "prior written permission", "S&P Dow Jones Indices"]),
     "euronext-aex-factsheet": ("https://live.euronext.com/sites/default/files/documentation/index-fact-sheets/AEX_Index_Factsheet.pdf", "pdf",
-                               ["1983", "base", "gross return", "net return", "introduced", "45.3"]),
+                               ["1983", "base", "gross return", "net return", "introduced", "return", "launch", "currency"]),
     "euronext-aex-composition-history": ("https://www.euronext.com/sites/default/files/aex_index_history_evolution_of_the_composition_from_1983.pdf", "pdf",
                                          ["1983", "100", "base", "guilder", "euro"]),
     "euronext-index-data-use": ("https://live.euronext.com/en/products/indices/data-use", "html",
@@ -473,6 +478,22 @@ def quotes(text, keywords, per_keyword=2, max_words=25):
     return out
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def locate(url):
+    """Status and Location of the first response WITHOUT following it (allowlisted exact URLs only)."""
+    try:
+        build_opener(_NoRedirect()).open(Request(url, headers={"User-Agent": "Goud-btc-dashboard/EQ-01 research"}), timeout=20).close()
+        return {"status": 200}
+    except HTTPError as exc:
+        return {"status": exc.code, "location": (exc.headers.get("Location") or "")[:240] or None}
+    except (OSError, URLError) as exc:
+        return {"status": None, "error": type(exc).__name__}
+
+
 # ---- probe runner -------------------------------------------------------------------------
 
 def shiller_points(raw):
@@ -496,7 +517,7 @@ def shiller_points(raw):
     return pts, missing, {"sheets": book.sheet_names(), "average_notes": notes[:3]}
 
 
-def probe_data(sid, fetcher, housing):
+def probe_data(sid, fetcher, housing, locator=None):
     url, kind, group, label = DATA_CANDIDATES[sid]
     rec = {"id": sid, "url": url, "label": label}
     try:
@@ -504,6 +525,8 @@ def probe_data(sid, fetcher, housing):
     except Exception as exc:  # unreachable is a finding, not a defect
         rec["status"] = "UNAVAILABLE"
         rec["error"] = str(exc)[:200]
+        if locator and not str(exc).startswith("NETWORK_TIMEOUT"):
+            rec["locate"] = locator(url)
         return rec
     rec.update({"status": "FETCHED", "bytes": meta["bytes"], "sha256": meta["sha256"]})
     try:
@@ -536,7 +559,7 @@ def probe_data(sid, fetcher, housing):
     return rec
 
 
-def probe_doc(sid, fetcher):
+def probe_doc(sid, fetcher, locator=None):
     url, kind, kws = DOC_CANDIDATES[sid]
     rec = {"id": sid, "url": url}
     try:
@@ -544,6 +567,8 @@ def probe_doc(sid, fetcher):
     except Exception as exc:
         rec["status"] = "UNAVAILABLE"
         rec["error"] = str(exc)[:200]
+        if locator and not str(exc).startswith("NETWORK_TIMEOUT"):
+            rec["locate"] = locator(url)
         return rec
     rec.update({"status": "OFFICIAL_TEXT_READ", "bytes": meta["bytes"], "sha256": meta["sha256"]})
     try:
@@ -553,6 +578,7 @@ def probe_doc(sid, fetcher):
         rec["error"] = str(exc)
         return rec
     rec["quotes"] = quotes(text, kws)
+    rec["text_chars"] = len(text)
     return rec
 
 
@@ -582,10 +608,10 @@ def run(summary_out, housing_csv, fetcher=None):
     housing = housing_months(housing_csv) if Path(housing_csv).exists() else {}
     summary = {"status": "RESEARCH_ONLY_NOT_A_DECISION", "data": [], "docs": []}
     for sid in DATA_CANDIDATES:
-        summary["data"].append(probe_data(sid, fetcher, housing))
+        summary["data"].append(probe_data(sid, fetcher, housing, locate))
         print(json.dumps({"data": summary["data"][-1]["id"], "status": summary["data"][-1]["status"]}), flush=True)
     for sid in DOC_CANDIDATES:
-        summary["docs"].append(probe_doc(sid, fetcher))
+        summary["docs"].append(probe_doc(sid, fetcher, locate))
         print(json.dumps({"doc": summary["docs"][-1]["id"], "status": summary["docs"][-1]["status"]}), flush=True)
     hp = housing.get("nl_hpi", {})
     ap = housing.get("nl_house_avg_eur", {})
