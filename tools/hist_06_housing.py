@@ -339,6 +339,31 @@ def mix_effect(avg, index):
             "years_gt_2pp": [y for y, x in zip(yrs, d) if abs(x) > 2]}
 
 
+# ------------------------------------------------------------------ labelled illustration from quoted secondary values
+# Quoted, NOT verified against a primary table: ESB 1999 article (NVM Wonen MEDIAN, NLG, existing dwellings; HIST-05) and the
+# Vastgoedmarkt table values reported in HIST-01/02 (mean, kEUR, rounded to 1,000). Illustration only, never a series.
+ESB_NVM_MEDIAN_NLG = {"1985": 130000, "1990": 159000, "1995": 223000, "1999": 329000}
+VM_QUOTED_KEUR = {"1975": 47, "1995": 105}
+
+
+def illustrative_secondary(cbs_annual):
+    """Compare the quoted values with the CBS published annual mean (EUR) on common years. Different statistics / populations:
+    each line is a descriptive ratio, not a validation."""
+    cbs = as_dict(cbs_annual)
+    out = {}
+    esb = nlg_to_eur(make_series("esb_nvm_median", "NLG", "median", "A", [(y, Decimal(v)) for y, v in ESB_NVM_MEDIAN_NLG.items()]))
+    for y, eur in esb.values:
+        if y in cbs:
+            out["esb_nvm_median_" + y] = {"nvm_median_nlg": str(ESB_NVM_MEDIAN_NLG[y]), "nvm_median_eur_derived": _q(eur, "1"), "cbs_mean_eur": str(cbs[y]),
+                                          "pct_vs_cbs": _q((eur / cbs[y] - 1) * 100), "note": "median vs mean, NVM members vs Kadaster, kosten koper unknown"}
+    vm = rescale(make_series("vm", "kEUR", "mean", "A", [(y, Decimal(v)) for y, v in VM_QUOTED_KEUR.items()]), Decimal(1000), "EUR")
+    for y, v in vm.values:
+        if y in cbs:
+            out["vm_quoted_" + y] = {"vm_eur": str(v), "cbs_mean_eur": str(cbs[y]), "abs_diff": str(v - cbs[y]), "pct_vs_cbs": _q((v / cbs[y] - 1) * 100),
+                                     "note": "rounded to EUR 1,000 (+-0.5k = +-0.5%); retro-EUR; 'per ultimo' unresolved"}
+    return out
+
+
 # ------------------------------------------------------------------ CBS inputs
 def load_cbs_series(path):
     """Committed CSV (date,series,value) -> {series: Series (monthly, EUR or INDEX_2000)}; validates order/dups."""
@@ -393,7 +418,8 @@ def build_sources():
         "cbs-longread-refs": ("https://www.cbs.nl/nl-nl/longread/de-nederlandse-economie/2022/achtergrond-bij-de-huizenprijsstijgingen-vanaf-2013/verwijzingen", "html"),
         "cpb-2020-note": ("https://www.cpb.nl/sites/default/files/omnidownload/CPB-Notitie-mrt2020-Beweging-op-de-woningmarkt-prijzen-en-volumes.pdf", "pdf"),
         "kss-dallas-wp": ("https://www.dallasfed.org/-/media/Documents/research/international/wpapers/2014/0208.pdf", "pdf"),
-        "kss-piketty-mirror": ("https://piketty.pse.ens.fr/files/Schularicketal2014.pdf", "pdf"),
+        "cpb-2020-note-www": ("https://www.cpb.nl/sites/default/files/omnidownload/CPB-Notitie-mrt2020-Beweging-op-de-woningmarkt-prijzen-en-volumes.pdf", "pdf"),
+        "cpb-2020-pub": ("https://www.cpb.nl/beweging-op-de-woningmarkt-prijzen-en-volumes", "html"),
         "cbs-reeks-prijzen": ("https://www.cbs.nl/nl-nl/reeksen/tijd/prijzen-koopwoningen", "html"),
         "zeepbel-80s": ("https://www.huizenmarkt-zeepbel.nl/het-instorten-van-de-huizenprijzen-huizenmarkt-begin-jaren-80/", "html"),
         "hypotheker-1970": ("https://www.hypotheker.nl/blog/wat-kostte-een-huis-in-1970-huizen-werden-19-keer-zo-duur-in-de-laatste-50-jaar/", "html"),
@@ -514,7 +540,7 @@ def probe(cbs_csv, pins=None):
     focus = {"esb-1981-nbm": (pdf_text, r"gemiddeld\w* (koop|verkoop|prijs)|NBM|f ?\d{2,3}\.\d{3}|prijs per woning", 12),
              "cpb-2020-note": (pdf_text, r"NVM|Kadaster|bron|1970|lange reeks|gemiddelde verkoopprijs", 10),
              "kss-dallas-wp": (pdf_text, r"Netherlands|Dutch|Herengracht|Eichholtz", 14),
-             "kss-piketty-mirror": (pdf_text, r"Netherlands.{0,200}(NVM|Herengracht|repeat|SPAR)|Herengracht|Eichholtz", 10)}
+             "cpb-2020-note-www": (pdf_text, r"NVM|Kadaster|bron|1970|lange reeks|gemiddelde verkoopprijs", 10)}
     for sid, (fn, pat, lim) in focus.items():
         if sid in raws:
             t = fn(raws[sid]) or ""
@@ -528,10 +554,15 @@ def probe(cbs_csv, pins=None):
                     res["text"][sid]["year_rows_defect"] = str(exc)
             if sid == "kss-dallas-wp" and t:
                 i = t.rfind("B.10 The Netherlands")
-                res["text"][sid]["b10"] = re.sub(r"\s+", " ", t[i: i + 4500]) if i >= 0 else None
+                tail = t[int(len(t) * 0.55):]
+                m = re.search(r"B\.10 The Netherlands\s+[A-Z]", tail) or re.search(r"Land Registry|Kadaster|NVM|NBM", tail)
+                res["text"][sid]["b10"] = re.sub(r"\s+", " ", tail[max(0, m.start() - 200): m.start() + 4200]) if m else None
+                res["text"][sid]["nl_table"] = contexts(t, r"The Netherlands 1870", 700, 1)
+            if sid == "esb-1981-nbm" and t:
+                res["text"][sid]["tables"] = {n: re.sub(r"\s+", " ", t[m.start(): m.start() + 1500]) for n in ("1", "2", "5") for m in [re.search(r"Tabel %s\. " % n, t)] if m}
     for sid, pat in {"cbs-longread-2": r"gulden|1978|CPB|NVM|Kadaster|bron:|Bron", "cbs-longread-refs": r"CPB|2020|NVM",
                      "cbs-reeks-prijzen": r"1970|1975|1995|gemiddeld|reeks", "zeepbel-80s": r"NVM|bron|NBM|halfjaar|Kadaster|CBS",
-                     "hypotheker-1970": r"bron|NVM|CBS|Kadaster|1970|1975"}.items():
+                     "hypotheker-1970": r"bron|NVM|CBS|Kadaster|1970|1975", "cpb-2020-pub": r"NVM|Kadaster|bron|pdf|1970"}.items():
         if sid in raws:
             t = strip_tags(raws[sid].decode("utf-8", "replace"))
             res["text"][sid] = {"chars": len(t), "contexts": contexts(t, pat, 150, 8)}
@@ -590,6 +621,8 @@ def probe(cbs_csv, pins=None):
     res["cbs"]["mix_effect_avg_vs_hpi_committed"] = mix_effect(a_m, i_m)
     if "_avg" in res and res.get("_idx"):
         res["cbs"]["mix_effect_avg_vs_hpi_published_annual"] = mix_effect(res["_avg"], res["_idx"])
+    if "_avg" in res:
+        res["illustration"] = illustrative_secondary(res["_avg"])
     res.pop("_avg", None)
     res.pop("_idx", None)
     return res
@@ -626,11 +659,13 @@ def digest(doc, section="all"):
             L.append(f"TEXT {sid} chars={d['chars']}")
             for c in d["contexts"]:
                 L.append("  CTX " + c[:300])
-            for k in ("captions", "blocks", "year_rows_defect", "b10"):
+            for k in ("captions", "tables", "nl_table", "b10"):
                 if d.get(k):
                     L.append(f"  {k} " + json.dumps(d[k])[:2400])
     if want("cbs"):
         L.append("CBS " + json.dumps(doc["cbs"], sort_keys=True)[:4500])
+    if want("cbs") and "illustration" in doc:
+        L.append("ILLUSTRATION " + json.dumps(doc["illustration"], sort_keys=True)[:3000])
     if want("overlap") and "overlap" in doc:
         L.append("OVERLAP " + json.dumps(doc["overlap"], sort_keys=True)[:7000])
     return "\n".join(L)

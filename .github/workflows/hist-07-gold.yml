@@ -40,4 +40,4 @@ jobs:
         if: always()
         run: >
           python -m tools.hist_07_collect --print-summary "$RUNNER_TEMP/hist-07/summary.json"
-          --keys datahub,datahub_pkg,defects,fed_euro,fed_euro_dropped_lt15_obs,fed_vs_ecb_long,c2_cbs_catalog_title_search,bis_nlg_per_usd_median_by_year_1960_1972,bis_nlg_per_usd_1961_02_to_1961_04,imf
+          --keys table,construction_coverage_1960_1998,fed_obs_per_month,worldbank_rounding
