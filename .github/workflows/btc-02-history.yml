@@ -1,0 +1,127 @@
+name: BTC-02 history research (read-only)
+# Measures BTC market-history sources (aggregates, hashes, metadata only). Research only: nothing is committed,
+# published or deployed; raw third-party bytes stay in memory; artifacts hold the aggregate log (14 days).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/btc_02_history.py'
+      - 'tools/btc_02_probe.py'
+      - 'tests/test_btc_02_history.py'
+      - '.github/workflows/btc-02-history.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q tests/test_btc_02_history.py
+  exchanges:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (exchanges)
+        run: python -m tools.btc_02_probe exchanges 2>&1 | tee "$RUNNER_TEMP/btc-02-exchanges.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: btc-02-exchanges-aggregates
+          path: ${{ runner.temp }}/btc-02-exchanges.log
+          retention-days: 14
+  archives:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (archives)
+        run: python -m tools.btc_02_probe archives 2>&1 | tee "$RUNNER_TEMP/btc-02-archives.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: btc-02-archives-aggregates
+          path: ${{ runner.temp }}/btc-02-archives.log
+          retention-days: 14
+  aggregators:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (aggregators)
+        run: python -m tools.btc_02_probe aggregators 2>&1 | tee "$RUNNER_TEMP/btc-02-aggregators.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: btc-02-aggregators-aggregates
+          path: ${{ runner.temp }}/btc-02-aggregators.log
+          retention-days: 14
+  terms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (terms)
+        run: python -m tools.btc_02_probe terms 2>&1 | tee "$RUNNER_TEMP/btc-02-terms.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: btc-02-terms-aggregates
+          path: ${{ runner.temp }}/btc-02-terms.log
+          retention-days: 14
+  yahoo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: storagebirddrop/script-trading-anlytics
+          ref: master
+          path: trading-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (yahoo history vs Bitstamp)
+        run: python -m tools.btc_02_probe yahoo trading-source/data/history.csv 2>&1 | tee "$RUNNER_TEMP/btc-02-yahoo.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: btc-02-yahoo-aggregates
+          path: ${{ runner.temp }}/btc-02-yahoo.log
+          retention-days: 14
