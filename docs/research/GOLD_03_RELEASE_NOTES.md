@@ -44,7 +44,7 @@ Generation run (above) reproduced exactly the GOLD-01/02 reviewed sha `1afb0bf9.
 ## ROOD-impact items (listed explicitly)
 1. Publication of the two indicators in `monthly.json` (owner decision 2026-10-20; release itself pending).
 2. Re-pin of the public JSON hash in `etl/gold_publication_candidate.py` and `etl/cbs_historical_merge.py`.
-3. CI default check switched to the committed release-record mode (`ci.yml`).
+3. CI step "Verify committed source and public JSON" runs the default `python -m etl.data_quality` (production state: gold only with an AUTHORIZED record, hash == record == code pin).
 4. Review-pipeline semantics: baseline JSON now contains derived gold; CBS 380-month candidate stays gold-null (no gold carried to the candidate).
 5. Residual: `DECISIONS.md` ADR-004 row is still `PROPOSED` while the record attests `ACCEPTED` and `tests/test_governance_docs.py` requires `PROPOSED`; to be reconciled by the owner/lead in docs. Third-party rights uncertainty is a registered residual risk.
 6. The sandbox cannot reach external hosts; all source work ran in GitHub Actions.

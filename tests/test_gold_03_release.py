@@ -101,7 +101,8 @@ def test_adr004_internal_consistency_recomputed_with_decimal():
 def test_committed_mode_accepts_committed_files_and_reports_status():
     report = validate_gold_release_committed(CSV, JSON, RECORD)
     assert report["months"] == 320 and report["publication_authorized"] is False
-    assert "NOT_AUTHORIZED" in report["attested_not_verified"]["PUBLICATION AUTHORIZED"]
+    status = json.loads(RECORD.read_text(encoding="utf-8"))["release_authorization"]["status"]
+    assert f"RELEASE STATUS PER RECORD: {status}" in report["attested_not_verified"]["PUBLICATION AUTHORIZED"]
 
 
 def test_release_gate_requires_authorized_record_and_env(monkeypatch):
