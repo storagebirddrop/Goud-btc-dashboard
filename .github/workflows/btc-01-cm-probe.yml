@@ -1,0 +1,26 @@
+name: BTC-01 Coin Metrics probe (read-only research)
+# Measures catalog dates and daily coverage of BTC ReferenceRateUSD/EUR. Research only: no data is committed,
+# published or uploaded.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/btc_01_cm_probe.py'
+      - 'tools/btc_01_exchange_probe.py'
+      - '.github/workflows/btc-01-cm-probe.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python tools/btc_01_cm_probe.py
+      - run: python tools/btc_01_exchange_probe.py
