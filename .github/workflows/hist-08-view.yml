@@ -19,8 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        art: [hist-08-daily-aggregates]
-        part: [1, 2, 3, 4, 5, 6]
+        art: [hist-08-daily-aggregates, hist-08-usd-archives-aggregates, hist-08-eur-archives-aggregates]
+        part: [1, 2, 3]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -30,7 +30,7 @@ jobs:
           path: log
       - name: Show part
         run: |
-          cat log/*.log | sed 's/^[0-9T:.-]*Z //' | grep -v -E '^(##|\[|Post|Cleaning)' > all.txt
+          cat log/*.log | sed 's/^[0-9T:.-]*Z //' | grep -E '^(==|DIFF|ARCHIVE|CDX|  PROV|  months_seen|  Mt|  Bitstamp|  Kraken|  sat|  Coinbase|  Bitfinex)' | cut -c1-330 > all.txt
           echo "LINES $(wc -l < all.txt) part ${{ matrix.part }}"
-          s=$(( (${{ matrix.part }} - 1) * 14 + 1 )); e=$(( ${{ matrix.part }} * 14 ))
+          s=$(( (${{ matrix.part }} - 1) * 40 + 1 )); e=$(( ${{ matrix.part }} * 40 ))
           sed -n "${s},${e}p" all.txt
