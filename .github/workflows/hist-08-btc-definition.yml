@@ -1,0 +1,92 @@
+name: HIST-08 BTC monthly definition research (read-only)
+# Research only. Compares monthly price definitions and USD->EUR constructions on already registered BTC-02
+# sources. Prints aggregates only; raw third-party bytes and daily prices stay in memory, nothing is committed,
+# published or deployed. Nothing here authorizes Bitcoin publication.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/hist_08_btc_definition.py'
+      - 'tests/test_hist_08_btc_definition.py'
+      - '.github/workflows/hist-08-btc-definition.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q tests/test_hist_08_btc_definition.py tests/test_btc_02_history.py
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (daily series, conversions, house effect)
+        run: python -m tools.hist_08_btc_definition daily data/cbs-housing.csv 2>&1 | tee "$RUNNER_TEMP/hist-08-daily.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hist-08-daily-aggregates
+          path: ${{ runner.temp }}/hist-08-daily.log
+          retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/hist-08-daily.log"
+  usd-archives:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (Mt. Gox and Bitstamp USD trade archives)
+        run: python -m tools.hist_08_btc_definition usd-archives 2>&1 | tee "$RUNNER_TEMP/hist-08-usd-archives.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hist-08-usd-archives-aggregates
+          path: ${{ runner.temp }}/hist-08-usd-archives.log
+          retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/hist-08-usd-archives.log"
+  eur-archives:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Probe (Kraken EUR/USD trade archives)
+        run: python -m tools.hist_08_btc_definition eur-archives data/cbs-housing.csv 2>&1 | tee "$RUNNER_TEMP/hist-08-eur-archives.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hist-08-eur-archives-aggregates
+          path: ${{ runner.temp }}/hist-08-eur-archives.log
+          retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/hist-08-eur-archives.log"
