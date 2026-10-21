@@ -1,0 +1,52 @@
+name: HIST-08 gold construction validation (research only)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'hist-08-gold-validation'
+    paths:
+      - '.github/workflows/hist-08-gold-validate.yml'
+      - 'tools/hist_08_*.py'
+      - 'tests/test_hist_08_*.py'
+  pull_request:
+    paths:
+      - '.github/workflows/hist-08-gold-validate.yml'
+      - 'tools/hist_08_*.py'
+      - 'tests/test_hist_08_*.py'
+permissions:
+  contents: read
+jobs:
+  hist-08:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_08_gold_validation.py tests/test_hist_07_gold_constructions.py tests/test_hist_07_collect.py
+      - name: Validate constructions (read-only; unreachable sources are recorded, never replaced)
+        run: >
+          python -m tools.hist_08_gold_validate
+          --summary-out "$RUNNER_TEMP/hist-08/summary.json"
+          --overlap-csv-out "$RUNNER_TEMP/hist-08/overlap_1999_2001.csv"
+      - name: Derived research artifact (aggregates and a 36-row derived overlap table; rights UNVERIFIED; no raw source bytes)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-08-gold-validation-not-approved
+          path: ${{ runner.temp }}/hist-08/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Print summary sections (compact, aggregates only)
+        if: always()
+        run: >
+          python -m tools.hist_08_gold_validate --print-summary "$RUNNER_TEMP/hist-08/summary.json"
+          --keys "${HIST08_KEYS:-status,checks_failed,defects,missing_sources,not_performed,unit_consistency,fx_direction,worldbank,fx_regimes,fx_provenance,aggregation_sensitivity,overlap_1999_2001,adr004_production_vs_independent,grams_per_home_1995_1999,fixed_rate_sensitivity_example_1998_06,changeover_step}"
+        env:
+          HIST08_KEYS: ''
