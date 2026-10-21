@@ -118,10 +118,10 @@ export function viewAnnotations(keys:SeriesKey[],rows:Point[]):Annotation[]{
 
 // ---- Gold transparency (GOLD-03 prep): source block shown under every chart view that contains a gold series ----
 // The JSON contract has no date field, so the source reference date ('peildatum bronstand') is ONE constant here.
-// It is a placeholder that MUST be updated at every release (data refresh) by whoever publishes the gold values.
+// It MUST be updated at every release (data refresh) by whoever publishes the gold values.
 // Nothing here claims a licence, approval or endorsement by any source organization.
 export type GoldSourceAsOf={date:string;note:string};
-export const GOLD_SOURCE_ASOF:GoldSourceAsOf={date:'2026-10-20',note:'Voorlopige waarde (placeholder): bij elke release bijwerken naar de datum van de gebruikte bronbestanden (World Bank Pink Sheet-workbook, ECB-koersen, CBS-tabel).'};
+export const GOLD_SOURCE_ASOF:GoldSourceAsOf={date:'2026-10-19',note:'Datum van de gebruikte bronbestanden (World Bank Pink Sheet-workbook, ECB-koersen, CBS-tabel); bij elke gegevensrelease bijwerken.'};
 export const METHODOLOGY_URL='https://github.com/storagebirddrop/Goud-btc-dashboard/blob/main/docs/governance/METHODOLOGY.md';
 export type SourceLink={name:string;detail:string;url:string;linkText:string};
 export const GOLD_SOURCE_LINKS:SourceLink[]=[

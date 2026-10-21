@@ -111,8 +111,8 @@ def test_public_data_gold_state_is_tolerant_and_cbs_columns_are_unchanged():
             assert v is None or (isinstance(v, (int, float)) and abs(v) != float("inf") and v == v and v > 0), (k, r["period"])
     # gold values, when present, are finite from 2000-01 on (no partial or gapped series)
     for k in allowed:
-        if any(r[k] is not None for r in rows):
-            assert all(r[k] is not None for r in rows), f"{k} must be complete from 2000-01 once published"
+        assert all(r[k] is not None for r in rows), f"{k} must be complete from 2000-01"
+    assert rows[0]["gold_index"] == 100.0
     # the registry still gates exactly these series
     assert {k for k, e in _registry().items() if e["publication"] == "gated"} == allowed
 

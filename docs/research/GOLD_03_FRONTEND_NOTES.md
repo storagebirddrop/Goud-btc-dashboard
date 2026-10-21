@@ -9,7 +9,7 @@ Status: PR-only preparation for the owner decision of 2026-10-20 (gold hold lift
 - The chart annotation "jun 2025: bronwijziging goud" is unchanged (gold views only).
 
 ## The as-of constant
-The JSON has no date field and must not get one. `GOLD_SOURCE_ASOF` in `series.ts` holds `{date, note}`. The date is the "peildatum bronstand" shown in both places. It is currently the placeholder `2026-10-20`. At every release (data refresh) the person publishing the gold values must set it to the date of the source files used (World Bank Pink Sheet workbook, ECB rates, CBS table). Tests only check that it is a valid ISO date, defined once, and rendered; they cannot check that it is correct.
+The JSON has no date field and must not get one. `GOLD_SOURCE_ASOF` in `series.ts` holds `{date, note}`. The date is the "peildatum bronstand" shown in both places. It is currently `2026-10-19` (date of the source files of the reviewed candidate). At every release (data refresh) the person publishing the gold values must set it to the date of the source files used (World Bank Pink Sheet workbook, ECB rates, CBS table). Tests only check that it is a valid ISO date, defined once, and rendered; they cannot check that it is correct.
 
 ## Wording guard
 No text claims licence status, approval, authorization or endorsement. The only statement about the sources' stance is negative ("Geen van de bronorganisaties onderschrijft deze toepassing"). `tests/test_frontend_gold_sources.py` checks a forbidden-phrase list over the UI text. Third-party-rights uncertainty remains a registered residual risk and is deliberately not mentioned in the UI.
@@ -28,7 +28,7 @@ Synthetic JSON (gold_index, gold_grams_per_house for 2000-01..2026-08, plus a pr
 Screenshots are not committed.
 
 ## For the lead to decide
-1. Set `GOLD_SOURCE_ASOF.date` at release (placeholder now).
+1. Set `GOLD_SOURCE_ASOF.date` at release (set to 2026-10-19 for this release).
 2. Owner review of the Dutch wording (method text, "eigen berekeningen", break text).
 3. The break text is shown in full in the block and in the collapsed section, plus the short chart label. The GOLD_PUBLICATION_DECISION annotation text is slightly different in wording; ours follows the task brief (full statement of the World Bank definition change).
 4. Tighten the series test once the real gold data is committed.
