@@ -38,6 +38,7 @@ jobs:
       - name: HTTP layer (headers, JSON identity, bundle, asset names)
         run: python tools/gold_04_live_verify.py --local-dist frontend/dist
       - name: Browser layer (desktop 1280 px and mobile 375 px)
+        if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/bw" && cd "$RUNNER_TEMP/bw"
           npm init -y >/dev/null && npm install --no-audit --no-fund playwright-core@1.49.1 >/dev/null

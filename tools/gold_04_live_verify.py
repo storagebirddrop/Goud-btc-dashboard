@@ -100,6 +100,12 @@ def main():
             bundle_text += body.decode("utf-8", "replace")
     for needle in REQUIRED_BUNDLE_STRINGS:
         check(f"bundle contains {needle!r}", needle in bundle_text)
+    # Diagnostic (not a pass/fail check): which earlier releases does the live bundle contain?
+    for label, needle in (("DASH-02 UI (#83) 'Toon als tabel'", "Toon als tabel"),
+                          ("DASH-01/02 category 'Alternatieve waardering'", "Alternatieve waardering"),
+                          ("GOLD-03 source block 'Peildatum bronstand'", "Peildatum bronstand")):
+        print(f"DIAGNOSTIC live bundle has {label}: {needle in bundle_text}")
+    print(f"DIAGNOSTIC live JSON bytes {len(raw)}, sha256 {sha}")
     if args.local_dist:
         local = sorted(p.name for p in (Path(args.local_dist) / "assets").iterdir())
         live = sorted(Path(a).name for a in assets)
