@@ -101,6 +101,18 @@ def main():
         coverage(rows, metric, first)
         for d in ("2014-09-17", "2014-10-01", "2016-01-01", "2020-01-01"):
             print(f"  sample {metric} {d}: {rows.get(d)}")
+    # Window probes: does the Community API serve older history at all? (the wide query above returned only recent days)
+    for metric in METRICS:
+        for start, end in (("2014-10-01", "2014-10-31"), ("2016-01-01", "2016-01-31"), ("2020-01-01", "2020-01-31"),
+                           ("2024-01-01", "2024-01-31"), ("2026-01-01", "2026-01-31"), ("2026-09-01", "2026-09-30")):
+            try:
+                rows = daily(s, metric, start, end)
+                print(f"WINDOW {metric} {start}..{end}: {len(rows)} observations")
+            except Exception as exc:  # noqa: BLE001
+                print(f"WINDOW {metric} {start}..{end}: error {exc}")
+    r = s.get(SERIES, params={"assets": "btc", "metrics": "ReferenceRateEUR", "frequency": "1d",
+                              "start_time": "2020-01-01", "end_time": "2020-01-05"}, timeout=60)
+    print(f"RAW sample status {r.status_code}: {r.text[:300]}")
     print("done")
 
 
