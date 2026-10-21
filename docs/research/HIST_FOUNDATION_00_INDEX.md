@@ -16,7 +16,7 @@ The repository already holds HIST-01..HIST-05 research (`docs/research/HIST_0*.m
 | S&P 500 and AEX feasibility | EQ-01 | `EQ_01_EQUITY_FEASIBILITY.md` | new |
 | Historical data model, validators, publication-layer separation | ARCH-02 | `HIST_ARCH_02_MODEL.md` | ARCHITECTURE.md, DATA_CONTRACT.md |
 
-Final deliverables of this branch (index, coverage matrix, executive report): see the sections below, filled when the tracks are complete.
+Final deliverables of this branch: `HIST_FOUNDATION_01_REPORT.md` (acceptance matrix, executive decision report, next milestone). All five tracks completed 2026-10-21; status per track is in that report.
 
 ## Rules for every track
 
