@@ -1,0 +1,58 @@
+name: EQ-01 equity feasibility probe (research only)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/eq-01-probe.yml'
+      - 'tools/eq_01_probe.py'
+      - 'tests/test_eq_01_probe.py'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies (xlrd only to read the Shiller workbook in memory)
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install xlrd==2.0.1
+      - name: Install poppler-utils (pdftotext; text stays in memory)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends poppler-utils
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_eq_01_probe.py tests/test_hist_02_acquire.py
+      - name: Probe candidate sources and official documents (aggregates only; unreachable sources exit 0)
+        run: python -m tools.eq_01_probe --summary-out "$RUNNER_TEMP/eq-01-probe.json"
+      - name: Compact summary in log
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          p = os.path.join(os.environ["RUNNER_TEMP"], "eq-01-probe.json")
+          if os.path.exists(p):
+              d = json.load(open(p))
+              for r in d["data"]:
+                  c = r.get("coverage", {})
+                  print("DATA", r["id"], r["status"], r.get("error", ""), c.get("first"), c.get("last"), c.get("observations"), "gaps", c.get("monthly_gaps_inside_range"), "dup", c.get("duplicates"), "ord", c.get("unordered"), "miss", r.get("missing_markers"), (r.get("yahoo_meta") or {}).get("currency"))
+                  for b, v in (r.get("vs_cbs_hpi") or {}).items():
+                      print("   vsHPI", b, v.get("overlap"), v.get("baseline"), v.get("n"), v.get("error"))
+              for r in d["docs"]:
+                  print("DOC", r["id"], r["status"], r.get("error", ""), sum(len(v) for v in (r.get("quotes") or {}).values()))
+              print("HOUSING", d["housing_cbs_repo"])
+          PY
+      - name: Metadata-only review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eq-01-probe-summary-review-only
+          path: ${{ runner.temp }}/eq-01-probe.json
+          if-no-files-found: warn
+          retention-days: 14
