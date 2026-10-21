@@ -81,8 +81,9 @@ def main():
     check("no duplicates, strictly increasing", periods == sorted(set(periods)))
     for k in GOLD:
         vals = [r[k] for r in rows]
-        check(f"{k} filled in all rows, finite positive", all(isinstance(v, (int, float)) and v > 0 for v in vals),
-              f"min {min(vals):.4f} max {max(vals):.4f}")
+        filled = [v for v in vals if isinstance(v, (int, float))]
+        check(f"{k} filled in all rows, finite positive", len(filled) == len(vals) and all(v > 0 for v in filled),
+              f"filled {len(filled)}/{len(vals)}" + (f", min {min(filled):.4f} max {max(filled):.4f}" if filled else ""))
     check("gold_eur_oz null in all rows", all(r["gold_eur_oz"] is None for r in rows))
     check("gold_index 2000-01 == 100", rows[0]["gold_index"] == 100)
     expected = build(ROOT / "data/cbs-housing.csv")["data"]
