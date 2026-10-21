@@ -41,7 +41,7 @@ Status: **RESEARCH. Nothing here is approved, published or a decision.** Branch 
 
 ## 4. What the integrating review verified itself
 
-- Scope: 24 files added, **0 existing files modified or deleted** relative to `main` `0bfc040`; no change under `frontend/`, `data/`, `etl/static_export.py`, `etl/gold_monthly.py`.
+- Scope: 25 files added (24 research files plus this report itself, which an earlier count omitted; verified with `git diff --name-status origin/main...HEAD`: 25 A, 0 M, 0 D, 0 R) and **0 existing files modified or deleted** relative to `main` `0bfc040`; no change under `frontend/`, `data/`, `etl/static_export.py`, `etl/gold_monthly.py`.
 - Production data: `frontend/public/data/monthly.json` sha256 `1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd` and `data/cbs-housing.csv` sha256 `ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6` unchanged; `python -m etl.data_quality` passes (320 months, authorized gold release record); governance link check passes.
 - Tests: full suite 1211 passed, 5 skipped (including 234 tests of the five new tracks, also with `CI=true`); the new tests include negative fixtures for every invariant listed in the assignment. These synthetic tests prove code behaviour, not data.
 - Not re-verified: the source measurements themselves (they depend on third-party hosts reachable only from CI; each is tied to a run URL in the track reports). Nothing was published or contacted externally.
