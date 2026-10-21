@@ -97,14 +97,24 @@ def test_registry_keys_match_the_json_columns_and_raw_gold_is_not_registered():
     assert "gold_eur_oz" not in MAIN_TSX.read_text(encoding="utf-8").replace("gold_eur_oz:number|null", "")
 
 
-def test_public_data_still_carries_no_gold_and_no_historic_rows():
+def test_public_data_gold_state_is_tolerant_and_cbs_columns_are_unchanged():
+    # State-tolerant (GOLD-03 prep): the committed JSON may carry the two derived gold indicators or not yet.
     rows = json.loads(MONTHLY.read_text(encoding="utf-8"))["data"]
-    assert len(rows) == 320 and rows[0]["period"] == "2000-01"
+    assert len(rows) == 320 and rows[0]["period"] == "2000-01" and rows[-1]["period"] == "2026-08"
+    assert all(r["gold_eur_oz"] is None for r in rows), "raw gold EUR/oz is never published"
+    allowed = {"gold_index", "gold_grams_per_house"}
     for r in rows:
-        assert r["gold_eur_oz"] is None and r["gold_index"] is None and r["gold_grams_per_house"] is None
-    # the gated gold series therefore cannot be visible with the committed data
-    gated = [k for k, e in _registry().items() if e["publication"] == "gated"]
-    assert all(r[k] is None for r in rows for k in gated)
+        assert set(r) == {"period", "gold_eur_oz", "house_eur", "hpi", "gold_grams_per_house", "gold_index", "hpi_index"}
+        assert all(r[k] is not None and r[k] > 0 for k in ("house_eur", "hpi", "hpi_index")), r["period"]
+        for k in allowed:
+            v = r[k]
+            assert v is None or (isinstance(v, (int, float)) and abs(v) != float("inf") and v == v and v > 0), (k, r["period"])
+    # gold values, when present, are finite from 2000-01 on (no partial or gapped series)
+    for k in allowed:
+        assert all(r[k] is not None for r in rows), f"{k} must be complete from 2000-01"
+    assert rows[0]["gold_index"] == 100.0
+    # the registry still gates exactly these series
+    assert {k for k, e in _registry().items() if e["publication"] == "gated"} == allowed
 
 
 def test_research_artifacts_stay_out_of_the_frontend():

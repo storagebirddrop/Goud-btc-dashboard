@@ -167,8 +167,11 @@ def _check_rows(rows, gold_mode):
                 raise ValueError(f"Unexpected unverified gold value at {row['period']}")
 
 
-def _check_release(csv_path, json_path, record, *, authorize):
-    """Shared hash/content checks; authorize=False is the NON-authorizing preflight."""
+def _check_release(csv_path, json_path, record, *, authorize, committed=False):
+    """Shared hash/content checks; authorize=False is the NON-authorizing preflight.
+
+    committed=True is the CI check of the committed JSON against the committed record: it
+    only changes the wording of the report (the status is reported, never granted here)."""
     record = _check_record_schema(_load_record(record), strict=authorize)
     art, cv, src = record["artifact"], record["candidate_validation"], record["sources"]
     if cv["candidate_sha256"] != art["sha256"]:
@@ -206,7 +209,10 @@ def _check_release(csv_path, json_path, record, *, authorize):
             "METHODOLOGY APPROVED": "ADR-004 / ACCEPTED (per record)",
             "PUBLICATION AUTHORIZED": (
                 f"{auth['status']} by {auth['authorized_by']} at {auth['authorized_at']} ({auth['reference']})"
-                if authorize else "PUBLICATION NOT AUTHORIZED (preflight never authorizes)"),
+                if authorize else
+                f"RELEASE STATUS PER RECORD: {auth['status']} (committed-data check, not an authorization; "
+                f"reference: {auth['reference']})" if committed else
+                "PUBLICATION NOT AUTHORIZED (preflight never authorizes)"),
         },
     }
 
@@ -214,6 +220,56 @@ def _check_release(csv_path, json_path, record, *, authorize):
 def validate_gold_release_record_preflight(csv_path, json_path, gold_release_record):
     """Rehearsal: same hash/content checks, needs no env/approval flag, NEVER authorizes."""
     return _check_release(csv_path, json_path, gold_release_record, authorize=False)
+
+
+DEFAULT_RELEASE_RECORD = "data/gold-release-record.json"
+
+
+def validate_gold_release_committed(csv_path, json_path, gold_release_record, *, require_authorized=False,
+                                    require_env=True):
+    """CI check of the COMMITTED public JSON against the COMMITTED release record.
+
+    Hash equality with the record AND with the code pin (APPROVED_PUBLIC_JSON_SHA256) plus all
+    content checks; any gold value the record does not identify fails. The record status is
+    reported, not required (a prepared release is NOT_AUTHORIZED). require_authorized=True is
+    the release gate: env flags and an AUTHORIZED record are then mandatory."""
+    from etl.gold_publication_candidate import APPROVED_PUBLIC_JSON_SHA256
+    if require_authorized and require_env and not gold_enabled():
+        raise ValueError("Release gate requires GOLD_PUBLICATION_ENABLED=true and "
+                         "GOLD_PUBLICATION_APPROVAL=APPROVED")
+    report = _check_release(csv_path, json_path, gold_release_record, authorize=require_authorized,
+                            committed=True)
+    if report["hash_verified"]["artifact_sha256"] != APPROVED_PUBLIC_JSON_SHA256:
+        raise ValueError("Public JSON sha256 differs from the code pin APPROVED_PUBLIC_JSON_SHA256")
+    return report
+
+
+def public_json_has_gold(json_path):
+    """True when any row of the public JSON carries a non-null gold field (raw or derived)."""
+    payload = json.loads(Path(json_path).read_bytes().decode("utf-8"))
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return False
+    return any(isinstance(r, dict) and any(r.get(k) is not None for k in GOLD_PUBLIC_FIELDS + ("gold_eur_oz",))
+               for r in rows)
+
+
+def validate_production_state(csv_path, json_path, gold_release_record=DEFAULT_RELEASE_RECORD):
+    """Default production check (python -m etl.data_quality without gold flags).
+
+    Without any gold value in the public JSON: unchanged (JSON == build(csv), gold null).
+    With gold values: valid ONLY when the committed release record is AUTHORIZED (authorizer, ISO
+    date, reference) AND the JSON sha256 equals the record AND the code pin
+    APPROVED_PUBLIC_JSON_SHA256 AND all content checks pass. The authorization lives in the
+    committed record, so no env flag is needed here. A NOT_AUTHORIZED record, a missing record,
+    a changed byte or any gold the record does not identify fails."""
+    if not public_json_has_gold(json_path):
+        return validate(csv_path, json_path), None
+    if not Path(gold_release_record).is_file():
+        raise ValueError(f"Public JSON carries gold but release record {gold_release_record} is missing")
+    report = validate_gold_release_committed(csv_path, json_path, gold_release_record,
+                                             require_authorized=True, require_env=False)
+    return report["months"], report
 
 
 def validate_gold_release(csv_path, json_path, gold_release_record, *, gold_approved=False):
@@ -294,10 +350,22 @@ def main():
     parser.add_argument("--gold-release-record", default=None, metavar="PATH",
                         help="strict JSON approval record for a reviewed public gold JSON-v1 artifact "
                              "(alternative to --gold-candidate; needs --approve-gold and env flags)")
+    parser.add_argument("--committed", action="store_true",
+                        help="with --gold-release-record: CI check of the committed JSON against the committed "
+                             "record and the code pin; reports the record status. With --approve-gold it is the "
+                             "release gate (env flags + AUTHORIZED record required)")
     parser.add_argument("--preflight", action="store_true",
                         help="with --gold-release-record: rehearsal that never authorizes publication "
                              f"(prints PUBLICATION NOT AUTHORIZED, exit code {EXIT_PREFLIGHT_NOT_AUTHORIZED})")
     args = parser.parse_args()
+    if args.committed:
+        if (not args.gold_release_record or args.gold_candidate or args.preflight):
+            parser.error("--committed requires --gold-release-record and excludes --gold-candidate/--preflight")
+        report = validate_gold_release_committed(args.input, args.output, args.gold_release_record,
+                                                 require_authorized=args.approve_gold)
+        print(format_gold_release_report(report))
+        print(f"Validated {report['months']} consecutive months, both CBS series, schema and committed release record")
+        return
     if args.preflight:
         if not args.gold_release_record or args.gold_candidate or args.approve_gold:
             parser.error("--preflight requires --gold-release-record and excludes --gold-candidate/--approve-gold")
@@ -316,6 +384,13 @@ def main():
     candidate = None
     if args.gold_candidate:
         candidate = json.loads(Path(args.gold_candidate).read_text(encoding="utf-8"))
+    elif not args.approve_gold:
+        count, report = validate_production_state(args.input, args.output)
+        if report:
+            print(format_gold_release_report(report))
+        print(f"Validated {count} consecutive months, both CBS series, schema and "
+              + ("authorized gold release record" if report else "JSON/CSV parity"))
+        return
     count = validate(args.input, args.output, gold_candidate=candidate,
                      gold_approved=args.approve_gold)
     print(f"Validated {count} consecutive months, both CBS series, schema and JSON/CSV parity")

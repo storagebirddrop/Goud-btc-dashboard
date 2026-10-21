@@ -86,9 +86,11 @@ def test_public_json_contract():
     periods = [r["period"] for r in rows]
     assert periods == expected_months("2000-01", "2026-08")
     assert all(p >= "2000-01" for p in periods)
+    # GOLD-03: raw gold_eur_oz stays null; the two derived indicators are published (see GOLD_03_RELEASE_NOTES.md).
     for r in rows:
-        for f in GOLD_FIELDS:
-            assert r[f] is None, (r["period"], f)
+        assert r["gold_eur_oz"] is None, r["period"]
+        for f in ("gold_index", "gold_grams_per_house"):
+            assert isinstance(r[f], float) and r[f] > 0, (r["period"], f)
 
 
 def test_public_csv_contract():

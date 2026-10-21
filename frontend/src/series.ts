@@ -32,8 +32,8 @@ export const SERIES:Record<SeriesKey,SeriesDef>={
  house_eur:{label:'Gemiddelde verkoopprijs',short:'Verkoopprijs',kind:'eur',category:'nominal',publication:'open',unit:'EUR',light:'#2a78d6',dark:'#3987e5',source:'CBS StatLine 85773NED'},
  hpi:{label:'CBS-huizenprijsindex',short:'Prijsindex',kind:'index',category:'index',publication:'open',unit:'indexpunten, 2020 = 100',base:'2020',light:'#0e8a5f',dark:'#2fbf8c',source:'CBS StatLine 85773NED'},
  hpi_index:{label:'CBS-huizenprijsindex',short:'Prijsindex',kind:'index',category:'index',publication:'open',unit:'indexpunten, januari 2000 = 100',base:'2000',light:'#0e8a5f',dark:'#2fbf8c',source:'CBS StatLine 85773NED, eigen herbasering'},
- gold_index:{label:'Goudprijsindex',short:'Goudprijs',kind:'index',category:'index',publication:'gated',unit:'indexpunten, januari 2000 = 100',base:'2000',light:'#a87400',dark:'#eda100',dash:'6 3',source:'World Bank / ECB, eigen berekening',gold:true,annotations:WB_GOLD_BREAK},
- gold_grams_per_house:{label:'Gram goud per woning',short:'Goud per woning',kind:'gram',category:'alternative',publication:'gated',unit:'gram',light:'#6250d6',dark:'#9085e9',dash:'6 3',source:'World Bank / ECB / CBS, eigen berekening',gold:true,annotations:WB_GOLD_BREAK},
+ gold_index:{label:'Goudprijsindex',short:'Goudprijs',kind:'index',category:'index',publication:'gated',unit:'indexpunten, januari 2000 = 100',base:'2000',light:'#a87400',dark:'#eda100',dash:'6 3',source:'World Bank (GOLD) en ECB (EXR.D.USD.EUR.SP00.A), eigen berekening',gold:true,annotations:WB_GOLD_BREAK},
+ gold_grams_per_house:{label:'Gram goud per woning',short:'Goud per woning',kind:'gram',category:'alternative',publication:'gated',unit:'gram',light:'#6250d6',dark:'#9085e9',dash:'6 3',source:'World Bank (GOLD), ECB (EXR.D.USD.EUR.SP00.A) en CBS StatLine 85773NED, eigen berekening',gold:true,annotations:WB_GOLD_BREAK},
  sat_per_house:{label:'Satoshi per woning',short:'Sat per woning',kind:'sat',category:'alternative',publication:'withheld',unit:'satoshi',light:'#c4541a',dark:'#ef8a55',dash:'2 3',source:'nog niet vastgesteld'}
 };
 
@@ -114,4 +114,33 @@ export function viewAnnotations(keys:SeriesKey[],rows:Point[]):Annotation[]{
   }
  }
  return out;
+}
+
+// ---- Gold transparency (GOLD-03 prep): source block shown under every chart view that contains a gold series ----
+// The JSON contract has no date field, so the source reference date ('peildatum bronstand') is ONE constant here.
+// It MUST be updated at every release (data refresh) by whoever publishes the gold values.
+// Nothing here claims a licence, approval or endorsement by any source organization.
+export type GoldSourceAsOf={date:string;note:string};
+export const GOLD_SOURCE_ASOF:GoldSourceAsOf={date:'2026-10-19',note:'Datum van de gebruikte bronbestanden (World Bank Pink Sheet-workbook, ECB-koersen, CBS-tabel); bij elke gegevensrelease bijwerken.'};
+export const METHODOLOGY_URL='https://github.com/storagebirddrop/Goud-btc-dashboard/blob/main/docs/governance/METHODOLOGY.md';
+export type SourceLink={name:string;detail:string;url:string;linkText:string};
+export const GOLD_SOURCE_LINKS:SourceLink[]=[
+ {name:'World Bank Commodity Markets (Pink Sheet)',detail:'GOLD, USD per troy ounce, maandgemiddelde',url:'https://www.worldbank.org/en/research/commodity-markets',linkText:'worldbank.org, Commodity Markets'},
+ {name:'Europese Centrale Bank (ECB), euro foreign exchange reference rates',detail:'reeks EXR.D.USD.EUR.SP00.A (USD per EUR)',url:'https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.USD.EUR.SP00.A',linkText:'data.ecb.europa.eu, EXR.D.USD.EUR.SP00.A'},
+ {name:'CBS StatLine 85773NED',detail:'gemiddelde verkoopprijs bestaande koopwoningen',url:'https://opendata.cbs.nl/CBS/nl/dataset/85773NED/table',linkText:'opendata.cbs.nl, 85773NED'}
+];
+export const GOLD_OWN_CALC_TEXT='Valutaomrekening, indexering en gram goud per woning zijn eigen berekeningen. Geen van de bronorganisaties onderschrijft deze toepassing.';
+export const GOLD_METHOD_TEXT:string[]=[
+ 'Goudprijs in euro per troy ounce = maandgemiddelde World Bank-goudprijs in USD per troy ounce, gedeeld door het maandgemiddelde van de ECB-koers in USD per EUR.',
+ 'Goudprijsindex = die goudprijs in euro, met januari 2000 = 100.',
+ 'Gram goud per woning = CBS-gemiddelde verkoopprijs x 31,1034768 gram per troy ounce, gedeeld door de goudprijs in euro per troy ounce.'
+];
+export const GOLD_BREAK_TEXT='Definitiewijziging juni 2025: de World Bank-goudprijs (GOLD) gebruikte tot en met mei 2025 de London afternoon fixing (99,5% goud) en vanaf juni 2025 gemiddelde dagelijkse spotprijzen. De reeks is daardoor niet volledig benchmarkhomogeen.';
+export const isIsoDate=(s:string):boolean=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&(()=>{const t=new Date(`${s}T00:00:00Z`);return !Number.isNaN(t.getTime())&&t.toISOString().slice(0,10)===s})();
+export function viewHasGold(keys:SeriesKey[]):boolean{return keys.some(k=>SERIES[k].gold===true)}
+// First and last month with a finite value over all gold series of the view, computed from the loaded rows.
+export function goldPeriod(data:Point[],keys:SeriesKey[]):{from:string;to:string;months:number}|null{
+ const gk=keys.filter(k=>SERIES[k].gold===true);
+ const ps=data.filter(p=>gk.some(k=>ok(p[k]))).map(p=>p.period).sort();
+ return ps.length?{from:ps[0],to:ps[ps.length-1],months:ps.length}:null;
 }

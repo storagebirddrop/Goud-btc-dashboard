@@ -15,7 +15,8 @@ from etl.static_export import build
 from etl.gold_monthly import expected_months
 
 APPROVED_CBS_SHA256 = "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6"
-APPROVED_PUBLIC_JSON_SHA256 = "bc15f3bd1c2101df6fd6a8e18b60f62ff2fc3032eb0b71009bb6b44704c5c78e"
+PRE_RELEASE_NULL_GOLD_JSON_SHA256 = "bc15f3bd1c2101df6fd6a8e18b60f62ff2fc3032eb0b71009bb6b44704c5c78e"  # rollback/audit reference only
+APPROVED_PUBLIC_JSON_SHA256 = "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd"
 
 
 def sha(raw):

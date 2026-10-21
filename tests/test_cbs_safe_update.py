@@ -124,7 +124,10 @@ def test_e2e_real_fixture_against_committed_baseline():
     assert rows[60]["period"] == "2000-01"
     assert rows[60]["house_eur"] == 157270
     assert rows[60]["hpi_index"] == 100
-    assert rows[60:] == json.loads(json_raw)["data"]
+    # GOLD-03: the review candidate is CSV-built (gold null); every non-derived field equals the published JSON.
+    published = json.loads(json_raw)["data"]
+    assert all(r["gold_index"] is None and r["gold_grams_per_house"] is None for r in rows)
+    assert rows[60:] == [{**r, "gold_index": None, "gold_grams_per_house": None} for r in published]
     assert c.endswith(csv_raw[len(HEADER):])
     assert all(r["hpi"] is None and r["hpi_index"] is None for r in rows[:60])
     manifest = json.loads(manifest_raw)

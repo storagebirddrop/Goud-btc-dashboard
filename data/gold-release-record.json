@@ -1,0 +1,33 @@
+{
+  "artifact": {
+    "first_period": "2000-01",
+    "last_period": "2026-08",
+    "months": 320,
+    "sha256": "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd"
+  },
+  "candidate_validation": {
+    "candidate_sha256": "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd",
+    "result": "PASS",
+    "review_run": "https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39492058615"
+  },
+  "fields_published": [
+    "gold_index",
+    "gold_grams_per_house"
+  ],
+  "methodology": {
+    "adr": "ADR-004",
+    "status": "ACCEPTED"
+  },
+  "release_authorization": {
+    "status": "AUTHORIZED",
+    "authorized_at": "2026-10-21",
+    "authorized_by": "Project owner",
+    "reference": "Explicit owner approval on 2026-10-21 to release GOLD-03 via PR #86; scope limited to gold_index and gold_grams_per_house from 2000-01, with documented source attribution and accepted third-party-rights residual risk."
+  },
+  "schema_version": 1,
+  "sources": {
+    "cbs_csv_sha256": "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6",
+    "ecb_sha256": "31007867964148d7c3320119624effb311eb6304fb677ec42211bacbbf4fdaad",
+    "worldbank_workbook_sha256": "ea1c350827878ea3bbe30e3cda16a13fd3bd5b409b8458940dc94a36b5a33154"
+  }
+}

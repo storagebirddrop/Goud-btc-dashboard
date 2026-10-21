@@ -103,8 +103,22 @@ def run_release(target, record, **kw):
     return validate(REAL_CSV, target, gold_approved=True, gold_release_record=record, **kw)
 
 
-def test_real_json_default_mode_unchanged():
-    assert validate(REAL_CSV, REAL_JSON) == 320
+@pytest.fixture
+def null_gold_json(tmp_path):
+    """The pre-release (GOLD-01 HOLD) public JSON, regenerated from the CSV: gold fields all null."""
+    target = tmp_path / "null-gold.json"
+    target.write_bytes(public_bytes(build(REAL_CSV)))
+    return target
+
+
+def test_default_mode_accepts_null_gold_json_only(null_gold_json):
+    assert validate(REAL_CSV, null_gold_json) == 320
+
+
+def test_default_mode_rejects_the_published_gold_json():
+    """Fail-closed default: the published GOLD-03 JSON is only valid in committed-record mode."""
+    with pytest.raises(ValueError, match="Unexpected unverified gold|differs"):
+        validate(REAL_CSV, REAL_JSON)
 
 
 def test_default_validator_rejects_gold_json_from_real_chain(release):
@@ -333,11 +347,11 @@ def test_cbs_baseline_change_breaks_record(release, enabled, tmp_path):
         validate(other, target, gold_approved=True, gold_release_record=rec)
 
 
-def test_real_null_gold_json_not_valid_as_gold_release(enabled):
-    raw = REAL_JSON.read_bytes()
+def test_real_null_gold_json_not_valid_as_gold_release(enabled, null_gold_json):
+    raw = null_gold_json.read_bytes()
     rec = make_record(raw, json.loads(raw))
     with pytest.raises(ValueError, match="basis"):
-        run_release(REAL_JSON, rec)
+        run_release(null_gold_json, rec)
 
 
 def _mutate_row(i, **kw):
@@ -470,10 +484,10 @@ def test_preflight_rejects_content_tampering(release, tmp_path):
         validate_gold_release_record_preflight(REAL_CSV, target, rec)
 
 
-def test_preflight_rejects_real_null_gold_json():
-    raw = REAL_JSON.read_bytes()
+def test_preflight_rejects_real_null_gold_json(null_gold_json):
+    raw = null_gold_json.read_bytes()
     with pytest.raises(ValueError, match="basis"):
-        validate_gold_release_record_preflight(REAL_CSV, REAL_JSON, make_record(raw, json.loads(raw)))
+        validate_gold_release_record_preflight(REAL_CSV, null_gold_json, make_record(raw, json.loads(raw)))
 
 
 # ---- CLI ----

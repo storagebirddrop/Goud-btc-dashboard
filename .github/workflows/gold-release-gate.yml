@@ -1,0 +1,25 @@
+name: Gold release gate (needs AUTHORIZED release record)
+# Fails while data/gold-release-record.json says NOT_AUTHORIZED. Prepared-but-unreleased state is
+# green in CI (committed-record check) and red here, so merging the two published gold indicators
+# needs an explicit later step: the owner sets release_authorization to AUTHORIZED in the record.
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authorized release validation of the committed JSON
+        env:
+          GOLD_PUBLICATION_ENABLED: 'true'
+          GOLD_PUBLICATION_APPROVAL: APPROVED
+        run: python -m etl.data_quality --gold-release-record data/gold-release-record.json --committed --approve-gold

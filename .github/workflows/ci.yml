@@ -38,7 +38,7 @@ jobs:
           path: ${{ runner.temp }}/cbs-i2b-e2e/
           if-no-files-found: error
           retention-days: 14
-      - name: Verify committed source and public JSON
+      - name: Verify committed source and public JSON (production state; gold needs an AUTHORIZED release record)
         run: python -m etl.data_quality
   frontend:
     runs-on: ubuntu-latest

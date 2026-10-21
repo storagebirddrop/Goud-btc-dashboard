@@ -12,7 +12,7 @@ from etl.cbs_historical_fixture import EXPECTED, SOURCES, VERSION as I1_VERSION
 from etl.static_export import build
 
 BASELINE_CSV_SHA256 = "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6"
-BASELINE_JSON_SHA256 = "bc15f3bd1c2101df6fd6a8e18b60f62ff2fc3032eb0b71009bb6b44704c5c78e"
+BASELINE_JSON_SHA256 = "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd"  # GOLD-03 public JSON
 FIXTURE_SHA256 = "0a557dd16fe85e40952dd97edd492d5b3f985f64930d19d960b14307d725c543"
 BASELINE_COMMIT = "8a05b2be442c529031f4d3da88cca21aacd5668f"
 VERSION = "CBS-02-I2A/1"
@@ -90,6 +90,20 @@ def _baseline(csv_raw, json_raw, csv_hash, json_hash):
     return baseline
 
 
+def without_derived_gold(rows):
+    """Copy of baseline rows with the published derived gold indicators blanked.
+
+    The approved public JSON (GOLD-03) carries gold_index / gold_grams_per_house for 2000+;
+    this CBS-only review candidate is built from CSV alone and never carries gold, so the
+    exact 2000+ comparison covers every non-derived field. gold_eur_oz must already be null."""
+    out = []
+    for row in rows:
+        if row["gold_eur_oz"] is not None:
+            raise ValueError("Approved baseline exposes gold_eur_oz")
+        out.append({**row, "gold_grams_per_house": None, "gold_index": None})
+    return out
+
+
 def _same_exact(a, b):
     return json.dumps(a, sort_keys=True, separators=(",", ":"), ensure_ascii=False) == json.dumps(
         b, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -112,6 +126,7 @@ def make_candidate(fixture_raw, provenance_raw, baseline_csv_raw, baseline_json_
     old_rows, new_rows = baseline["data"], candidate["data"]
     if len(new_rows) != len(old_rows) + 60 or [r["period"] for r in new_rows[:60]] != list(EXPECTED):
         raise ValueError("Candidate historical calendar mismatch")
+    old_rows = without_derived_gold(old_rows)
     if not _same_exact(new_rows[60:], old_rows):
         raise ValueError("2000+ JSON records changed")
     if new_rows[60]["period"] != "2000-01" or new_rows[60]["hpi_index"] != 100:
