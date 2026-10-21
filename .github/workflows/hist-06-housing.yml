@@ -40,7 +40,7 @@ jobs:
         if: always()
         run: |
           if [ -f "$RUNNER_TEMP/hist-06-housing.json" ]; then
-            for s in fetch vm esb-1981-nbm cpb-2020-note kss-dallas-wp; do
+            for s in cbs esb-1981-nbm cpb-2020-note-www cpb-2020-pub kss-dallas-wp; do
               python -m tools.hist_06_housing digest "$RUNNER_TEMP/hist-06-housing.json" --section $s
             done
           fi
