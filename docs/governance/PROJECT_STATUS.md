@@ -98,3 +98,8 @@
 - `DOCUMENTED/UNVERIFIED`: World Bank GOLD heeft volgens bronbeschrijvingen historie vanaf 1960; GOLD-specifieke Excel-notities en volledige vroege data nog niet end-to-end gecontroleerd.
 - `OPEN`: landelijke gemiddelde woningprijzen vóór 1975, historische valutaomrekening, verschillende aggregatiefrequenties en goudprijsregimes.
 - `BLOCKED`: publieke goudactivatie blijft uit; geen code, dataset of ADR gewijzigd door dit documentatiebesluit.
+
+## Update 2026-10-21 — GOLD-04: live verificatie productie
+- `VERIFIED_RUN`: productie (`goud-btc-dashboard.pages.dev`, na herstel van de Cloudflare-GitHub-koppeling, productiecommit `cbc385f`) serveert de geautoriseerde GOLD-03-release: JSON sha256 `1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd`, 320 maanden, `gold_index` en `gold_grams_per_house` 320/320, `gold_eur_oz` `null`, CBS-velden ongewijzigd, bronnen en juni-2025-uitleg zichtbaar, desktop en mobiel (live-run 39577148435: 27/27 HTTP, 68/68 browser). Details in VERIFICATION_LOG.md (V-GOLD-04).
+- `VERIFIED_RUN`: BTC-publicatiebescherming: geen BTC-/satoshi-veld in de publieke JSON, `sat_per_house` blijft `withheld`, geen selecteerbare Bitcoin-reeks of -grafiek, geen omzeiling via URL of vergiftigde JSON. Alleen de statische zin "Nog niet beschikbaar: reële EUR en Bitcoin." noemt Bitcoin (productbeslissing van de eigenaar of die blijft).
+- `PENDING`: formele afsluiting van GOLD-04 na merge van PR #87 (verificatietooling, grenscontrole en regressietests); geen wijziging aan data, ADR-004 of applicatiecode.
