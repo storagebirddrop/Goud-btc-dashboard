@@ -403,6 +403,7 @@ def _yahoo(sym):
 # id -> (url, kind, group, label)
 DATA_CANDIDATES = {
     "shiller-ie-data": ("https://www.econ.yale.edu/~shiller/data/ie_data.xls", "xls", "shiller", "S&P Composite monthly, Shiller"),
+    "shiller-ie-data-wsimg": ("https://img1.wsimg.com/blobby/go/e5e77e0b-59d1-44d9-ab25-4763ac982e53/downloads/1449043e-a1ed-4e2e-8e9c-7b9a2a064493/ie_data.xls?ver=1791297298731", "xls", "shiller", "S&P Composite monthly, Shiller (link read from shillerdata.com)"),
     "fred-sp500": ("https://fred.stlouisfed.org/graph/fredgraph.csv?id=SP500", "csv", "fred", "FRED SP500 daily close, USD, price return"),
     "stooq-spx-d": ("https://stooq.com/q/d/l/?s=%5Espx&i=d", "csv", "stooq", "Stooq ^SPX daily"),
     "stooq-aex-d": ("https://stooq.com/q/d/l/?s=%5Eaex&i=d", "csv", "stooq", "Stooq ^AEX daily"),
@@ -578,6 +579,8 @@ def probe_doc(sid, fetcher, locator=None):
         rec["error"] = str(exc)
         return rec
     rec["quotes"] = quotes(text, kws)
+    if kind == "html":
+        rec["hrefs"] = sorted(set(re.findall(r'href="([^"]*ie_data[^"]*)"', raw.decode("utf-8", errors="replace"))))[:3]
     rec["head"] = " ".join(text.split()[:50])
     rec["text_chars"] = len(text)
     return rec
