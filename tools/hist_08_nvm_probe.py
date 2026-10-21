@@ -16,15 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools import hist_02_acquire as acq  # noqa: E402
 
 VM = "https://vmn-vastgoedmarkt.imgix.net/uploads/2024/07/kerncijfers-vastgoedmarkt-1974-2024.pdf"
-SUFFIXES = ["?fm=json", "?page=1&fm=json", "?page=1&fm=png&w=3000", "?page=2&fm=png&w=3000", "?page=3&fm=png&w=3000",
-            "?page=1&fm=png&w=3000&dpr=2", "?page=1&fm=jpg&w=3000&q=100"]
+SUFFIXES = ["?fm=png&w=3000", "?fm=png&w=3000&page=3"]
 
 
 def png_dims(raw):
     return struct.unpack(">II", raw[16:24]) if raw[:8] == b"\x89PNG\r\n\x1a\n" else None
 
 
-def ocr(raw, psm, scale):
+def ocr(raw, psm, scale, invert=False):
     with tempfile.TemporaryDirectory() as td:
         f = Path(td) / "p.png"
         f.write_bytes(raw)
@@ -33,6 +32,9 @@ def ocr(raw, psm, scale):
             try:
                 from PIL import Image
                 im = Image.open(f).convert("L")
+                if invert:
+                    from PIL import ImageOps
+                    im = ImageOps.autocontrast(ImageOps.invert(im))
                 im = im.resize((im.width * scale, im.height * scale))
                 g = Path(td) / "q.png"
                 im.save(g)
@@ -65,10 +67,10 @@ def main():
                 print(f"  mode L size {im.size} dark_share {dark:.4f} distinct {len(set(px))}")
             except Exception as exc:  # noqa: BLE001
                 print(f"  pixel stats unavailable: {exc}")
-            for psm in (6, 4, 11):
+            for psm in (6, 11, 12):
                 for scale in (1, 2):
-                    t = ocr(raw, psm, scale)
-                    print(f"  OCR psm{psm} x{scale}: {len(t)} chars; sample: {re.sub(chr(10), ' | ', t[:240])!r}")
+                    t = ocr(raw, psm, scale, invert=True)
+                    print(f"  OCR inverted psm{psm} x{scale}: {len(t)} chars; sample: {re.sub(chr(10), ' | ', t[:900])!r}")
 
 
 if __name__ == "__main__":
