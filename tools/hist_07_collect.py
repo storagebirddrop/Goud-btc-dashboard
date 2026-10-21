@@ -264,7 +264,9 @@ def decade_stats(series, preds):
         if vs:
             out[name] = {"n": len(vs), "min": str(min(vs)), "max": str(max(vs)),
                          "non_integer": sum(1 for v in vs if v != v.to_integral_value()),
-                         "median": str(statistics.median(vs))}
+                         "median": str(statistics.median(vs)),
+                         "whole_usd_rounding_bound_pct_max": format((Decimal("0.5") / min(vs) * 100).quantize(Decimal("0.001")), "f"),
+                         "whole_usd_rounding_bound_pct_median": format((Decimal("0.5") / statistics.median(vs) * 100).quantize(Decimal("0.001")), "f")}
     return out
 
 
@@ -628,10 +630,19 @@ def collect(workbook=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--summary-out", required=True)
+    ap.add_argument("--summary-out")
     ap.add_argument("--table-csv-out")
     ap.add_argument("--workbook")
+    ap.add_argument("--print-summary", help="print selected keys of an existing summary.json and exit (no network)")
+    ap.add_argument("--keys", default="")
     a = ap.parse_args(argv)
+    if a.print_summary:
+        S = json.loads(Path(a.print_summary).read_text())
+        for key in [k for k in a.keys.split(",") if k]:
+            print("SUMMARY", key, json.dumps(S.get(key), sort_keys=True, default=str)[:3000])
+        return 0
+    if not a.summary_out:
+        ap.error("--summary-out is required")
     out = Path(a.summary_out)
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
