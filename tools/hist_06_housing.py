@@ -454,25 +454,36 @@ def probe(cbs_csv, pins=None):
     acq.SOURCES.update(srcs)
     res = {"status": "RESEARCH_ONLY_NOT_APPROVED", "fetch": {}, "defects": [], "vm": {}, "text": {}, "cbs": {}}
     raws = {}
-    for sid in srcs:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(sid):
         try:
-            raw, rec = acq.fetch(sid)
+            return sid, acq.fetch(sid), None
         except acq.AcquisitionError as exc:
-            res["fetch"][sid] = {"status": "NOT_RETRIEVED", "error": str(exc)[:80]}
-            continue
-        if pins and sid in pins:
-            try:
-                verify_sha256(raw, pins[sid])
-            except HashMismatch as exc:
-                res["defects"].append({"source": sid, "error": str(exc)})
-        raws[sid] = raw
-        res["fetch"][sid] = {"status": "FETCHED", "bytes": rec["bytes"], "sha256": rec["sha256"], "kind": magic(raw)}
+            return sid, None, str(exc)[:80]
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for sid, got, err in ex.map(one, list(srcs)):
+            if err:
+                res["fetch"][sid] = {"status": "NOT_RETRIEVED", "error": err}
+                print(f"PROGRESS {sid} NOT_RETRIEVED {err}", flush=True)
+                continue
+            raw, rec = got
+            if pins and sid in pins:
+                try:
+                    verify_sha256(raw, pins[sid])
+                except HashMismatch as exc:
+                    res["defects"].append({"source": sid, "error": str(exc)})
+            raws[sid] = raw
+            res["fetch"][sid] = {"status": "FETCHED", "bytes": rec["bytes"], "sha256": rec["sha256"], "kind": magic(raw)}
+            print(f"PROGRESS {sid} FETCHED {rec['bytes']} {magic(raw)}", flush=True)
 
     # --- A. Vastgoedmarkt / NVM table (PDF text if a PDF is served, otherwise OCR of the page images; OCR = derived, unverified)
     for sid, raw in raws.items():
         if not sid.startswith("vm"):
             continue
         kind = magic(raw)
+        print(f"PROGRESS processing {sid} {kind}", flush=True)
         texts = {}
         if kind == "PDF":
             t = pdf_text(raw)
@@ -509,10 +520,15 @@ def probe(cbs_csv, pins=None):
             t = fn(raws[sid]) or ""
             res["text"][sid] = {"chars": len(t), "contexts": contexts(t, pat, 200, lim)}
             if sid == "esb-1981-nbm" and t:
+                res["text"][sid]["captions"] = [re.sub(r"\s+", " ", c) for c in re.findall(r"Tabel \d+\.[^\n]{0,110}", t)][:20]
                 try:
-                    res["text"][sid]["year_rows"] = [[{"y": y, "n": [str(x) for x in n[:6]]} for y, n in b[:8]] for b in parse_year_rows(t, 1970, 1985)[:6]]
+                    bl = parse_year_rows(t, 1970, 1985)
+                    res["text"][sid]["blocks"] = [{"n": len(b), "first": b[0][0], "last": b[-1][0], "row0": [str(x) for x in b[0][1][:7]]} for b in bl][:25]
                 except HousingError as exc:
                     res["text"][sid]["year_rows_defect"] = str(exc)
+            if sid == "kss-dallas-wp" and t:
+                i = t.rfind("B.10 The Netherlands")
+                res["text"][sid]["b10"] = re.sub(r"\s+", " ", t[i: i + 4500]) if i >= 0 else None
     for sid, pat in {"cbs-longread-2": r"gulden|1978|CPB|NVM|Kadaster|bron:|Bron", "cbs-longread-refs": r"CPB|2020|NVM",
                      "cbs-reeks-prijzen": r"1970|1975|1995|gemiddeld|reeks", "zeepbel-80s": r"NVM|bron|NBM|halfjaar|Kadaster|CBS",
                      "hypotheker-1970": r"bron|NVM|CBS|Kadaster|1970|1975"}.items():
@@ -579,28 +595,45 @@ def probe(cbs_csv, pins=None):
     return res
 
 
-def digest(doc):
-    lines = [f"status={doc['status']} defects={len(doc['defects'])}"]
-    for sid, f in doc["fetch"].items():
-        lines.append(f"FETCH {sid}: {f['status']} {f.get('kind','')} {f.get('bytes','')} {f.get('sha256','')[:12]} {f.get('error','')}")
-    for sid, e in doc["vm"].items():
-        for m, d in e["methods"].items():
-            lines.append(f"VM {sid} {m}: blocks={d.get('blocks_ge8')} chars={d.get('chars')} {d.get('defect_like','')}")
-            if "table" in d:
-                lines.append("VMTABLE " + sid + " " + m + " " + json.dumps(d["table"], sort_keys=True))
-            for k in d.get("keywords", [])[:3]:
-                lines.append("  KW " + k[:240])
+def digest(doc, section="all"):
+    """Compact, sectioned text view; the CI log tail is small, so the workflow prints one section at a time."""
+    L = [f"status={doc['status']} defects={len(doc['defects'])} section={section}"]
+    want = lambda n: section in ("all", n)  # noqa: E731
+    if want("fetch"):
+        groups = {}
+        for sid, f in doc["fetch"].items():
+            if f["status"] == "FETCHED" and sid.startswith("vm"):
+                groups.setdefault((f["sha256"][:12], f["kind"], f["bytes"]), []).append(sid)
+            else:
+                L.append(f"FETCH {sid}: {f['status']} {f.get('kind','')} {f.get('bytes','')} {f.get('sha256','')[:12]} {f.get('error','')}")
+        for (sh, kind, n), sids in groups.items():
+            L.append(f"VMFETCH {sh} {kind} {n}B x{len(sids)}: {','.join(x[3:] or 'base' for x in sids)[:150]}")
+    if want("vm"):
+        seen = set()
+        for sid, e in doc["vm"].items():
+            for m, d in e["methods"].items():
+                sig = (d.get("chars"), json.dumps(d.get("blocks_ge8")), d.get("defect_like"))
+                if sig in seen:
+                    continue
+                seen.add(sig)
+                L.append(f"VM {sid} {m}: chars={d.get('chars')} blocks={d.get('blocks_ge8')} {d.get('defect_like','')}")
+                for k in d.get("keywords", [])[:3]:
+                    L.append("  KW " + k[:200])
+                if "table" in d:
+                    L.append("  VMTABLE " + json.dumps(d["table"], sort_keys=True)[:1800])
     for sid, d in doc["text"].items():
-        lines.append(f"TEXT {sid} chars={d['chars']}")
-        for c in d["contexts"]:
-            lines.append("  CTX " + c[:380])
-        for k in ("year_rows", "year_rows_defect"):
-            if k in d:
-                lines.append("  " + k + " " + json.dumps(d[k])[:700])
-    lines.append("CBS " + json.dumps(doc["cbs"], sort_keys=True)[:3500])
-    if "overlap" in doc:
-        lines.append("OVERLAP " + json.dumps(doc["overlap"], sort_keys=True)[:6000])
-    return "\n".join(lines)
+        if want("text") or want(sid):
+            L.append(f"TEXT {sid} chars={d['chars']}")
+            for c in d["contexts"]:
+                L.append("  CTX " + c[:300])
+            for k in ("captions", "blocks", "year_rows_defect", "b10"):
+                if d.get(k):
+                    L.append(f"  {k} " + json.dumps(d[k])[:2400])
+    if want("cbs"):
+        L.append("CBS " + json.dumps(doc["cbs"], sort_keys=True)[:4500])
+    if want("overlap") and "overlap" in doc:
+        L.append("OVERLAP " + json.dumps(doc["overlap"], sort_keys=True)[:7000])
+    return "\n".join(L)
 
 
 def main(argv=None):
@@ -612,9 +645,10 @@ def main(argv=None):
     a.add_argument("--pins", help="JSON {source_id: sha256}; a mismatch fails the run")
     d = sub.add_parser("digest")
     d.add_argument("path")
+    d.add_argument("--section", default="all")
     args = p.parse_args(argv)
     if args.cmd == "digest":
-        print(digest(json.loads(Path(args.path).read_text())))
+        print(digest(json.loads(Path(args.path).read_text()), args.section))
         return 0
     pins = json.loads(Path(args.pins).read_text()) if args.pins else None
     try:
