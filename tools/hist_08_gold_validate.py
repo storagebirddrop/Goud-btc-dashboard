@@ -24,7 +24,7 @@ import sys
 import time
 from collections import Counter
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
@@ -583,6 +583,14 @@ def load(fetch_fn, workbook=None):
     if raw:
         D["ecb_d"] = safe("ecb_daily", lambda: gn.parse_ecb_daily(raw))
         D["prod"] = safe("prod_adr004", lambda: production_adr004(raw, D.get("wb")))
+    if not D.get("ecb_m") and D.get("ecb_d"):
+        # Same publisher, same series family: the monthly series is the arithmetic mean of the daily reference rates,
+        # which is also the ADR-004 definition. Flagged so that no result is mistaken for the provider monthly series.
+        S["flags"].append("ECB_MONTHLY_UNAVAILABLE_USED_EXACT_MEAN_OF_ECB_DAILY")
+        mean, _ = aggregate(D["ecb_d"], "mean")
+        with localcontext() as ctx:
+            ctx.prec = 34
+            D["ecb_m"] = {m: Decimal(f.numerator) / Decimal(f.denominator) for m, f in mean.items()}
     r = safe("fixture_house", lambda: c7.fixture_house())
     if r:
         D["house"], S["fixture_sha256"] = r
@@ -895,7 +903,7 @@ def analyze(D, S=None):
 
 
 # ------------------------------------------------------------------ CLI
-def run(fetch_fn=None, workbook=None):
+def run(fetch_fn=None, workbook=None):  # noqa: C901
     signal.signal(signal.SIGALRM, _alarm)
     fetch_fn = fetch_fn or acq.fetch
     D, S = load(fetch_fn, workbook)
@@ -904,8 +912,8 @@ def run(fetch_fn=None, workbook=None):
     rows = R.get("overlap_1999_2001", {}).pop("_monthly_rows", [])
     R.update({"sources": S["sources"], "missing_sources": S["missing_sources"], "defects": S["defects"], "flags": S["flags"],
               "fixture_sha256": S.get("fixture_sha256")})
-    core = {c7.WB_ID, fx.ECB_MONTHLY} | set(gn.FED_IDS)
-    if any(m["source_id"] in core for m in S["missing_sources"]):
+    core = {c7.WB_ID} | set(gn.FED_IDS)
+    if any(m["source_id"] in core for m in S["missing_sources"]) or "ecb_m" not in D:
         R["status"] = "INCOMPLETE"
     elif S["defects"]:
         R["status"] = "DEFECTS"

@@ -363,3 +363,25 @@ def test_tool_never_writes_to_repository_data_dirs():
     src = inspect.getsource(v)
     for forbidden in ("data/cbs-housing.csv", "frontend/public", "write_text(json.dumps(data", "etl/static_export"):
         assert forbidden not in src
+
+
+def test_ecb_monthly_unavailable_falls_back_to_flagged_exact_daily_mean(monkeypatch):
+    import hashlib
+    from tools import hist_03_worldbank_validate as wbv
+    from tools import hist_04_fx as fx
+
+    def fetch(sid, **k):
+        if sid == fx.ECB_DAILY:
+            raw = ECB_CSV.encode()
+            return raw, {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+        raise acq.AcquisitionError("HTTP_STATUS_ERROR source=" + sid)
+
+    def wb_down(p=None):
+        raise acq.AcquisitionError("WB_DOWN")
+
+    monkeypatch.setattr(v.time, "sleep", lambda s: None)
+    monkeypatch.setattr(wbv, "load_workbook", wb_down)
+    Dd, S = v.load(fetch)
+    assert "ECB_MONTHLY_UNAVAILABLE_USED_EXACT_MEAN_OF_ECB_DAILY" in S["flags"]
+    assert Dd["ecb_m"]["2000-01"] == D("1.1") and Dd["ecb_m"]["2000-02"] == D("1.1")
+    assert any(m["source_id"] == fx.ECB_MONTHLY for m in S["missing_sources"])
