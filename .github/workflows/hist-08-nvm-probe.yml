@@ -1,0 +1,26 @@
+name: HIST-08 NVM image probe (research only)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/hist-08-nvm-probe.yml'
+      - 'tools/hist_08_nvm_probe.py'
+permissions:
+  contents: read
+jobs:
+  nvm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install -r requirements.txt pillow
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-nld
+      - name: Probe (aggregates and short OCR samples only; nothing committed or uploaded)
+        run: python tools/hist_08_nvm_probe.py
