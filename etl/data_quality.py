@@ -222,7 +222,11 @@ def validate_gold_release_record_preflight(csv_path, json_path, gold_release_rec
     return _check_release(csv_path, json_path, gold_release_record, authorize=False)
 
 
-def validate_gold_release_committed(csv_path, json_path, gold_release_record, *, require_authorized=False):
+DEFAULT_RELEASE_RECORD = "data/gold-release-record.json"
+
+
+def validate_gold_release_committed(csv_path, json_path, gold_release_record, *, require_authorized=False,
+                                    require_env=True):
     """CI check of the COMMITTED public JSON against the COMMITTED release record.
 
     Hash equality with the record AND with the code pin (APPROVED_PUBLIC_JSON_SHA256) plus all
@@ -230,7 +234,7 @@ def validate_gold_release_committed(csv_path, json_path, gold_release_record, *,
     reported, not required (a prepared release is NOT_AUTHORIZED). require_authorized=True is
     the release gate: env flags and an AUTHORIZED record are then mandatory."""
     from etl.gold_publication_candidate import APPROVED_PUBLIC_JSON_SHA256
-    if require_authorized and not gold_enabled():
+    if require_authorized and require_env and not gold_enabled():
         raise ValueError("Release gate requires GOLD_PUBLICATION_ENABLED=true and "
                          "GOLD_PUBLICATION_APPROVAL=APPROVED")
     report = _check_release(csv_path, json_path, gold_release_record, authorize=require_authorized,
@@ -238,6 +242,34 @@ def validate_gold_release_committed(csv_path, json_path, gold_release_record, *,
     if report["hash_verified"]["artifact_sha256"] != APPROVED_PUBLIC_JSON_SHA256:
         raise ValueError("Public JSON sha256 differs from the code pin APPROVED_PUBLIC_JSON_SHA256")
     return report
+
+
+def public_json_has_gold(json_path):
+    """True when any row of the public JSON carries a non-null gold field (raw or derived)."""
+    payload = json.loads(Path(json_path).read_bytes().decode("utf-8"))
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return False
+    return any(isinstance(r, dict) and any(r.get(k) is not None for k in GOLD_PUBLIC_FIELDS + ("gold_eur_oz",))
+               for r in rows)
+
+
+def validate_production_state(csv_path, json_path, gold_release_record=DEFAULT_RELEASE_RECORD):
+    """Default production check (python -m etl.data_quality without gold flags).
+
+    Without any gold value in the public JSON: unchanged (JSON == build(csv), gold null).
+    With gold values: valid ONLY when the committed release record is AUTHORIZED (authorizer, ISO
+    date, reference) AND the JSON sha256 equals the record AND the code pin
+    APPROVED_PUBLIC_JSON_SHA256 AND all content checks pass. The authorization lives in the
+    committed record, so no env flag is needed here. A NOT_AUTHORIZED record, a missing record,
+    a changed byte or any gold the record does not identify fails."""
+    if not public_json_has_gold(json_path):
+        return validate(csv_path, json_path), None
+    if not Path(gold_release_record).is_file():
+        raise ValueError(f"Public JSON carries gold but release record {gold_release_record} is missing")
+    report = validate_gold_release_committed(csv_path, json_path, gold_release_record,
+                                             require_authorized=True, require_env=False)
+    return report["months"], report
 
 
 def validate_gold_release(csv_path, json_path, gold_release_record, *, gold_approved=False):
@@ -352,6 +384,13 @@ def main():
     candidate = None
     if args.gold_candidate:
         candidate = json.loads(Path(args.gold_candidate).read_text(encoding="utf-8"))
+    elif not args.approve_gold:
+        count, report = validate_production_state(args.input, args.output)
+        if report:
+            print(format_gold_release_report(report))
+        print(f"Validated {count} consecutive months, both CBS series, schema and "
+              + ("authorized gold release record" if report else "JSON/CSV parity"))
+        return
     count = validate(args.input, args.output, gold_candidate=candidate,
                      gold_approved=args.approve_gold)
     print(f"Validated {count} consecutive months, both CBS series, schema and JSON/CSV parity")

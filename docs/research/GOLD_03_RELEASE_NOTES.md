@@ -25,7 +25,8 @@ Scope: public JSON now carries exactly two derived indicators (`gold_index`, `go
 `.github/workflows/cbs-02-i2a-e2e.yml` was deliberately NOT re-pinned: it checks out branch `feat/cbs-02-i2a-isolated-merge` and verifies the historical baseline taken from commit 8a05b2b via `git show`, so `bc15f3bd...` is the correct value there and describes that frozen baseline.
 
 ## Design: release record and CI
-- Default `python -m etl.data_quality` is unchanged and fail-closed: any gold value is rejected (the published JSON fails it, tested). Opt-in gold modes (candidate, record + approve flag, preflight) are unchanged.
+- Default `python -m etl.data_quality` is the production-state check (`validate_production_state`). Null-gold JSON: unchanged. Any gold value: valid ONLY with the committed record `AUTHORIZED` (authorizer, ISO date, reference), JSON sha256 == record == code pin, and all content checks; no env flag needed, because the authorization lives in the record. While the record is `NOT_AUTHORIZED` (this PR) the default check fails by design. `validate()` itself and the opt-in gold modes (candidate, record + approve flag, preflight) are unchanged.
+- Owner release step (separate, not done): set `release_authorization` in `data/gold-release-record.json` to `AUTHORIZED` with `authorized_by`, `authorized_at`, `reference`; then the gate, the default `python -m etl.data_quality` and the committed-record CI step all pass.
 - CI (`python` job) uses `--committed`: sha256 of the committed JSON must equal the committed record AND the code pin `APPROVED_PUBLIC_JSON_SHA256`; CBS csv sha256 must match; content checks as in release mode (non-gold fields == `build(csv)`, `gold_eur_oz` null, contiguous gold block from 2000-01, index base 100, grams*index/house constant). Any other gold change fails: changing the JSON requires changing the record, the pin in `etl/` and the tests together (visible in review). The record status is reported, not required, so a prepared-but-unreleased state is green.
 - Record status is `NOT_AUTHORIZED`, `authorized_by`/`authorized_at` are `null` (the strict validator rejects null, so flipping only the status is not enough). `reference` states that the 2026-10-20 decision authorizes preparation only.
 - Explicit later step: `gold-release-gate.yml` (pull_request) runs `--committed --approve-gold` with the env flags set only in that step; it fails while the record is `NOT_AUTHORIZED`. The owner releases by committing `AUTHORIZED` with authorizer, ISO date and reference. Whether to make this check required in branch protection, or to delete it, is the lead's/owner's choice (it is red on the PR by design).
@@ -49,7 +50,7 @@ Generation run (above) reproduced exactly the GOLD-01/02 reviewed sha `1afb0bf9.
 6. The sandbox cannot reach external hosts; all source work ran in GitHub Actions.
 
 ## Rollback
-Restore the previous JSON bytes (sha `bc15f3bd...c78e`, reproducible with `python -m etl.static_export`), the previous pins, and remove `data/gold-release-record.json`; switch the CI step back to plain `python -m etl.data_quality`.
+Restore the previous JSON bytes (sha `bc15f3bd...c78e`, reproducible with `python -m etl.static_export`), the previous pins, and remove `data/gold-release-record.json`; switch the CI step back to plain `python -m etl.data_quality` (null-gold path).
 
 ## Frontend tests (G2)
 `tests/test_frontend_*.py` were not touched; they passed on the current tree (937 passed, 4 skipped).

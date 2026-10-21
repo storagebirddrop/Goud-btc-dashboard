@@ -128,6 +128,62 @@ def test_cli_committed_mode(capsys, monkeypatch):
     assert "Validated 320 consecutive months" in capsys.readouterr().out
 
 
+AUTHORIZED = {"status": "AUTHORIZED", "authorized_by": "projecteigenaar", "authorized_at": "2026-10-22",
+              "reference": "test fixture (not a real authorization)"}
+
+
+def _run_default(monkeypatch, record):
+    from etl.data_quality import validate_production_state
+    return validate_production_state(CSV, JSON, record)
+
+
+def test_production_state_fails_closed_while_record_not_authorized(monkeypatch):
+    # the committed record of this PR is NOT_AUTHORIZED: the default production check must refuse the gold JSON
+    rec = json.loads(RECORD.read_text(encoding="utf-8"))
+    if rec["release_authorization"]["status"] == "AUTHORIZED":
+        pytest.skip("owner released")
+    with pytest.raises(ValueError, match="NOT_AUTHORIZED"):
+        _run_default(monkeypatch, RECORD)
+
+
+def test_production_state_accepts_authorized_record_without_env(tmp_path, monkeypatch):
+    path = record_for(tmp_path, JSON, release_authorization=dict(AUTHORIZED))
+    count, report = _run_default(monkeypatch, path)  # no env flags: authorization lives in the record
+    assert count == 320 and report["publication_authorized"] is True
+
+
+@pytest.mark.parametrize("broken", [
+    {"status": "AUTHORIZED", "authorized_by": None, "authorized_at": "2026-10-22", "reference": "x"},
+    {"status": "AUTHORIZED", "authorized_by": "o", "authorized_at": None, "reference": "x"},
+    {"status": "AUTHORIZED", "authorized_by": "o", "authorized_at": "morgen", "reference": "x"},
+    {"status": "NOT_AUTHORIZED", "authorized_by": "o", "authorized_at": "2026-10-22", "reference": "x"},
+])
+def test_production_state_rejects_incomplete_authorization(tmp_path, monkeypatch, broken):
+    with pytest.raises(ValueError):
+        _run_default(monkeypatch, record_for(tmp_path, JSON, release_authorization=broken))
+
+
+def test_production_state_rejects_authorized_record_for_other_bytes(tmp_path, monkeypatch):
+    data = rows()
+    data[5]["gold_index"] *= 1.0001
+    target = write(tmp_path, data)
+    from etl.data_quality import validate_production_state
+    path = record_for(tmp_path, target, release_authorization=dict(AUTHORIZED))
+    with pytest.raises(ValueError):  # record matches the bytes, but not the code pin
+        validate_production_state(CSV, target, path)
+
+
+def test_production_state_missing_record_fails_and_null_gold_is_unchanged(tmp_path, monkeypatch):
+    from etl.data_quality import validate_production_state
+    with pytest.raises(ValueError, match="missing"):
+        validate_production_state(CSV, JSON, tmp_path / "nope.json")
+    null_json = tmp_path / "null.json"
+    null_json.write_bytes((json.dumps(build(CSV), ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+                           + "\n").encode())
+    count, report = validate_production_state(CSV, null_json, tmp_path / "nope.json")
+    assert count == 320 and report is None
+
+
 def test_cli_committed_without_record_rejected(monkeypatch):
     monkeypatch.setattr("sys.argv", ["dq", "--committed"])
     with pytest.raises(SystemExit):
