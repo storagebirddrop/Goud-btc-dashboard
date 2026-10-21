@@ -7,6 +7,7 @@ on:
     paths:
       - 'tools/gold_04_live_verify.py'
       - 'tools/gold_04_live_browser.mjs'
+      - 'tools/gold_04_boundary.mjs'
       - '.github/workflows/gold-04-live-verify.yml'
 permissions:
   contents: read
@@ -42,7 +43,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/bw" && cd "$RUNNER_TEMP/bw"
           npm init -y >/dev/null && npm install --no-audit --no-fund playwright-core@1.49.1 >/dev/null
-          cp "$GITHUB_WORKSPACE/tools/gold_04_live_browser.mjs" .
+          cp "$GITHUB_WORKSPACE/tools/gold_04_live_browser.mjs" "$GITHUB_WORKSPACE/tools/gold_04_boundary.mjs" .
           CHROME_PATH="$(command -v google-chrome || command -v chromium-browser || command -v chromium)" \
           OUT_DIR="$RUNNER_TEMP/gold04-shots" node gold_04_live_browser.mjs
       - name: Upload screenshots
