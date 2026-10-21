@@ -108,3 +108,12 @@ De opname van dit register in GitHub op 2026-10-17 was **geen nieuw economisch b
 - **Impact:** documentatie in deze PR; de implementatie raakt `monthly.json`, gepinde hashes, CI en frontend en is ROOD/ORANJE volgens [CHANGE_CONTROL.md](CHANGE_CONTROL.md). Geen wijziging van ADR-004.
 - **Bewijs:** projecteigenaarbesluit 2026-10-20; onderzoek HIST-03 t/m HIST-05 en GOLD-01 (`docs/research/`); GOLD-01-terms-probe en review-runs 39486174734 (kandidaat 320 maanden) en 39486179684 (byte-identieke replay).
 
+
+## BTC-01 — voorstel BTC-maandmethodologie (PROPOSED, 2026-10-21)
+
+- **Status:** `PROPOSED`. Geen besluit, geen publicatieautorisatie. ADR-004 (BTC-deel), ADR-007 en ADR-008 blijven `PROPOSED`; Bitcoin en satoshi's blijven `withheld`.
+- **Voorstel:** maandwaarde = rekenkundig gemiddelde van alle dagwaarden in de kalendermaand (zelfde familie als de gouddefinitie en passend bij het maandgemiddelde van CBS). Voor USD-bronnen: maandgemiddelde BTC/USD gedeeld door maandgemiddelde ECB USD/EUR (geen FX-carry-forward); een gevalideerde EUR-native bron heeft voorkeur.
+- **Bronnen:** tradinghistorie (Yahoo BTC-USD, ADR-010) als onderzoekskandidaat; Coin Metrics `ReferenceRateEUR` als onafhankelijke controle en mogelijke EUR-native bron; CoinGecko Demo alleen als recente controle (365 dagen).
+- **Start en formules:** voorgestelde startmaand 2014-10 (eerste volledige maand; eerdere maanden `null`, geen splice zonder besluit). `btc_per_house = house_eur / btc_eur`, `sat_per_house = btc_per_house * 100000000`; Decimal-rekenwerk, afronden alleen bij weergave.
+- **Restrisico/open:** `btc_eur = house_eur * 1e8 / sat_per_house` is exact reconstrueerbaar (publicatie van sats is gelijk aan publicatie van de koers); bronrechten (Yahoo, Coin Metrics niet-commercieel) zijn open; externe feiten zijn nog niet uit primaire bronteksten bevestigd. Open besluiten: bronrechten, USD-methode (ratio van gemiddelden, dagomrekening of EUR-native), startmaand/splice, te publiceren velden, tolerantie na meting.
+- **Impact:** uitsluitend onderzoek; geen wijziging van code, JSON, vlaggen of publicatiepoorten. Uitwerking en BTC-02-voorstel: `docs/research/BTC_01_METHODOLOGY.md`.

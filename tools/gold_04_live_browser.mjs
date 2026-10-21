@@ -21,7 +21,11 @@ for (const [label, width] of [['desktop', 1280], ['mobile', 375]]) {
   check(`${label}: no horizontal page scroll`, noHScroll);
   let everText = (await page.innerText('body')).toLowerCase();
   for (const cat of ['Prijsindex', 'Alternatieve waardering']) {
-    await page.getByText(cat, {exact: true}).first().click();
+    const tab = page.getByText(cat, {exact: true}).first();
+    const found = await tab.waitFor({timeout: 8000}).then(() => true, () => false);
+    check(`${label}/${cat}: category control present`, found);
+    if (!found) continue;
+    await tab.click();
     await page.waitForTimeout(800);
     const text = await page.innerText('body');
     const l = text.toLowerCase();
