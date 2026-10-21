@@ -11,16 +11,16 @@ permissions:
   contents: read
   actions: read
 env:
-  RUN_ID: '39602798866'
+  RUN_ID: '39603563520'
 jobs:
-  view:
+  digest:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
         art: [hist-08-daily-aggregates, hist-08-usd-archives-aggregates, hist-08-eur-archives-aggregates]
-        part: [1, 2, 3]
+        part: [1, 2]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -34,3 +34,20 @@ jobs:
           echo "LINES $(wc -l < all.txt) part ${{ matrix.part }}"
           s=$(( (${{ matrix.part }} - 1) * 40 + 1 )); e=$(( ${{ matrix.part }} * 40 ))
           sed -n "${s},${e}p" all.txt
+  byyear:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        art: [hist-08-usd-archives-aggregates, hist-08-eur-archives-aggregates]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.art }}
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+          path: log
+      - name: Show by-year (definitions only, absolute columns removed)
+        run: |
+          cat log/*.log | sed 's/^[0-9T:.-]*Z //' | awk '/^DIFF/{lab=substr($0,6,48)} /^  by_year/{print lab " ||" $0}' | grep -E '(MtGox A|BitstampArchive A|KrakenEUR A|KrakenUSD C)' | sed -E 's/ mean_abs[0-9.e+-]+ max_abs[0-9.e+-]+//g; s/ signed-?[0-9.]+%//g; s/mean_rel/m/g; s/max_rel/x/g; s/ by_year//' | head -30
