@@ -328,6 +328,12 @@ def job_exchanges():
             cmp_matched(f"{name} EUR vs Bitstamp EUR", oe.as_dict(), eur.as_dict(), by_year=False)
         if ou and oe:
             cmp_print(f"{name} V1(own USD) vs own EUR", v1o, H.complete_monthly_mean(oe))
+    cb_eur = others["Coinbase"][1]
+    if cb_eur[0]:
+        print("== Coinbase BTC-EUR (from 2015) vs Bitstamp-USD V1 over 2015-05..2016-04 (before Bitstamp EUR exists)")
+        cmp_print("Coinbase EUR vs V1(Bitstamp USD) all overlap", H.complete_monthly_mean(cb_eur[0]), v1m, by_year=True)
+        ne_cb = H.monthly_notional(cb_eur[0].as_dict(), cb_eur[1])
+        print("  Coinbase EUR notional/day by month 2015-05..2016-06: " + " ".join(f"{m[2:]}:{float(v):.2g}" for m, v in sorted(ne_cb.items()) if "2015-05" <= m <= "2016-06"))
     if bn[0]:
         cmp_print("Binance EUR vs Bitstamp EUR", H.complete_monthly_mean(bn[0]), me)
         cmp_matched("Binance EUR vs Bitstamp EUR", bn[0].as_dict(), eur.as_dict(), by_year=False)
@@ -560,6 +566,7 @@ def job_aggregators():
     usd, _ = fetch_bitstamp("btcusd", "USD")
     eur, _ = fetch_bitstamp("btceur", "EUR")
     ref_u, ref_e = usd.as_dict(), eur.as_dict()
+    ecb = fetch_ecb()
     for fn in (fetch_blockchain, lambda: fetch_cryptocompare("USD"), lambda: fetch_cryptocompare("USD", "Bitstamp"),
                lambda: fetch_cryptocompare("USD", "mtgox"), lambda: fetch_cryptocompare("EUR"),
                lambda: fetch_coindesk_bpi("USD"), lambda: fetch_coindesk_bpi("EUR"), fetch_cm_priceusd):
@@ -572,6 +579,10 @@ def job_aggregators():
             ref, refm = (ref_e, H.complete_monthly_mean(eur)) if s.currency == "EUR" else (ref_u, H.complete_monthly_mean(usd))
             cmp_print(f"{s.source} vs Bitstamp {s.currency} (complete months)", H.complete_monthly_mean(s), refm, by_year=True)
             cmp_matched(f"{s.source} vs Bitstamp {s.currency}", s.as_dict(), ref, by_year=False)
+            if s.currency == "USD" and ecb:
+                v1x = {r["month"]: r["value"] for r in H.v1_ratio_of_means(s, ecb) if r["value"] is not None}
+                print(f"  V1({s.source}) months={len(v1x)} first={min(v1x) if v1x else None}")
+                cmp_print(f"V1({s.source}) vs Bitstamp EUR-native", v1x, H.complete_monthly_mean(eur), by_year=False)
     fetch_coingecko()
 
 
@@ -624,6 +635,9 @@ TERMS = {
 KEYS = re.compile(r"redistribut|republish|commercial|scrap|reproduc|licen[cs]|derivative|attribution|display|index composition|mt\.? ?gox|average", re.I)
 
 
+STRONG = re.compile(r"redistribut|republish|non-commercial|commercial use|commercial purpose|scrap|reproduc|derivative|data licen", re.I)
+
+
 def job_terms():
     for key, url in TERMS.items():
         run = Run(key, url)
@@ -634,9 +648,10 @@ def job_terms():
         html = r.text
         txt = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"(?is)<(script|style).*?</\1>", " ", html)))
         sents = [s.strip() for s in re.split(r"(?<=[.!?]) ", txt) if KEYS.search(s) and 30 < len(s) < 400]
+        sents.sort(key=lambda x: 0 if STRONG.search(x) else 1)
         print(f"TERMS {key} {url} t={run.t} bytes={run.bytes} sha256={run.h.hexdigest()[:16]} text_chars={len(txt)} hits={len(sents)}")
-        for s in sents[:5]:
-            print(f"   > {s[:300]}")
+        for s in sents[:4]:
+            print(f"   > {s[:260]}")
 
 
 def main(argv):

@@ -43,6 +43,9 @@ jobs:
           name: btc-02-exchanges-aggregates
           path: ${{ runner.temp }}/btc-02-exchanges.log
           retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/btc-02-exchanges.log"
   archives:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -62,6 +65,9 @@ jobs:
           name: btc-02-archives-aggregates
           path: ${{ runner.temp }}/btc-02-archives.log
           retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/btc-02-archives.log"
   aggregators:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -81,6 +87,9 @@ jobs:
           name: btc-02-aggregators-aggregates
           path: ${{ runner.temp }}/btc-02-aggregators.log
           retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/btc-02-aggregators.log"
   terms:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -100,6 +109,9 @@ jobs:
           name: btc-02-terms-aggregates
           path: ${{ runner.temp }}/btc-02-terms.log
           retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/btc-02-terms.log"
   yahoo:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -125,3 +137,6 @@ jobs:
           name: btc-02-yahoo-aggregates
           path: ${{ runner.temp }}/btc-02-yahoo.log
           retention-days: 14
+      - name: Show aggregates
+        if: always()
+        run: cat "$RUNNER_TEMP/btc-02-yahoo.log"
