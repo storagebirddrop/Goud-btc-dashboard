@@ -2,19 +2,19 @@
 
 Status: **research only, PROPOSED.** Not a decision, not legal advice. Nothing is approved or published; Bitcoin and satoshi stay `withheld`. ADR-004 (BTC part), ADR-007, ADR-008 and ADR-010 remain `PROPOSED`. No existing file, public data, ETL code, frontend, JSON or ADR status is changed. Extends `BTC_01_METHODOLOGY.md` (does not repeat it). Measured 2026-10-21 on GitHub-hosted runners (the sandbox has no network).
 
-Labels: **CONFIRMED** = primary text or measurement in a CI run; **PROPOSED**; **INFERRED**; **UNRESOLVED**. Provenance for every measured series (URL, retrieval time, sha256 of the raw bytes, rows, first/last day) is printed in the workflow logs of `.github/workflows/btc-02-history.yml` (`tools/btc_02_probe.py`); raw bytes and daily prices are never committed or uploaded (only aggregate logs, 14 days). Runs: [39584598332](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39584598332) (first measurement), [39594261672](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39594261672) (refined; used below unless noted).
+Labels: **CONFIRMED** = primary text or measurement in a CI run; **PROPOSED**; **INFERRED**; **UNRESOLVED**. Provenance for every measured series (URL, retrieval time, sha256 of the raw bytes, rows, first/last day) is printed in the workflow logs of `.github/workflows/btc-02-history.yml` (`tools/btc_02_probe.py`); raw bytes and daily prices are never committed or uploaded (only aggregate logs, 14 days). Runs: [39584598332](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39584598332) (first measurement; Bitstamp archive), [39594261672](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39594261672) (exchanges, aggregators, Yahoo), [39594396610](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39594396610) (terms), [39595505061](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39595505061) (trade archives via Internet Archive).
 
 ## 1. Verdict
 
 | Question | Finding |
 |---|---|
 | Bitcoin created | 2009-01 (genesis block). No market price exists then. INFERRED from general knowledge, not measured here. |
-| Earliest recorded market price in any measured source | **2010-07-18**: Coin Metrics Community `PriceUSD` 1d (CONFIRMED, 5,939 rows to 2026-10-20, no missing day inside the span). Blockchain.com `market-price` starts 2010-08-18 (positive values; 592 earlier points are 0 and were skipped). These are aggregated references dominated by Mt. Gox in 2010-2013 (INFERRED; the composition is not documented in the measured responses). |
-| Earliest single-exchange series I could read | **Bitstamp BTC/USD 2011-08-18** (complete months from **2011-09**, 181 complete months to 2026-09, zero missing days). Mt. Gox raw trades: **not retrievable** from CI (bitcoincharts host unreachable, section 4.2). |
-| Continuous credible market price | Not before **2013-04** by the notional-liquidity measure (Bitstamp >= 1e6 USD/day sustained from 2013-07, >= 1e5 USD/day sustained from 2013-02); everything earlier is thin (Q3, research only). Proposed. |
-| Earliest reliable BTC/EUR-derived valuation | **2013-04** (USD-derived, V1, Q2 with blips, see 6); **2016-05** EUR-native Bitstamp (Q1). Coinbase BTC-EUR exists from 2015-04-23 (complete months from 2015-05) but is thin (<= 3e5 EUR/day until 2016-04). |
-| Gaps stay null | Yes. No splice, no interpolation, no forward fill anywhere. Months before 2011-09 (own exchange evidence) have no Q1-Q3 value in the Bitstamp-based reconstruction. |
-| Empirical cross-source tolerance | Per-month relative deviation of monthly means between independent venues/sources: p50 0.01-0.1%, p99 about 1.5%, max 4.1% (Coinbase vs Bitstamp EUR, 2017-12). Table in 5. The BTC-01 5% default is never exceeded among exchange venues; early-year aggregator deviations reach 5-8%. |
+| Earliest recorded exchange trade | **Mt. Gox BTC/USD, 2010-07-17T23:09:17Z** (CONFIRMED in the bitcoincharts `mtgoxUSD` trade file as archived by the Internet Archive on 2016-12-29: 8,295,809 trades, 1,314 trading days to 2014-02-25). Coin Metrics Community `PriceUSD` starts 2010-07-18 (5,939 daily rows, no gap); Blockchain.com `market-price` 2010-08-18 (592 earlier zero points skipped). |
+| Earliest gap-free live exchange series | **Bitstamp BTC/USD 2011-08-18** (complete months from **2011-09**, 181 to 2026-09, zero missing days). Mt. Gox USD gives 41 complete months 2010-08..2014-01 (2011-06 lacks 6 days; 2014-02 is partial because Mt. Gox stopped on 2014-02-25) but only through a third-party archive copy (4.2) and with large deviations from Bitstamp (mean 3.8%, max 14.3%). |
+| Continuous credible market price | Mt. Gox notional >= 1e5 USD/day sustained from **2011-05** and >= 1e6 from **2013-02**; Bitstamp >= 1e5 from 2013-02 and >= 1e6 from 2013-07. So a credible (not thin) USD market exists from about **2013-02/2013-07**; before that everything is thin (Q3, research only). Proposed measure, parameter 1e6 USD/day. |
+| Earliest reliable BTC/EUR-derived valuation | **2013-04** (USD-derived V1 from Bitstamp, Q2; 2013-06 Q3 by the threshold). EUR-native: **Kraken EUR 2014-02** (trade archive, notional >= 1e6 EUR/day from 2015-10; agrees with Bitstamp EUR within 0.73% max), **Bitstamp EUR 2016-05** (live API, Q1), Coinbase EUR 2015-05 (thin, <= 3e5 EUR/day until 2016-04). |
+| Gaps stay null | Yes. No splice, no interpolation, no forward fill anywhere. Months before 2011-09 have no value in the Bitstamp-based reconstruction; Mt. Gox-based values 2010-08..2011-08 exist only as a separate Q3 research series. |
+| Empirical cross-source tolerance | Per-month relative deviation of monthly means between independent venues/sources: p50 0.01-0.1%, p99 about 1.5%, max 4.1% (Coinbase vs Bitstamp EUR, 2017-12). Table in 5. The BTC-01 5% default is never exceeded among liquid exchange venues (2014+); Mt. Gox vs Bitstamp (2011-2014) and early aggregators reach 8-14%. |
 | Readiness | Ready for owner review of method and quality levels. **Not ready for publication**: rights (6.4), fixing definition, start month and Mt. Gox/early-market scope are open owner decisions. |
 
 ## 2. Distinctions the report keeps apart
@@ -46,8 +46,13 @@ All HTTP 200 on 2026-10-21 from GitHub runners unless stated. "Complete months" 
 | CryptoCompare `histoday` (BTC/USD, BTC/EUR, e=Bitstamp, e=mtgox) | n/a | n/a | n/a | n/a | n/a | **HTTP 401, API key required** (now under CoinDesk Data). Blocker for free use |
 | CoinDesk BPI legacy `api.coindesk.com/v1/bpi/historical` | n/a | n/a | n/a | n/a | n/a | connection error (host unreachable): UNRESOLVED/likely discontinued |
 | CoinGecko public `market_chart` | 2025-10-22 | 2026-10-21 | 366 | n/a | n/a | `days=max` refused (HTTP 401, error 10012: beyond 365 days needs a plan) |
-| bitcoincharts CSV archives (`mtgoxUSD`, `bitstampUSD`, ...) | n/a | n/a | n/a | n/a | n/a | `api.bitcoincharts.com` connection failure on https and http (section 4.2) |
-| TradingView `INDEX:BTCUSD` | n/a | n/a | n/a | n/a | n/a | no export API; terms in 6.4 |
+| bitcoincharts trade CSV `mtgoxUSD` via Internet Archive capture 2016-12-29 | 2010-07-17 | 2014-02-25 | 8,295,809 trades; 1,314 days | 6 (2011-06-20..25) | 41 (2010-08) | 57 pages, 59,585,679 bytes, sha256 `1a880feeadfe3c535c54aec4e66912fa6f277b3fb14f00829f05a345ab4b91eb`; 0 unordered/bad rows |
+| bitcoincharts `mtgoxEUR` (capture 2016-12-28) | 2011-08-27 | 2014-02-25 | 953,470 trades; 909 days | 5 | 28 (2011-10) | 7,275,281 bytes, sha256 `cec2724d78c4d5fe18bb4edb69571304a36692a137b68ee849d2d4323f692ec5` |
+| bitcoincharts `krakenEUR` (capture 2021-05-07) | 2014-01-08 | 2021-05-06 | 54,129,722 trades; 2,627 days | 49 (2016-01-19..2016-03-04, 2017-10-21, 2018-01-12, 2018-09-21) | 81 (2014-02) | 387,008,192 bytes, sha256 `58f56ddbe260e459b6be4353ad64922d9693143daad6676c1f580f90b4e05a51` |
+| bitcoincharts `krakenUSD` (capture 2016-12-28) | 2014-01-07 | 2016-12-28 | 508,558 trades; 1,039 days | 48 | 26 (2014-02) | 3,845,164 bytes, sha256 `cafb53ad5bc623a776ad5de7e67ccdfd7c6b752cfd388f54148d7330842fd668` |
+| bitcoincharts `bitstampUSD` (capture 2023-07-26; run 39584598332) | 2011-09-13 | 2023-07-26 | 67,472,737 trades; 4,314 days | 21 (2011-09..11) | 137 (2012-01) | 526,476,882 bytes, sha256 `bdef499e489896a302822796e82b3c7562027cfedd1f44e72d74b1427bd2867c`; monthly means equal the Bitstamp API to 0.000% in all 137 months (archive fidelity check); 9 negative-amount rows dropped |
+| bitcoincharts live host `api.bitcoincharts.com` | n/a | n/a | n/a | n/a | n/a | connection failure on https and http (every file); `bitstampEUR` has no Internet Archive capture |
+| TradingView `INDEX:BTCUSD` | n/a | n/a | n/a | n/a | n/a | no export API; terms in 7 |
 
 Provenance values are in the logs. Example (Bitstamp, run 39584598332): `btcusd` 6 pages, 730,921 bytes, sha256 `ada5f22e7b89b52e55933d2100e266a6825ab7e80b7ca67230e7bbe39dbe7462`; `btceur` 8 pages, 512,683 bytes, sha256 `80bbbd138de8464fba98d88fb4fc8c3f1c75d4472c7530c8431afc0ed25eb959`. The sha256 differs per retrieval because the newest candle changes; that is expected and shows why pinning needs a stored copy (storage class B, DATA_01B) before any publication.
 
@@ -59,16 +64,18 @@ Series key `EXR.D.USD.EUR.SP00.A`, 7,118 observations 1999-01-04..2026-10-20. No
 - V1 (monthly mean of USD closes / monthly mean of valid ECB days): needs no matching; ADR-004 parallel.
 - V2 (mean of daily usd/fx on matched days only): is a weekday-only mean; never "complete" for a 24/7 asset.
 
-### 4.2 Mt. Gox and other trade archives (UNRESOLVED, blocker)
+### 4.2 Mt. Gox and other trade archives (CONFIRMED measurement, provenance caveat)
 
-- Bitcoincharts historical CSV (`api.bitcoincharts.com/v1/csv/mtgoxUSD.csv.gz`, `bitstampUSD.csv.gz`, ...): all requests failed with connection errors from the GitHub runner (https and http). The Internet Archive holds a snapshot of `mtgoxUSD.csv.gz` taken 2016-12-29 (`web.archive.org/web/20161229014309/...`, CONFIRMED by the availability API) and of the directory listing (2024-04-25). A retrieval of that copy is attempted by the probe's `archives` job (see 4.3 for the outcome). A snapshot is a third-party copy: its integrity relative to Mt. Gox is not verifiable, only reproducible by hash.
-- Mt. Gox published no complete trade archive after its 2014 closure; the leaked dataset (about 7 million trades, 2011-04-01..2013-11-29) is the subject of an academic paper (WEIS 2019, search summary, NOT VERIFIED here) and carries known issues: wash trading/"Willy" bot allegations, 2011-06 flash crash, API outages. None of this was measured here.
-- Internet Archive search for Mt. Gox datasets returned no relevant item (IA_SEARCH output unrelated). Kaggle/academic dumps need authentication or manual download and were not attempted.
-- Consequence: the pre-2011-09 and Mt. Gox-era period is represented only by aggregators (CM PriceUSD, Blockchain.com), which cannot be audited at trade level.
+- The live bitcoincharts host is unreachable from GitHub runners. The Internet Archive holds captures of the CSV files (CDX API: `mtgoxUSD` 6 captures 2014-03-30..2016-12-29, `krakenEUR` 7 captures to 2021-05-07, `bitstampEUR` none). The probe fetched the raw capture (`.../web/<timestamp>id_/...`), streamed and aggregated it in memory (no bytes stored), and hashed it (hashes in section 3).
+- **These are third-party copies of a third-party aggregation**: bitcoincharts' own collection of exchange trade feeds, then archived. Integrity relative to the exchange cannot be proven from the file. Evidence for fidelity: the `bitstampUSD` capture reproduces the Bitstamp API monthly means exactly (0.000%, 137 months), and `krakenEUR` agrees with Bitstamp EUR within 0.73% (57 months). Mt. Gox has no live comparison source after 2014.
+- Mt. Gox USD facts (CONFIRMED from the capture): first trade 2010-07-17T23:09:17Z; trades per year 2010 8,757; 2011 1,279,900; 2012 1,970,995; 2013 4,286,846; 2014 749,311 (to 2014-02-25); BTC volume per year 2.67e6 (2010), 1.35e7, 2.02e7, 1.79e7, 1.28e6; gap 2011-06-20..2011-06-25 (6 days, no trades in the file; consistent with the 2011-06 hack/outage period, INFERRED); the series ends 2014-02-25, around the Mt. Gox suspension (INFERRED from general knowledge). Largest day-over-day moves: +129% on 2014-02-22 (collapse days), +73% on 2010-07-18 (first days), +57% 2014-02-20, +53% 2011-05-10.
+- Mt. Gox vs Bitstamp USD, monthly means (n=29 complete months in both): mean 3.76%, p50 2.07%, p90 9.59%, max 14.26% (2014-01); by year 2011 mean 6.4% (max 8.2%), 2012 1.07% (max 2.4%), 2013 4.7% (max 10.7%). The premium/discount in 2013-2014 is consistent with the withdrawal problems alleged for Mt. Gox (INFERRED, not tested); Mt. Gox months are therefore not a market average after 2013.
+- Mt. Gox EUR (`mtgoxEUR`) is thin: notional >= 1e5 EUR/day only from 2013-03 and >= 1e6 only from 2014-02; vs V1(Bitstamp USD) mean 3.3%, max 12.5% (2014-01).
+- Not covered: the Mt. Gox leak (about 7 million trades 2011-04..2013-11, WEIS 2019, search summary), wash-trading allegations, flash-event reconstruction, Kaggle/academic dumps (need login). Internet Archive search for Mt. Gox datasets returned no relevant item.
 
-### 4.3 Archive retrieval outcome
+### 4.3 Kraken as a EUR-native archive (CONFIRMED)
 
-See section 9 (filled from the latest run).
+`krakenEUR` trades 2014-01-08..2021-05-06 aggregate to 2,627 trading days and 81 complete months from 2014-02 (months 2016-01..2016-03, 2017-10, 2018-01, 2018-09 are incomplete and therefore null). Notional >= 1e5 EUR/day sustained from 2014-01 and >= 1e6 EUR/day from 2015-10. Against Bitstamp EUR (2016-2021, 57 months): mean 0.089%, p50 0.054%, p90 0.211%, max 0.731% (2017-06). Against V1(Bitstamp USD) 2014-2021 (81 months): mean 0.262%, p50 0.169%, p90 0.617%, max 1.116% (2015-08). The archive stops at 2021-05, so it is a historical EUR-native alternative, not a live source (live Kraken REST has only 720 candles). `krakenUSD` (2014-01..2016-12, 26 complete months) deviates from Bitstamp USD by mean 0.41%, max 1.42%.
 
 ### 4.4 Early-market thinness (CONFIRMED, Bitstamp)
 
@@ -113,6 +120,12 @@ Deviation = |a - b| / b with b the reference. n = months compared.
 | Binance EUR vs Bitstamp EUR | 80 | 0.150% | 0.063% | 0.401% | 1.096% | 1.096% (2021-08) | 1 | 0 |
 | Kraken USD vs Bitstamp USD (23 recent months) | 23 | 0.005% | 0.005% | 0.012% | 0.012% | 0.012% (2025-01) | 0 | 0 |
 | Kraken EUR vs Bitstamp EUR (23 recent months) | 23 | 0.008% | 0.006% | 0.017% | 0.029% | 0.029% (2024-12) | 0 | 0 |
+| Kraken EUR (trade archive) vs Bitstamp EUR | 57 | 0.089% | 0.054% | 0.211% | 0.731% | 0.731% (2017-06) | 0 | 0 |
+| Kraken EUR (trade archive) vs V1(Bitstamp USD) | 81 | 0.262% | 0.169% | 0.617% | 1.116% | 1.116% (2015-08) | 1 | 0 |
+| Kraken USD (trade archive) vs Bitstamp USD | 26 | 0.411% | 0.304% | 1.087% | 1.424% | 1.424% (2014-03) | 3 | 0 |
+| Mt. Gox USD (trade archive) vs Bitstamp USD, 2011-09..2014-01 | 29 | 3.756% | 2.065% | 9.586% | 14.259% | 14.259% (2014-01) | 20 | 10 |
+| Mt. Gox EUR vs V1(Bitstamp USD) | 28 | 3.316% | 1.551% | 8.454% | 12.523% | 12.523% (2014-01) | 20 | 9 |
+| Bitcoincharts `bitstampUSD` archive vs Bitstamp API (fidelity) | 137 | 0.000% | 0.000% | 0.000% | 0.000% | 0.000% | 0 | 0 |
 | Yahoo `BTC-USD` (ADR-010) vs Bitstamp USD | 144 | 0.214% | 0.052% | 0.536% | 1.542% | 2.000% (2017-12) | 9 | 0 |
 | Coin Metrics `PriceUSD` vs Bitstamp USD | 181 | 0.307% | 0.052% | 0.624% | 7.262% | 8.120% (2011-11) | 11 | 3 |
 | Blockchain.com vs Bitstamp USD | 181 | 0.833% | 0.516% | 1.739% | 5.217% | 5.499% (2013-11) | 46 | 3 |
@@ -121,7 +134,7 @@ Deviation = |a - b| / b with b the reference. n = months compared.
 
 Yahoo daily closes vs Bitstamp: n=4,409, p50 0.103%, p90 0.848%, p99 2.364%, max 7.830% (cutoff differences). Yahoo monthly deviation is 0.006-0.04% from 2022 on and 0.6-2.0% in 2017-2019.
 
-Reading (PROPOSED): among exchange venues and V1, 92-100% of months agree within 1% (Bitfinex lowest: 11 of 161 USD months and 9 of 109 EUR months above 1%), the maximum is 4.1% (Coinbase EUR 2017-12, Bitfinex USD 2017-04 and Coinbase EUR) and no exchange comparison exceeds 5%. The bull-run months 2017-04 and 2017-12 are the worst. An empirical typical tolerance of about 2% (p99 across exchanges 1.1-3.1%) with the BTC-01 5% as hard fail is supported for 2014 on. For 2011-2013 the aggregator comparison shows up to 8.1% (Coin Metrics 2011-11) and 5.5% (Blockchain.com 2013-11), so any pre-2013 month must be Q3 and cannot claim the 5% tolerance.
+Reading (PROPOSED): among exchange venues and V1, 92-100% of months agree within 1% (Bitfinex lowest: 11 of 161 USD months and 9 of 109 EUR months above 1%), the maximum is 4.1% (Coinbase EUR 2017-12, Bitfinex USD 2017-04 and Coinbase EUR) and no exchange comparison exceeds 5%. The bull-run months 2017-04 and 2017-12 are the worst. An empirical typical tolerance of about 2% (p99 across exchanges 1.1-3.1%) with the BTC-01 5% as hard fail is supported for 2014 on. For 2011-2013 the aggregator comparison shows up to 8.1% (Coin Metrics 2011-11) and 5.5% (Blockchain.com 2013-11) and Mt. Gox deviates from Bitstamp by up to 10.7% in 2013 (14.3% in 2014-01), so any pre-2014 month must be Q3 and cannot claim the 5% tolerance. The supported empirical tolerance is period-dependent: <= 1.5% typical (p99) and <= 4.1% max from 2014 on; no defensible tolerance below about 10% before 2014.
 
 ## 6. Reconstructions, quality levels and recommendation
 
@@ -165,7 +178,8 @@ Findings so far (search summaries NOT VERIFIED unless the terms job quote in 7 s
 | 2016-05 onward | Bitstamp `btceur` mean of daily closes (V3) | Coinbase EUR (V3), Bitfinex/Binance/Kraken EUR; V1(Bitstamp USD) deviates <= 0.92% | Q1 |
 | 2013-04..2016-04 | V1 from Bitstamp `btcusd` + ECB | Coinbase EUR from 2015-05 (thin), Bitfinex USD V1, CM `PriceUSD` V1 | Q2 (2013-06 Q3) |
 | 2011-09..2013-03 | V1 Bitstamp (single thin venue) or CM `PriceUSD` V1 | Blockchain.com V1 | Q3, research only |
-| 2010-08..2011-08 | none from an auditable exchange; aggregators only | n/a | Q0 for publication |
+| 2010-08..2011-08 | Mt. Gox USD trade archive, V1 (41 complete Mt. Gox months 2010-08..2014-01, 2011-06 null) | CM `PriceUSD` V1, Blockchain.com V1 (aggregators) | Q3, research only; archive copy not publishable |
+| 2014-02..2016-04 (EUR-native alternative) | Kraken EUR trade archive V3 (notional >= 1e6 EUR/day from 2015-10; 2016-01..03 null) | Coinbase EUR, V1 Bitstamp | Q3 until 2015-10, Q1 candidate afterwards; owner decision on archive provenance |
 
 Preference follows: a EUR order book avoids FX; Bitstamp is the longest gap-free free source; the order book is single venue, which is the weakest point (concentration). Agreement with independent venues is shown in 5. No automatic splice: the Q1/Q2 break at 2016-04/05 is a visible basis change (V3 vs V1) whose size is bounded by the V1-vs-EUR-native deviation in 2016-2017 (mean 0.37%, max 0.70% in 2016; max 0.92% 2017-09).
 
@@ -194,15 +208,15 @@ Conclusion: no primary text read grants the right to publish BTC prices or value
 ## 8. Blockers
 
 1. **Rights**: no source grants republication of derived monthly values; exchange data licences are commercial (Bitstamp DLA, Kraken permission), Coin Metrics Community is non-commercial.
-2. **Mt. Gox / pre-2011-09 raw trades**: bitcoincharts unreachable; only aggregators for 2010-07..2011-08; no trade-level audit possible.
+2. **Mt. Gox and pre-2011-09 trades**: only a third-party archive copy (Internet Archive capture of bitcoincharts files) is retrievable; no exchange-originated archive, no licence text for bitcoincharts (host and terms page unreachable), Mt. Gox stopped 2014-02-25 and deviates up to 14% from Bitstamp; pinned bytes are not stored (blocker 5).
 3. **CryptoCompare/CoinDesk**: API key required; CoinDesk BPI legacy unreachable; CoinGecko history beyond 365 days refused.
 4. **Kraken full history**: only the 720-candle REST window was measured; the OHLCVT ZIP is a manual download.
 5. **Pinning**: retrieved bytes are not stored (storage class B not configured), so the sha256 values prove one retrieval, not reproducibility.
 6. **Binance** blocks the main API host from US runners (HTTP 451); the data mirror worked.
 
-## 9. Late results (archives and terms jobs)
+## 9. Reproduction
 
-(filled in below)
+Run `btc-02-history.yml` (pull_request on its own paths, or workflow_dispatch). Jobs: `offline-tests`, `exchanges` (Bitstamp/Coinbase/Bitfinex/Binance/Kraken/ECB, V1/V2/V3, quality levels, house join, candidate hash), `aggregators` (Blockchain.com, Coin Metrics, CryptoCompare, CoinDesk BPI, CoinGecko), `archives` (Internet Archive captures of bitcoincharts trade files; about 0.45 GB read, about 7 minutes), `yahoo` (ADR-010 file vs Bitstamp), `terms` (primary text keyword extraction).
 
 ## 10. Open owner decisions
 
