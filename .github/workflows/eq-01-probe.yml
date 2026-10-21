@@ -42,11 +42,11 @@ jobs:
               d = json.load(open(p))
               for r in d["data"]:
                   c = r.get("coverage", {})
-                  print("DATA", r["id"], r["status"], r.get("error", ""), c.get("first"), c.get("last"), c.get("observations"), "gaps", c.get("monthly_gaps_inside_range"), "dup", c.get("duplicates"), "ord", c.get("unordered"), "miss", r.get("missing_markers"), (r.get("yahoo_meta") or {}).get("currency"), r.get("locate"), (r.get("coverage") or {}).get("obs_per_month_min_median_max"), (r.get("coverage") or {}).get("sha256"))
+                  print("DATA", r["id"], r["status"], r.get("error", ""), c.get("first"), c.get("last"), c.get("observations"), "gaps", c.get("monthly_gaps_inside_range"), "dup", c.get("duplicates"), "ord", c.get("unordered"), "miss", r.get("missing_markers"), (r.get("yahoo_meta") or {}).get("currency"), r.get("locate"), (r.get("coverage") or {}).get("obs_per_month_min_median_max"), (r.get("coverage") or {}).get("sha256"), r.get("html_head"))
                   for b, v in (r.get("vs_cbs_hpi") or {}).items():
                       print("   vsHPI", b, v.get("overlap"), v.get("baseline"), v.get("n"), v.get("error"), v.get("relative_min"), v.get("relative_max"), v.get("sha256"))
               for r in d["docs"]:
-                  print("DOC", r["id"], r["status"], r.get("error", ""), r.get("locate"), r.get("text_chars"))
+                  print("DOC", r["id"], r["status"], r.get("error", ""), r.get("locate"), r.get("text_chars"), "HEAD:", r.get("head"))
                   for k, qs in (r.get("quotes") or {}).items():
                       for q in qs:
                           print("   Q", k, "|", q)
