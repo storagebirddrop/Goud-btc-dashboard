@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import re
+import signal
 import statistics
 import sys
 import zipfile
@@ -35,9 +36,13 @@ EXTRA = {
     "h07-fed-dat96-eu": (H10 + "dat96_eu.txt", "txt"),
     "h07-fed-dat00-eu": (H10 + "dat00_eu.txt", "txt"),
     "h07-imf-nld": ("https://api.imf.org/external/sdmx/2.1/data/IMF.STA,ER/NLD.XDC_USD.PA_RT.M?startPeriod=1955-01&endPeriod=2002-12&format=sdmx-csv", "xml"),
-    "h07-boe-xumagpd": (ss.BOE_CSV.replace("01/Jan/1975", "01/Jan/1960").replace("31/Dec/1999", "31/Dec/2001"), "csv"),
     "h07-datahub-gold-monthly": ("https://raw.githubusercontent.com/datasets/gold-prices/main/data/monthly.csv", "csv"),
     "h07-bbk-wt5511": ("https://api.statistiken.bundesbank.de/rest/data/BBK01/WT5511?format=csv&lang=en", "csv"),
+    "h07-bbk-wt5511-plain": ("https://api.statistiken.bundesbank.de/rest/data/BBK01/WT5511", "csv"),
+    "h07-datahub-pkg": ("https://raw.githubusercontent.com/datasets/gold-prices/main/datapackage.json", "json"),
+    "h07-imf-pcps-gold": ("https://api.imf.org/external/sdmx/2.1/data/IMF.RES,PCPS/M.W00.PGOLD.USD?startPeriod=1960-01&endPeriod=2002-12&format=sdmx-csv", "xml"),
+    "h07-cbs-catalog-gold2": ("https://opendata.cbs.nl/ODataCatalog/Tables?$format=json&$filter=substringof('Goud',Title)", "json"),
+    "h07-cbs-catalog-edelmetaal": ("https://opendata.cbs.nl/ODataCatalog/Tables?$format=json&$filter=substringof('delmetaal',Title)", "json"),
     "h07-wb-page": ("https://www.worldbank.org/en/research/commodity-markets", "html"),
     "h07-cbs-catalog-gold": ("https://opendata.cbs.nl/ODataCatalog/Tables?$format=json&$filter=substringof('goud',Title)", "json"),
 }
@@ -46,6 +51,17 @@ WB_ID = "world-bank-gold-history"
 WB_FILE = "CMO-Historical-Data-Monthly.xlsx"
 NVM_NLG = {1985: Decimal("130000"), 1990: Decimal("159000"), 1995: Decimal("223000"), 1999: Decimal("329000")}  # as quoted in HIST_05_NVM_AND_LONG_RUN.md (ESB table, secondary)
 CAVEAT = "research only; nothing approved; rights UNVERIFIED; no raw third-party bytes in artifacts"
+
+
+class WatchdogTimeout(Exception):
+    pass
+
+
+def _alarm(signum, frame):
+    raise WatchdogTimeout()
+
+
+signal.signal(signal.SIGALRM, _alarm)
 
 
 def pc(v, q="1E-4"):
@@ -131,7 +147,10 @@ def parse_imf(raw):
         if tag == "Series":
             series += 1
         if tag == "Obs" and "TIME_PERIOD" in el.attrib and "OBS_VALUE" in el.attrib:
-            k = el.attrib["TIME_PERIOD"][:7]
+            mm = re.fullmatch(r"(\d{4})-M?(\d{2})", el.attrib["TIME_PERIOD"])
+            if not mm:
+                continue  # annual / quarterly observations are ignored, never expanded
+            k = f"{mm.group(1)}-{mm.group(2)}"
             if k in out:
                 raise hc.ConstructionError("IMF_DUPLICATE_MONTH " + k)
             if el.attrib["OBS_VALUE"].strip():
@@ -209,9 +228,9 @@ def gold_text_rows(raw, names):
         hits = []
         for r in rows:
             cells = [str(v).strip() for v in r.values() if str(v).strip()]
-            if any(re.search(r"gold|pink|updated|break|fixing|spot", c, re.I) for c in cells):
+            if any(re.search(r"\bgold\b", c, re.I) for c in cells):
                 hits.append(" | ".join(cells)[:420])
-        out[n] = {"rows": len(rows), "gold_related_rows": hits[:6]}
+        out[n] = {"rows": len(rows), "gold_related_rows": hits[:8]}
     return out
 
 
@@ -274,6 +293,8 @@ def collect(workbook=None):
     raws = {}
 
     def get(sid, local=None):
+        print("STEP fetch", sid, flush=True)
+        signal.alarm(100)  # watchdog: a stalled transfer must not hang the job
         try:
             if local:
                 raw, rec = wbv.load_workbook(local)
@@ -282,8 +303,13 @@ def collect(workbook=None):
             else:
                 raw, rec = acq.fetch(sid)
         except acq.AcquisitionError as exc:
-            S["missing_sources"].append({"source_id": sid, "reason": str(exc)[:140]})
+            S["missing_sources"].append({"source_id": sid, "reason": str(exc)[:140], "http_code": getattr(exc.__cause__, "code", None)})
             return None
+        except WatchdogTimeout:
+            S["missing_sources"].append({"source_id": sid, "reason": "WATCHDOG_100S"})
+            return None
+        finally:
+            signal.alarm(0)
         S["sources"][sid] = {"url": rec["url"], "sha256": rec["sha256"], "bytes": rec["bytes"]}
         raws[sid] = raw
         return raw
@@ -295,7 +321,7 @@ def collect(workbook=None):
             S["defects"].append({"where": label, "error": f"{type(exc).__name__}: {str(exc)[:220]}"})
             return None
 
-    # --- World Bank (pinned workbook; structure hard, hash flagged)
+    print("STEP section", 'World Bank (pinned workbook; structure hard, hash flagged)', flush=True)
     wb_raw = get(WB_ID, workbook)
     wb, wbp = {}, None
     if wb_raw:
@@ -344,19 +370,43 @@ def collect(workbook=None):
                 S["wb_vintage_probe"]["new_vs_pinned"] = {"new_last": max(np_), "common": len(common), "differing_months": len(diff),
                                                            "differing_sample": diff[:8], "differing_pre2000": sum(1 for m in diff if m < "2000-01")}
 
-    # --- gold cross sources
+    print("STEP section", 'gold cross sources', flush=True)
     boe, dh, bbk = {}, {}, {}
-    raw = get("h07-boe-xumagpd")
+    raw = get("boe-gold-usd-monthly-average")
     if raw:
         pts = safe("boe", lambda: ss.parse_points(raw, ss.BOE_SERIES)[0])
-        boe = ss.monthly_from_points(pts, "1960-01", "2001-12") if pts else {}
+        boe = ss.monthly_from_points(pts, "1960-01", "1999-12") if pts else {}
     raw = get("h07-datahub-gold-monthly")
     if raw:
         r = safe("datahub", lambda: parse_datahub(raw))
         if r:
             dh = r[0]
             S["datahub"] = {"columns": r[1][:4], "first": min(dh), "last": max(dh), "count": len(dh)}
-    raw = get("h07-bbk-wt5511")
+            if wb:
+                common = [m for m in sorted(dh) if m in wb]
+                diff = [m for m in common if dh[m] != wb[m]]
+                S["datahub"]["vs_wb"] = {"common": len(common), "differing": len(diff),
+                                         "by_decade": dict(Counter(m[:3] + "0s" for m in diff)),
+                                         "sample": {m: [str(wb[m]), str(dh[m])] for m in diff[:14]},
+                                         "sample_late": {m: [str(wb[m]), str(dh[m])] for m in diff[-6:]},
+                                         "not_in_wb_window": [min(dh), "..", "1959-12"]}
+    raw = get("h07-datahub-pkg")
+    if raw:
+        try:
+            pk = json.loads(raw.decode("utf-8-sig"))
+            S["datahub_pkg"] = {"name": pk.get("name"), "title": pk.get("title"), "sources": pk.get("sources"), "licenses": pk.get("licenses"),
+                                "description": str(pk.get("description"))[:500]}
+        except ValueError:
+            S["datahub_pkg"] = "UNPARSEABLE"
+    raw = get("h07-imf-pcps-gold")
+    if raw:
+        r = safe("imf_pcps", lambda: parse_imf(raw))
+        if r:
+            S["imf_pcps_gold"] = {"series": r[1], "count": len(r[0]), "first": min(r[0]) if r[0] else None, "last": max(r[0]) if r[0] else None}
+            if wb and r[0]:
+                S["imf_pcps_gold"]["wb_vs_imf"] = {k: stat(wb, r[0], hc.month_range(a, b)) for k, (a, b) in
+                                                    {"1960-79": ("1960-01", "1979-12"), "1980-99": ("1980-01", "1999-12"), "2000-02": ("2000-01", "2002-12")}.items()}
+    raw = get("h07-bbk-wt5511") or get("h07-bbk-wt5511-plain")
     if raw:
         r = safe("bbk", lambda: parse_bbk(raw))
         if r:
@@ -380,7 +430,7 @@ def collect(workbook=None):
         S["gold_wb_vs_other"] = gold
     raw = get("fred-exneus-history")  # known to time out; one more attempt, recorded either way
 
-    # --- FX monthly NLG per USD
+    print("STEP section", 'FX monthly NLG per USD', flush=True)
     fed_pts = {}
     for sid in gn.FED_IDS:
         raw = get(sid)
@@ -417,7 +467,9 @@ def collect(workbook=None):
     # parity check pre-1971 from BIS
     if bis_m:
         pre = Counter(format(v.quantize(Decimal("0.0001")), "f") for m, v in bis_m.items() if "1960-01" <= m <= "1970-12")
-        S["bis_nlg_per_usd_1960_1970_distinct_4dp"] = dict(pre.most_common(8))
+        S["bis_nlg_per_usd_1960_1970_distinct_4dp"] = dict(pre.most_common(4))
+        S["bis_nlg_per_usd_median_by_year_1960_1972"] = {y: format(statistics.median([v for m, v in bis_m.items() if m.startswith(str(y))]).quantize(Decimal("0.0001")), "f") for y in range(1960, 1973)}
+        S["bis_nlg_per_usd_1961_02_to_1961_04"] = {m: format(bis_m[m].quantize(Decimal("0.0001")), "f") for m in ("1961-02", "1961-03", "1961-04") if m in bis_m}
     fxcmp = {}
     for a in ("bis", "imf", "cbs"):
         if fx_series[a] and fed_m:
@@ -427,7 +479,7 @@ def collect(workbook=None):
             fxcmp[f"{a}_vs_bis_1960_1970"] = stat(fx_series[a], bis_m, hc.month_range("1960-01", "1970-12"))
     S["fx_pairwise"] = fxcmp
 
-    # --- euro-era FX for the overlap
+    print("STEP section", 'euro-era FX for the overlap', flush=True)
     ecb_raw = get(fx.ECB_MONTHLY)
     ecb_m = gn.parse_ecb_monthly(ecb_raw) if ecb_raw else {}
     fed_eu = {}
@@ -439,10 +491,13 @@ def collect(workbook=None):
                 fed_eu.update(r[0])
                 S["sources"][sid]["header"] = r[1]
     fed_eu_m, fed_eu_n = monthly_mean(fed_eu) if fed_eu else ({}, {})
+    dropped = sorted(m for m in fed_eu_m if fed_eu_n[m] < 15)
+    fed_eu_m = {m: v for m, v in fed_eu_m.items() if fed_eu_n[m] >= 15}  # partial months are not comparable, dropped and reported
+    S["fed_euro_dropped_lt15_obs"] = {m: fed_eu_n[m] for m in dropped}
     if fed_eu_m:
         S["fed_euro"] = {"first": min(fed_eu_m), "last": max(fed_eu_m), "months": len(fed_eu_m), "min_obs": min(fed_eu_n.values())}
 
-    # --- overlap C3 vs C4
+    print("STEP section", 'overlap C3 vs C4', flush=True)
     ovm = hc.month_range("1999-01", "2001-12")
     ov = {}
     if wb and ecb_m:
@@ -475,7 +530,7 @@ def collect(workbook=None):
     else:
         S["not_performed"].append("overlap: needs World Bank and ECB monthly")
 
-    # --- constructions 1960-01..1998-12 by FX source
+    print("STEP section", 'constructions 1960-01..1998-12 by FX source', flush=True)
     months_pre = hc.month_range("1960-01", "1998-12")
     constr, table = {}, {"usd_wb": {m: wb[m] for m in hc.month_range("1960-01", "1999-12") if m in wb}}
     for name, s in fx_series.items():
@@ -492,7 +547,7 @@ def collect(workbook=None):
         table["c4_eur_observed"] = c4all
     if boe:
         table["usd_boe"] = boe
-    # --- grams per home 1995-1999 (CBS fixture)
+    print("STEP section", 'grams per home 1995-1999 (CBS fixture)', flush=True)
     house, fx_hash = fixture_house()
     S["fixture_sha256"] = fx_hash
     gm = {}
@@ -552,15 +607,17 @@ def collect(workbook=None):
     else:
         S["not_performed"].append("grams per home: needs World Bank, ECB and at least one FX source")
 
-    # --- direct guilder gold (C2) probe
-    raw = get("h07-cbs-catalog-gold")
-    if raw:
-        try:
-            doc = json.loads(raw.decode("utf-8-sig"))
-            S["c2_cbs_catalog_gold_titles"] = [str(x.get("Title"))[:90] + " | " + str(x.get("ShortTitle"))[:30] for x in doc.get("value", [])][:12]
-        except ValueError:
-            S["c2_cbs_catalog_gold_titles"] = "UNPARSEABLE"
-    # --- canonical hash of the derived table
+    print("STEP section", 'direct guilder gold (C2) probe', flush=True)
+    S["c2_cbs_catalog_title_search"] = {}
+    for sid in ("h07-cbs-catalog-gold", "h07-cbs-catalog-gold2", "h07-cbs-catalog-edelmetaal"):
+        raw = get(sid)
+        if raw:
+            try:
+                doc = json.loads(raw.decode("utf-8-sig"))
+                S["c2_cbs_catalog_title_search"][sid] = [str(x.get("Title"))[:90] + " | " + str(x.get("ShortTitle"))[:30] for x in doc.get("value", [])][:12]
+            except ValueError:
+                S["c2_cbs_catalog_title_search"][sid] = "UNPARSEABLE"
+    print("STEP section", 'canonical hash of the derived table', flush=True)
     cols = {k: v for k, v in table.items()}
     rows = hc.canonical_rows({k: ({m: x for m, x in v.items()}) for k, v in cols.items()})
     S["table"] = {"rows": len(rows), "columns": sorted(cols), "canonical_sha256": hc.canonical_sha256(rows)}
