@@ -30,6 +30,7 @@ jobs:
       - name: Offline tests (synthetic, prove code only)
         run: python -m pytest -q tests/test_eq_01_probe.py tests/test_hist_02_acquire.py
       - name: Probe candidate sources and official documents (aggregates only; unreachable sources exit 0)
+        timeout-minutes: 12
         run: python -m tools.eq_01_probe --summary-out "$RUNNER_TEMP/eq-01-probe.json"
       - name: Compact summary in log
         if: always()

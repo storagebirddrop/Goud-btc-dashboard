@@ -18,6 +18,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import statistics
 import subprocess
 import sys
@@ -421,6 +422,10 @@ DOC_CANDIDATES = {
                                ["1983", "base", "gross return", "net return", "introduced", "45.3"]),
     "euronext-aex-composition-history": ("https://www.euronext.com/sites/default/files/aex_index_history_evolution_of_the_composition_from_1983.pdf", "pdf",
                                          ["1983", "100", "base", "guilder", "euro"]),
+    "euronext-index-data-use": ("https://live.euronext.com/en/products/indices/data-use", "html",
+                                ["informational", "reserves all rights", "licen", "redistribut", "unauthori"]),
+    "spdji-terms-of-use": ("https://www.spglobal.com/spdji/en/terms-of-use/", "html",
+                           ["personal", "non-commercial", "redistribute", "copyright", "Index Data"]),
     "euronext-aex-2019-factsheet": ("https://www.euronext.com/sites/www.euronext.com/files/aex_20190329.pdf", "pdf",
                                     ["introduced", "1999", "2010", "45.3", "gross", "net"]),
 }
@@ -551,10 +556,29 @@ def probe_doc(sid, fetcher):
     return rec
 
 
+HARD_TIMEOUT_SECONDS = 45
+
+
+def with_deadline(fetcher, seconds=HARD_TIMEOUT_SECONDS):
+    """Wall-clock guard per source (a trickling server must not stall the whole probe)."""
+    def _alarm(_signum, _frame):
+        raise TimeoutError("HARD_DEADLINE_EXCEEDED")
+
+    def wrapped(sid):
+        old = signal.signal(signal.SIGALRM, _alarm)
+        signal.alarm(seconds)
+        try:
+            return fetcher(sid)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+    return wrapped
+
+
 def run(summary_out, housing_csv, fetcher=None):
     from tools import hist_02_acquire
     register(hist_02_acquire)
-    fetcher = fetcher or hist_02_acquire.fetch
+    fetcher = with_deadline(fetcher or hist_02_acquire.fetch)
     housing = housing_months(housing_csv) if Path(housing_csv).exists() else {}
     summary = {"status": "RESEARCH_ONLY_NOT_A_DECISION", "data": [], "docs": []}
     for sid in DATA_CANDIDATES:
