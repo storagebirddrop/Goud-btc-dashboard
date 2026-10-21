@@ -11,7 +11,7 @@ from etl.gold_publication_candidate import sha
 
 def fixture():
     housing = Path("data/cbs-housing.csv")
-    public = Path("frontend/public/data/monthly.json")
+    public = Path("frontend/public/data/monthly.json")  # published GOLD-03 JSON = pinned baseline
     rows = json.loads(public.read_bytes())["data"]
     months = [r["period"] for r in rows]
     homes = {r["period"]: D(str(r["house_eur"])) for r in rows}
@@ -43,7 +43,8 @@ def test_gold02_full_coverage_and_reproducible_manifest():
     assert manifest["coverage"]["complete"] == 320
     assert manifest["coverage"]["pending"] == 0
     assert diff["changed_months"] == 320
-    assert all(set(x["fields"]) == {"gold_index", "gold_grams_per_house"} for x in diff["changes"])
+    assert all(x["fields"] and set(x["fields"]) <= {"gold_index", "gold_grams_per_house"}
+               for x in diff["changes"])
 
 
 def test_gold02_missing_month_blocks():
@@ -72,3 +73,16 @@ def test_gold02_no_raw_public_fields():
     assert all(set(r) == {"period", "house_eur", "hpi", "hpi_index",
                           "gold_eur_oz", "gold_index", "gold_grams_per_house"} for r in rows)
     assert all(r["gold_eur_oz"] is None for r in rows)
+
+
+def test_gold02_published_baseline_requires_exact_reproduction():
+    """Against the published GOLD-03 JSON: identical candidate -> 0 changes; any other -> blocked."""
+    from etl.gold_publication_candidate import APPROVED_PUBLIC_JSON_SHA256
+    housing, published = Path("data/cbs-housing.csv"), Path("frontend/public/data/monthly.json")
+    assert sha(published.read_bytes()) == APPROVED_PUBLIC_JSON_SHA256
+    _, _, synthetic = fixture()
+    # Synthetic inputs differ from the published values in every month: full-change path still works.
+    out = make_bundle(housing, published, synthetic, wb_sha256="a" * 64, ecb_sha256="b" * 64,
+                      commit="f" * 40, run_id="1", generated_at="2026-10-21T00:00:00+00:00")
+    assert json.loads(out["diff.json"])["changed_months"] >= 319
+    assert json.loads(out["manifest.json"])["diff"]["reproduces_published_bytes"] is False

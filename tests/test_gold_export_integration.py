@@ -18,7 +18,12 @@ def test_default_exactly_unchanged(monkeypatch,tmp_path):
     base=build("data/cbs-housing.csv")
     assert base==build("data/cbs-housing.csv",gold_candidate=fixture_candidate(),gold_publication_approved=True)
     assert all(r["gold_eur_oz"] is None and r["gold_index"] is None and r["gold_grams_per_house"] is None for r in base["data"])
-    assert base==json.loads(open("frontend/public/data/monthly.json").read())
+    # GOLD-03: the published JSON equals the null-gold build() on every non-derived field.
+    pub=json.loads(open("frontend/public/data/monthly.json").read())
+    assert len(pub["data"])==len(base["data"])
+    for a,b in zip(pub["data"],base["data"]):
+        assert {k:v for k,v in a.items() if k not in ("gold_index","gold_grams_per_house")}==\
+               {k:v for k,v in b.items() if k not in ("gold_index","gold_grams_per_house")}
 
 @pytest.mark.parametrize("enabled,approval",[
     ("TRUE","APPROVED"),("true","approved"),("false","APPROVED"),

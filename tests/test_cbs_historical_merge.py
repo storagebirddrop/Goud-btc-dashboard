@@ -137,7 +137,7 @@ def test_static_export_rejects_hpi_before_2000_and_missing_hpi_after(tmp_path):
 
 def test_pinned_production_hashes_and_i1_fixture():
     assert BASELINE_CSV_SHA256 == "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6"
-    assert BASELINE_JSON_SHA256 == "bc15f3bd1c2101df6fd6a8e18b60f62ff2fc3032eb0b71009bb6b44704c5c78e"
+    assert BASELINE_JSON_SHA256 == "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd"
     assert FIXTURE_SHA256 == "0a557dd16fe85e40952dd97edd492d5b3f985f64930d19d960b14307d725c543"
 
 
