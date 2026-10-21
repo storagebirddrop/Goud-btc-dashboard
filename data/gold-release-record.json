@@ -19,10 +19,10 @@
     "status": "ACCEPTED"
   },
   "release_authorization": {
-    "authorized_at": null,
-    "authorized_by": null,
-    "reference": "GOLD-03 owner decision 2026-10-20 lifts the publication HOLD for gold_index and gold_grams_per_house and authorizes PREPARING the release only; merge/deploy authorization is pending (status stays NOT_AUTHORIZED until the owner sets it)",
-    "status": "NOT_AUTHORIZED"
+    "status": "AUTHORIZED",
+    "authorized_at": "2026-10-21",
+    "authorized_by": "Project owner",
+    "reference": "Explicit owner approval on 2026-10-21 to release GOLD-03 via PR #86; scope limited to gold_index and gold_grams_per_house from 2000-01, with documented source attribution and accepted third-party-rights residual risk."
   },
   "schema_version": 1,
   "sources": {
