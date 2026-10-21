@@ -12,7 +12,7 @@ Evidence labels (section 11): **CONFIRMED** = repo file or measurement in the re
 | Independent cross-check and EUR-native alternative | **Measured 2026-10-21 (CONFIRMED, section 12): the Coin Metrics Community API serves `ReferenceRateEUR` / `ReferenceRateUSD` `1d` only for the last 7 days (2026-10-15..2026-10-21); every older window (2014-10, 2016-01, 2020-01, 2024-01, 2026-01, 2026-09) returned 0 observations.** It cannot serve as a free historical cross-check or EUR-native history. A cross-check must come from another source (Kraken/Bitstamp EUR files, section 3) or a Coin Metrics licence. |
 | Fallback / recent-only check | CoinGecko Demo/public: 365-day lookback only, so a recent cross-check, never the history. |
 | Monthly definition | Arithmetic mean of daily values over the calendar month, no imputation, same family as the accepted gold method. Two computation variants are specified in section 4; for a USD source the gold-parallel variant (V1: monthly mean of USD closes divided by monthly mean of ECB USD per EUR) needs no weekend/holiday FX policy. |
-| Reliable start month | **2014-10** (first complete calendar month of the audited series; 2014-09 is partial and stays `null`). Earlier months stay `null` unless a second source is validated in BTC-02; no splice. |
+| Reliable start month | **2016-05** for an EUR-native Bitstamp series (measured, section 13); **2014-10** for the USD-based ratio-of-means series. Original text: **2014-10** (first complete calendar month of the audited series; 2014-09 is partial and stays `null`). Earlier months stay `null` unless a second source is validated in BTC-02; no splice. |
 | Readiness for BTC-02 | Ready as a measurement and review-bundle task. **Not ready for publication**: rights, price-definition and FX-policy decisions are open (section 10). |
 
 ## 2. Existing evidence in the repo (not repeated, only cited)
@@ -190,6 +190,25 @@ Read-only probe `tools/btc_01_cm_probe.py` (workflow `.github/workflows/btc-01-c
 - The catalog request in the form used by the repo notes (`catalog/asset-metrics?assets=...`) returns HTTP 400 `unsupported_parameter 'assets'`; the catalog endpoint was therefore not used.
 - Consequence: with the free Community API, Coin Metrics reference rates give no usable history for the required 2014-10..2026-09 window. The statement in section 2 that Coin Metrics is the "independent price anchor" (DATA_01 matrix) cannot be fulfilled without a licensed or otherwise non-public history. The reason (tier restriction, retention window, API change) is NOT VERIFIED; it must be asked of Coin Metrics or read from the current terms before relying on any Coin Metrics history.
 - Effect on the proposal: V3 (native EUR, section 4) is only possible via exchange EUR data (Kraken `XBTEUR` daily files, Bitstamp `btceur`, both from roughly 2016/2013 onwards, NOT VERIFIED) and the cross-check for a USD-based V1 series needs an exchange-based or licensed second source. The preferred source and start month in section 1 are unchanged but the independent cross-check is now an open BTC-02 task, not a given.
+
+## 13. Measurement update (2026-10-21): Bitstamp public daily candles
+
+Read-only probe `tools/btc_01_exchange_probe.py`, GitHub run [39569330229](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39569330229) (same workflow). Daily candle step 86400 (UTC day), close = last trade of the UTC day. Labels: CONFIRMED (measurement); licence/ToS and revision behaviour NOT VERIFIED.
+
+| Pair | First candle | Candles | Complete calendar months | Non-positive closes | Sample monthly mean of daily closes |
+|---|---|---|---|---|---|
+| `btceur` | 2016-04-16 | 3,841 | 125 (2016-05..2026-09; 2016-04 has 15/30 days) | 0 | 2020-01: 7,544.90; 2024-01: 39,378.55; 2026-09: 69,952.60 |
+| `btcusd` | 2011-08-18 | 5,544 | 181 (2011-09..2026-09; 2011-08 has 14/31 days) | 0 | 2014-10: 364.00; 2016-01: 410.10; 2020-01: 8,367.92; 2024-01: 42,919.35; 2026-09: 80,472.02 |
+
+Findings:
+- Bitstamp serves a gap-free daily series for both pairs in all complete months (no missing UTC day inside them), with positive finite closes, as a free public API (windowed by `limit`, paging worked; `start` earlier than the first candle returns an empty list, so the first date must be found by trying later starts). Page sha256 values are in the run log for pinning.
+- EUR-native (V3) is therefore measurably possible from **2016-05**, without any FX leg. BTC/USD from **2011-09** would allow a USD-based V1 earlier than the Yahoo-based 2014-10, but the owner scope question (how far back, and the very thin 2011-2014 market) is open.
+- This is a single venue's close, not a market average; it is a verification-grade or primary source only if the owner accepts the venue definition (open decision D2/D1). Terms of use were not read.
+- Cross-check design now possible: Bitstamp `btceur` mean vs (Bitstamp `btcusd` mean / ECB monthly USD per EUR) is the same venue (not independent for the price, independent for the FX conversion); an independent venue (Kraken files) or the Yahoo-based trading history on the 2016-05..2026-09 overlap provides a true second source. Tolerance remains to be measured in BTC-02 (the 1% / 5% values in section 7 are still hypotheses).
+
+Updated start-month proposal (PROPOSED, supersedes the single date in section 5 where they differ):
+- EUR-native series (preferred if the owner accepts a venue definition and the terms allow): **2016-05**.
+- USD-based ratio-of-means series (V1): **2014-10** with the trading-history source, optionally **2011-09** with Bitstamp BTC/USD; months before the chosen start stay `null`, no splice.
 
 ## Samenvatting voor DECISIONS.md (Nederlands, PROPOSED, geen besluit)
 
