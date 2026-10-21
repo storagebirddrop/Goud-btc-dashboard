@@ -9,7 +9,7 @@ Evidence labels (section 11): **CONFIRMED** = repo file or measurement in the re
 | Item | Proposal (PROPOSED) |
 |---|---|
 | Preferred research source | The ADR-010 candidate: `script-trading-anlytics/data/history.csv`, `BTC-USD` `1d` close (Yahoo). It is the only series with measured, gap-free coverage in the repo (4,409 days from 2014-09-17, zero missing). Rights are unresolved, see section 8. |
-| Preferred independent cross-check and possible EUR-native alternative | Coin Metrics Community `ReferenceRateEUR` / `ReferenceRateUSD` `1d`. Its EUR availability and start date are NOT VERIFIED and must be measured first (BTC-02). If `ReferenceRateEUR` is complete it removes the FX-calendar problem entirely. |
+| Independent cross-check and EUR-native alternative | **Measured 2026-10-21 (CONFIRMED, section 12): the Coin Metrics Community API serves `ReferenceRateEUR` / `ReferenceRateUSD` `1d` only for the last 7 days (2026-10-15..2026-10-21); every older window (2014-10, 2016-01, 2020-01, 2024-01, 2026-01, 2026-09) returned 0 observations.** It cannot serve as a free historical cross-check or EUR-native history. A cross-check must come from another source (Kraken/Bitstamp EUR files, section 3) or a Coin Metrics licence. |
 | Fallback / recent-only check | CoinGecko Demo/public: 365-day lookback only, so a recent cross-check, never the history. |
 | Monthly definition | Arithmetic mean of daily values over the calendar month, no imputation, same family as the accepted gold method. Two computation variants are specified in section 4; for a USD source the gold-parallel variant (V1: monthly mean of USD closes divided by monthly mean of ECB USD per EUR) needs no weekend/holiday FX policy. |
 | Reliable start month | **2014-10** (first complete calendar month of the audited series; 2014-09 is partial and stays `null`). Earlier months stay `null` unless a second source is validated in BTC-02; no splice. |
@@ -180,6 +180,16 @@ Reuse, do not rewrite:
 | 2014-10 as first complete month | ASSUMPTION conditional on Yahoo acceptance | follows from CONFIRMED 2014-09-17 start |
 | 1% monthly cross-check tolerance; 15 FX days floor | ASSUMPTION | hypotheses, measure in BTC-02 |
 | Bank of England / Bundesbank have no usable BTC series | ASSUMPTION | not searched |
+
+## 12. Measurement update (2026-10-21): Coin Metrics Community history
+
+Read-only probe `tools/btc_01_cm_probe.py` (workflow `.github/workflows/btc-01-cm-probe.yml`), GitHub runs [39568665021](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39568665021) and [39568933437](https://github.com/storagebirddrop/Goud-btc-dashboard/actions/runs/39568933437). Labels: CONFIRMED (measurement), reason NOT VERIFIED.
+
+- `GET /v4/timeseries/asset-metrics?assets=btc&metrics=ReferenceRateEUR|ReferenceRateUSD&frequency=1d&start_time=2009-01-01` returned 7 observations each, 2026-10-15..2026-10-21, all positive. Response sha256 `3886a514e117f149dbff335356fd642ba7c91ea29ade8089da2394ee5253282e` (EUR) and `1e1b1812f517369114ad983c49695c70b652ba8f62ccbac21d4f43c44f686032` (USD) for that day's response.
+- Window requests for 2014-10, 2016-01, 2020-01, 2024-01, 2026-01 and 2026-09 returned `{"data":[]}` for both metrics (HTTP 200).
+- The catalog request in the form used by the repo notes (`catalog/asset-metrics?assets=...`) returns HTTP 400 `unsupported_parameter 'assets'`; the catalog endpoint was therefore not used.
+- Consequence: with the free Community API, Coin Metrics reference rates give no usable history for the required 2014-10..2026-09 window. The statement in section 2 that Coin Metrics is the "independent price anchor" (DATA_01 matrix) cannot be fulfilled without a licensed or otherwise non-public history. The reason (tier restriction, retention window, API change) is NOT VERIFIED; it must be asked of Coin Metrics or read from the current terms before relying on any Coin Metrics history.
+- Effect on the proposal: V3 (native EUR, section 4) is only possible via exchange EUR data (Kraken `XBTEUR` daily files, Bitstamp `btceur`, both from roughly 2016/2013 onwards, NOT VERIFIED) and the cross-check for a USD-based V1 series needs an exchange-based or licensed second source. The preferred source and start month in section 1 are unchanged but the independent cross-check is now an open BTC-02 task, not a given.
 
 ## Samenvatting voor DECISIONS.md (Nederlands, PROPOSED, geen besluit)
 
