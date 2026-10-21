@@ -6,7 +6,7 @@ Status: RESEARCH ONLY. `ALLOWLIST` of `etl/hist_model.py` stays empty; nothing i
 
 | Target bundle | Status | Detail |
 |---|---|---|
-| (2) CBS monthly housing | **IMPLEMENTED** | `nl_house_avg_eur_1995_1999` (60 obs, fixture `cbs-1995-1999-i1.json`, flags `RETROSPECTIVE_EUR`, `NLG_ORIGINALS_NOT_OBTAINED`, break at 1995-01) and `nl_house_avg_eur_2000` (320 obs, `data/cbs-housing.csv`). Kept as two series, never spliced. 380 observations in total. Source hashes (file sha256) and vintage recorded; `python -m tools.hist_08_bundle cbs --out B.json` is byte-deterministic (bundle sha256 `ca298ca9...` on this HEAD) and `tools/hist_model_check.py` returns OK. |
+| (2) CBS monthly housing | **IMPLEMENTED** | `nl_house_avg_eur_1995_1999` (60 obs, fixture `cbs-1995-1999-i1.json`, flags `RETROSPECTIVE_EUR`, `NLG_ORIGINALS_NOT_OBTAINED`, break at 1995-01) and `nl_house_avg_eur_2000` (320 obs, `data/cbs-housing.csv`). Kept as two series, never spliced. 380 observations in total. Source hashes (file sha256) and vintage recorded; `python -m tools.hist_08_bundle cbs --cbs-csv data/cbs-housing.csv --out B.json` is byte-deterministic (bundle sha256 `ca298ca9...` on this HEAD) and `tools/hist_model_check.py` returns OK. |
 | generic adapter `source_series` | **IMPLEMENTED** | needs explicit provenance (source id, raw sha256, retrieval time, vintage) and a mandatory per-period quality function; rejects empty input, malformed periods, non-positive / non-finite / float values; a gap stays absent. |
 | derived grams / sats per house | **TESTED on synthetic inputs** | restricted to the actual overlap; currency mismatch (NLG gold vs EUR house) raises; sats need a release record naming the restricted series (gate otherwise denies). |
 

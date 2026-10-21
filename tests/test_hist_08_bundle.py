@@ -10,6 +10,7 @@ from etl import hist_model as hm
 from tools import hist_08_bundle as hb
 
 ROOT = Path(__file__).resolve().parents[1]
+CSV = ROOT / "data" / "cbs-housing.csv"
 RAW = "a" * 64
 STAMP = "2026-10-21T00:00:00+00:00"
 MONTHS = ["2020-01", "2020-02", "2020-03"]
@@ -26,7 +27,7 @@ def synth(sid, asset, values, ccy, unit, kind, **kw):
 
 
 def test_cbs_counts_and_ranges():
-    a, b = hb.cbs_1995_1999_series(), hb.cbs_2000_series()
+    a, b = hb.cbs_1995_1999_series(), hb.cbs_2000_series(CSV)
     assert [(o.period) for o in a.observations][::59] == ["1995-01", "1999-12"] and len(a.observations) == 60
     assert (b.observations[0].period, b.observations[-1].period, len(b.observations)) == ("2000-01", "2026-08", 320)
     assert hm.coverage_report(b)["missing"] == [] if "missing" in hm.coverage_report(b) else True
@@ -35,20 +36,20 @@ def test_cbs_counts_and_ranges():
 
 def test_cbs_segments_stay_separate_and_flagged():
     a = hb.cbs_1995_1999_series()
-    assert a.series_id != hb.cbs_2000_series().series_id
+    assert a.series_id != hb.cbs_2000_series(CSV).series_id
     assert "RETROSPECTIVE_EUR" in a.observations[0].flags and a.breaks[0].period == "1995-01"
 
 
 def test_bundle_valid_and_deterministic():
-    one = hb.bundle_bytes(hb.build_bundle([hb.cbs_1995_1999_series(), hb.cbs_2000_series()]))
-    two = hb.bundle_bytes(hb.build_bundle([hb.cbs_1995_1999_series(), hb.cbs_2000_series()]))
+    one = hb.bundle_bytes(hb.build_bundle([hb.cbs_1995_1999_series(), hb.cbs_2000_series(CSV)]))
+    two = hb.bundle_bytes(hb.build_bundle([hb.cbs_1995_1999_series(), hb.cbs_2000_series(CSV)]))
     assert one == two and hm.validate_bundle(json.loads(one)) == []
 
 
 def test_publication_allowlist_stays_empty_and_denies():
     assert hm.ALLOWLIST == ()
     with pytest.raises(hm.PublicationDenied):
-        hm.publication_gate([hb.cbs_2000_series()])
+        hm.publication_gate([hb.cbs_2000_series(CSV)])
 
 
 def test_existing_public_data_untouched():
@@ -118,7 +119,7 @@ def test_corrupted_fixture_and_csv(tmp_path):
 
 
 def test_source_revision_detected():
-    a = hb.cbs_2000_series()
+    a = hb.cbs_2000_series(CSV)
     b = replace(a, observations=tuple(replace(o, value=o.value + 1 if o.period == "2000-01" else o.value,
                                               vintage="csv:other") for o in a.observations))
     revs = hm.detect_revisions(a, b)

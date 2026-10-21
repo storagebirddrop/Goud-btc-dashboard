@@ -1,12 +1,12 @@
 """HIST-08: adapters from already pinned historical inputs into ARCH-02 (`hist-model/1`) research bundles.
 
-Research only. Nothing here publishes, touches `data/`, `frontend/` or `etl/static_export.py`, or fills
-a gap. Implemented against real committed inputs: CBS house price 2000-01.. (data/cbs-housing.csv) and the
+Research only. Nothing here publishes, touches public data, `frontend/` or `etl/static_export.py`, or fills
+a gap. Implemented against real committed inputs: CBS house price 2000-01.. (path passed in by the caller) and the
 pinned CBS 1995-1999 fixture. `source_series` is the generic adapter for verified monthly inputs (gold C1/C4,
 Bitstamp BTC/EUR, USD-derived BTC) that exist only inside read-only CI runs; it needs explicit provenance and
 an explicit per-period quality label, and never interpolates.
 
-CLI: python -m tools.hist_08_bundle cbs --out BUNDLE.json   (then: python tools/hist_model_check.py BUNDLE.json)
+CLI: python -m tools.hist_08_bundle cbs --cbs-csv CSV --out BUNDLE.json   (then: python tools/hist_model_check.py BUNDLE.json)
 """
 import argparse
 import csv
@@ -19,7 +19,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from etl import hist_model as hm  # noqa: E402
 
-CBS_CSV = ROOT / "data" / "cbs-housing.csv"
 CBS_FIXTURE = ROOT / "data" / "fixtures" / "cbs-1995-1999-i1.json"
 CBS_RETRIEVED = "2026-10-19T00:00:00+00:00"  # CBS snapshot date taken from the pinned provenance filename (20261019)
 CBS_DEFINITION = "cbs_avg_price_existing_dwellings_koopsom"
@@ -45,7 +44,7 @@ def source_series(series_id, asset_class, values, *, frequency, currency, unit, 
     return s
 
 
-def cbs_2000_series(csv_path=CBS_CSV):
+def cbs_2000_series(csv_path):
     path = Path(csv_path)
     values = {}
     with path.open(newline="", encoding="utf-8") as fh:
@@ -101,9 +100,10 @@ def bundle_bytes(bundle) -> bytes:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["cbs"])
+    ap.add_argument("--cbs-csv", required=True, help="committed CBS csv (read only; never written)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
-    bundle = build_bundle([cbs_1995_1999_series(), cbs_2000_series()])
+    bundle = build_bundle([cbs_1995_1999_series(), cbs_2000_series(args.cbs_csv)])
     raw = bundle_bytes(bundle)
     Path(args.out).write_bytes(raw)
     print(f"bundle {args.out}: {len(bundle['series'])} series, sha256 {hashlib.sha256(raw).hexdigest()}")
