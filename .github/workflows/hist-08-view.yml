@@ -1,0 +1,36 @@
+name: HIST-08 aggregate log viewer (temporary, read-only)
+# Re-prints parts of the aggregate-only log artifacts of a hist-08-btc-definition run so they can be read in
+# short job logs. Temporary helper; no data is created, committed or published.
+on:
+  push:
+    branches:
+      - hist-08-btc-definition
+    paths:
+      - '.github/workflows/hist-08-view.yml'
+permissions:
+  contents: read
+  actions: read
+env:
+  RUN_ID: '39602798866'
+jobs:
+  view:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        art: [hist-08-daily-aggregates]
+        part: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.art }}
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+          path: log
+      - name: Show part
+        run: |
+          cat log/*.log | sed 's/^[0-9T:.-]*Z //' | grep -v -E '^(##|\[|Post|Cleaning)' > all.txt
+          echo "LINES $(wc -l < all.txt) part ${{ matrix.part }}"
+          s=$(( (${{ matrix.part }} - 1) * 14 + 1 )); e=$(( ${{ matrix.part }} * 14 ))
+          sed -n "${s},${e}p" all.txt
