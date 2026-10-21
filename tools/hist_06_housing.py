@@ -454,25 +454,36 @@ def probe(cbs_csv, pins=None):
     acq.SOURCES.update(srcs)
     res = {"status": "RESEARCH_ONLY_NOT_APPROVED", "fetch": {}, "defects": [], "vm": {}, "text": {}, "cbs": {}}
     raws = {}
-    for sid in srcs:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(sid):
         try:
-            raw, rec = acq.fetch(sid)
+            return sid, acq.fetch(sid), None
         except acq.AcquisitionError as exc:
-            res["fetch"][sid] = {"status": "NOT_RETRIEVED", "error": str(exc)[:80]}
-            continue
-        if pins and sid in pins:
-            try:
-                verify_sha256(raw, pins[sid])
-            except HashMismatch as exc:
-                res["defects"].append({"source": sid, "error": str(exc)})
-        raws[sid] = raw
-        res["fetch"][sid] = {"status": "FETCHED", "bytes": rec["bytes"], "sha256": rec["sha256"], "kind": magic(raw)}
+            return sid, None, str(exc)[:80]
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for sid, got, err in ex.map(one, list(srcs)):
+            if err:
+                res["fetch"][sid] = {"status": "NOT_RETRIEVED", "error": err}
+                print(f"PROGRESS {sid} NOT_RETRIEVED {err}", flush=True)
+                continue
+            raw, rec = got
+            if pins and sid in pins:
+                try:
+                    verify_sha256(raw, pins[sid])
+                except HashMismatch as exc:
+                    res["defects"].append({"source": sid, "error": str(exc)})
+            raws[sid] = raw
+            res["fetch"][sid] = {"status": "FETCHED", "bytes": rec["bytes"], "sha256": rec["sha256"], "kind": magic(raw)}
+            print(f"PROGRESS {sid} FETCHED {rec['bytes']} {magic(raw)}", flush=True)
 
     # --- A. Vastgoedmarkt / NVM table (PDF text if a PDF is served, otherwise OCR of the page images; OCR = derived, unverified)
     for sid, raw in raws.items():
         if not sid.startswith("vm"):
             continue
         kind = magic(raw)
+        print(f"PROGRESS processing {sid} {kind}", flush=True)
         texts = {}
         if kind == "PDF":
             t = pdf_text(raw)
