@@ -403,6 +403,7 @@ def _yahoo(sym):
 # id -> (url, kind, group, label)
 DATA_CANDIDATES = {
     "shiller-ie-data": ("https://www.econ.yale.edu/~shiller/data/ie_data.xls", "xls", "shiller", "S&P Composite monthly, Shiller"),
+    "shiller-ie-data-wsimg": ("https://img1.wsimg.com/blobby/go/e5e77e0b-59d1-44d9-ab25-4763ac982e53/downloads/1449043e-a1ed-4e2e-8e9c-7b9a2a064493/ie_data.xls?ver=1791297298731", "xls", "shiller", "S&P Composite monthly, Shiller (link read from shillerdata.com)"),
     "fred-sp500": ("https://fred.stlouisfed.org/graph/fredgraph.csv?id=SP500", "csv", "fred", "FRED SP500 daily close, USD, price return"),
     "stooq-spx-d": ("https://stooq.com/q/d/l/?s=%5Espx&i=d", "csv", "stooq", "Stooq ^SPX daily"),
     "stooq-aex-d": ("https://stooq.com/q/d/l/?s=%5Eaex&i=d", "csv", "stooq", "Stooq ^AEX daily"),
@@ -415,9 +416,9 @@ DATA_CANDIDATES = {
 }
 # Official documents: (url, kind, keyword list)
 DOC_CANDIDATES = {
-    "spdji-sp500-through-history": ("https://spglobal.com/spdji/en/documents/campaigns/sp-500-through-history-202301.pdf", "pdf",
+    "spdji-sp500-through-history": ("https://www.spglobal.com/spdji/en/documents/campaigns/sp-500-through-history-202301.pdf", "pdf",
                                     ["1957", "1926", "90 stocks", "back-test", "base", "1941"]),
-    "spdji-us-methodology-page": ("https://spglobal.com/spdji/en/methodology/article/sp-us-indices-methodology/", "html",
+    "spdji-us-methodology-page": ("https://www.spglobal.com/spdji/en/methodology/article/sp-us-indices-methodology/", "html",
                                   ["float", "base value", "1941", "total return", "back-test"]),
     "spdji-sp500-page": ("https://www.spglobal.com/spdji/en/indices/equity/sp-500/", "html",
                          ["launch", "back-test", "total return", "net total return", "1957"]),
@@ -429,10 +430,9 @@ DOC_CANDIDATES = {
                                          ["1983", "100", "base", "guilder", "euro"]),
     "euronext-index-data-use": ("https://live.euronext.com/en/products/indices/data-use", "html",
                                 ["informational", "reserves all rights", "licen", "redistribut", "unauthori"]),
+    "shiller-home": ("https://shillerdata.com/", "html", ["ie_data", "Data", "monthly", "average", "S&P"]),
     "spdji-terms-of-use": ("https://www.spglobal.com/spdji/en/terms-of-use/", "html",
                            ["personal", "non-commercial", "redistribute", "copyright", "Index Data"]),
-    "euronext-aex-2019-factsheet": ("https://www.euronext.com/sites/www.euronext.com/files/aex_20190329.pdf", "pdf",
-                                    ["introduced", "1999", "2010", "45.3", "gross", "net"]),
 }
 
 
@@ -543,6 +543,7 @@ def probe_data(sid, fetcher, housing, locator=None):
     except (SourceFormatError, KeyError, ValueError) as exc:
         rec["status"] = "FETCHED_NOT_PARSEABLE"
         rec["error"] = str(exc)[:160]
+        rec["html_head"] = " ".join(html_to_text(raw).split()[:40]) if raw[:15].lower().startswith(b"<!doctype html") else None
         rec["head_is_text"] = raw[:40].decode("utf-8", errors="replace").replace("\n", " ")[:40] if group in ("stooq", "fred") else None
         return rec
     freq = "monthly" if group == "shiller" else "daily"
@@ -578,6 +579,9 @@ def probe_doc(sid, fetcher, locator=None):
         rec["error"] = str(exc)
         return rec
     rec["quotes"] = quotes(text, kws)
+    if kind == "html":
+        rec["hrefs"] = sorted(set(re.findall(r'href="([^"]*ie_data[^"]*)"', raw.decode("utf-8", errors="replace"))))[:3]
+    rec["head"] = " ".join(text.split()[:50])
     rec["text_chars"] = len(text)
     return rec
 

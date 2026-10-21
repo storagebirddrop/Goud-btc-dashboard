@@ -160,3 +160,11 @@ def test_cli_digest_roundtrip(tmp_path, capsys):
     p.write_text(json.dumps(doc))
     assert h.main(["digest", str(p)]) == 0
     assert "status=X" in capsys.readouterr().out
+
+
+def test_illustrative_secondary_is_labelled_and_derived():
+    cbs = S("c", "EUR", "mean", "A", [("1995", 93750), ("1999", 144778)])
+    r = h.illustrative_secondary(cbs)
+    assert set(r) == {"esb_nvm_median_1995", "esb_nvm_median_1999", "vm_quoted_1995"}
+    assert r["vm_quoted_1995"]["abs_diff"] == "11250"
+    assert r["esb_nvm_median_1995"]["nvm_median_eur_derived"] == "101193"
