@@ -578,6 +578,8 @@ def probe_doc(sid, fetcher, locator=None):
         rec["error"] = str(exc)
         return rec
     rec["quotes"] = quotes(text, kws)
+    if kind == "html":
+        rec["hrefs"] = sorted(set(re.findall(r'href="([^"]*ie_data[^"]*)"', raw.decode("utf-8", errors="replace"))))[:3]
     rec["head"] = " ".join(text.split()[:50])
     rec["text_chars"] = len(text)
     return rec

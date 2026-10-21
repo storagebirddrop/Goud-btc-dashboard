@@ -46,7 +46,7 @@ jobs:
                   for b, v in (r.get("vs_cbs_hpi") or {}).items():
                       print("   vsHPI", b, v.get("overlap"), v.get("baseline"), v.get("n"), v.get("error"), v.get("relative_min"), v.get("relative_max"), v.get("sha256"))
               for r in d["docs"]:
-                  print("DOC", r["id"], r["status"], r.get("error", ""), r.get("locate"), r.get("text_chars"), "HEAD:", r.get("head"))
+                  print("DOC", r["id"], r["status"], r.get("error", ""), r.get("locate"), r.get("text_chars"), "HREFS:", r.get("hrefs"), "HEAD:", r.get("head"))
                   for k, qs in (r.get("quotes") or {}).items():
                       for q in qs:
                           print("   Q", k, "|", q)
