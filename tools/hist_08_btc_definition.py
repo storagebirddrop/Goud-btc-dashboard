@@ -25,6 +25,7 @@ USD to EUR constructions (daily ECB EXR.D.USD.EUR.SP00.A = USD per EUR, no weeke
 import calendar
 import csv
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -417,16 +418,19 @@ def acquire_trades(P, name):
     print(f"CDX {name}: captures={len(caps)} newest={caps[-1] if caps else None}")
     for ts, _, _ in list(reversed(caps))[:4]:
         url = f"https://web.archive.org/web/{ts}id_/http://{origin}"
-        run = P.Run(f"bitcoincharts {name}", url)
-        try:
-            gen, info = P.stream_trades(run, url)
-        except Exception as e:
-            print(f"ARCHIVE {name} {url} ERROR {type(e).__name__} {str(e)[:120]}")
-            continue
-        if gen is None:
-            print(f"ARCHIVE {name} {url} -> {info}")
-            continue
-        return gen, run, info
+        for attempt in range(3):  # transient 5xx from the Internet Archive: retry the SAME capture first
+            run = P.Run(f"bitcoincharts {name}", url)
+            try:
+                gen, info = P.stream_trades(run, url)
+            except Exception as e:
+                print(f"ARCHIVE {name} {url} ERROR {type(e).__name__} {str(e)[:120]}")
+                gen, info = None, {"status": 0}
+            if gen is not None:
+                return gen, run, info
+            print(f"ARCHIVE {name} {url} attempt={attempt + 1} -> {info}")
+            if info.get("status", 0) and info["status"] < 500:
+                break
+            time.sleep(5 * (attempt + 1))
     return None, None, None
 
 
