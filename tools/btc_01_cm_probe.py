@@ -23,7 +23,9 @@ METRICS = ("ReferenceRateUSD", "ReferenceRateEUR")
 
 def get(session, url, params):
     r = session.get(url, params=params, timeout=60)
-    r.raise_for_status()
+    if r.status_code >= 400:
+        print(f"HTTP {r.status_code} for {r.url}: {r.text[:400]}")
+        r.raise_for_status()
     return r.content
 
 
@@ -83,17 +85,18 @@ def coverage(rows, label, first_month):
 def main():
     s = requests.Session()
     s.headers["User-Agent"] = "btc-01-probe/1 (read-only research)"
-    cat = catalog(s)
-    if not cat:
-        print("FAIL unexpected catalog structure")
-        sys.exit(1)
+    try:
+        catalog(s)  # informational only; the series themselves decide first/last dates below
+    except Exception as exc:  # noqa: BLE001
+        print(f"catalog unavailable ({exc}); continuing with the timeseries endpoint")
     today = date.today().isoformat()
     for metric in METRICS:
-        lo = cat.get(metric, (None, None))[0]
-        if not lo:
-            print(f"{metric}: not in catalog")
+        rows = daily(s, metric, "2009-01-01", today)
+        if not rows:
+            print(f"{metric}: no observations returned")
             continue
-        rows = daily(s, metric, lo[:10], today)
+        lo = min(rows)
+        print(f"SERIES {metric}: first {lo}, last {max(rows)}, observations {len(rows)}")
         first = (int(lo[:4]), int(lo[5:7]))
         coverage(rows, metric, first)
         for d in ("2014-09-17", "2014-10-01", "2016-01-01", "2020-01-01"):
