@@ -351,6 +351,7 @@ def test_no_network_and_all_sources_unreachable_is_incomplete(monkeypatch):
 
     monkeypatch.setattr(socket.socket, "connect", boom)
     monkeypatch.setattr(acq, "fetch", unreachable)
+    monkeypatch.setattr(v.time, "sleep", lambda s: None)
     R_, rows = v.run(fetch_fn=unreachable)
     assert R_["status"] == "INCOMPLETE" and rows == []
     assert R_["sources"] == {} or set(R_["sources"]) <= {"fixture"}
