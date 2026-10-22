@@ -18,8 +18,13 @@
 export type SeriesKey='house_eur'|'hpi'|'hpi_index'|'gold_index'|'gold_grams_per_house'|'sat_per_house';
 // sat_per_house is NOT part of the public JSON contract (etl/static_export.py does not emit it); the optional
 // field only lets the registry type-check until a separate decision adds it.
-export type Point={period:string;gold_eur_oz:number|null;house_eur:number|null;hpi:number|null;gold_grams_per_house:number|null;gold_index:number|null;hpi_index:number|null;sat_per_house?:number|null};
-export type Kind='eur'|'index'|'gram'|'sat';
+export type Point={period:string;gold_eur_oz:number|null;house_eur:number|null;hpi:number|null;gold_grams_per_house:number|null;gold_index:number|null;hpi_index:number|null;sat_per_house?:number|null;btc_per_house?:number|null;btc_meta?:BtcMeta|null};
+// btc-monthly/1 (BTC-06C) types. INERT: no registry entry, no view and no fetch uses them; the public JSON carries no BTC field. The
+// series stay 'withheld'; a field or a flag in loaded data never makes them visible (see visibleKeys).
+export type BtcQuality='Q3'|'Q2'|'Q1_CANDIDATE';
+export type BtcStatus='PUBLISHED'|'WITHHELD'|'MISSING';
+export type BtcMeta={quality:BtcQuality|null;status:BtcStatus;missing_reason:string|null;flags:string[]};
+export type Kind='eur'|'index'|'gram'|'sat'|'btc';
 export type Category='nominal'|'index'|'alternative';
 export type Publication='open'|'gated'|'withheld';
 export type BaseId='2000'|'2020';
@@ -136,6 +141,18 @@ export const GOLD_METHOD_TEXT:string[]=[
  'Gram goud per woning = CBS-gemiddelde verkoopprijs x 31,1034768 gram per troy ounce, gedeeld door de goudprijs in euro per troy ounce.'
 ];
 export const GOLD_BREAK_TEXT='Definitiewijziging juni 2025: de World Bank-goudprijs (GOLD) gebruikte tot en met mei 2025 de London afternoon fixing (99,5% goud) en vanaf juni 2025 gemiddelde dagelijkse spotprijzen. De reeks is daardoor niet volledig benchmarkhomogeen.';
+// ---- Future BTC view texts (BTC-06C; NOT rendered, NOT imported by the interface). Nothing here claims a licence or an approval. ----
+export const BTC_QUALITY_TEXT:Record<BtcQuality,string>={Q3:'Q3: vroege markt met beperkte liquiditeit en reconstructieprovenance; indicatief en niet numeriek gepubliceerd.',Q2:'Q2: afgeleid uit USD-referentieprijzen en de ECB-koers; voorlopige kwaliteitsindeling.',Q1_CANDIDATE:'Q1-kandidaat: sterkste bewijsdekking binnen dit onderzoek; nog niet als definitief gekwalificeerd.'};
+export const BTC_REASON_TEXT:Record<string,string>={RESEARCH_ONLY_HOLD:'Niet gepubliceerd: bewust achtergehouden maand (onbewezen prijsversheid).',BEFORE_SUPPORTED_MONTH:'Geen waarde: voor augustus 2010 buiten de gevalideerde methodedekking.',NOT_AUTHORIZED_PERIOD:'Niet gepubliceerd: buiten de geautoriseerde periode.',PUBLICATION_NOT_AUTHORIZED:'Niet gepubliceerd: nog niet geautoriseerd.',RIGHTS_NOT_CLEARED:'Niet gepubliceerd: bronvoorwaarden nog niet afgerond.',INCOMPLETE_PERIOD:'Geen waarde: onvolledige brongegevens in deze maand.',SOURCE_NOT_PUBLISHED:'Geen waarde: bron nog niet verschenen.',SOURCE_UNAVAILABLE:'Geen waarde: bron niet beschikbaar.',FAILED_VALIDATION:'Geen waarde: validatie niet geslaagd.'};
+export const BTC_SOURCE_LINKS:SourceLink[]=[{name:'Coin Metrics Community',detail:'PriceUSD, dagelijkse BTC-referentieprijs in USD (CC BY-NC 4.0)',url:'https://docs.coinmetrics.io/',linkText:'docs.coinmetrics.io'},GOLD_SOURCE_LINKS[1],GOLD_SOURCE_LINKS[2]];
+export const BTC_LICENSE_URL='https://creativecommons.org/licenses/by-nc/4.0/';
+export const BTC_ATTRIBUTION_TEXT='Coin Metrics Community, Bitcoin PriceUSD (dagelijkse USD-referentiewaarden; CC BY-NC 4.0), ECB EXR.D.USD.EUR.SP00.A en CBS StatLine 85773NED. Maandgemiddelden, USD/EUR-omrekening en BTC/satoshi per gemiddeld verkochte woning zijn eigen berekeningen. De BTC/EUR-maandreferentie is USD-afgeleid en geen rechtstreeks geobserveerde EUR-handelsprijs. Geen bronorganisatie onderschrijft deze toepassing.';
+export const BTC_DERIVED_TEXT='De BTC-prijs in euro is afgeleid uit een USD-referentieprijs en de ECB-koers; het is geen native europrijs en geen beursslotkoers.';
+export const BTC_METHOD_TEXT:string[]=['BTC-prijs in euro = maandgemiddelde van de dagelijkse Coin Metrics-prijs in USD, gedeeld door het maandgemiddelde van de ECB-koers in USD per EUR.','BTC per woning = CBS-gemiddelde verkoopprijs gedeeld door die BTC-prijs in euro; satoshi per woning = BTC per woning x 100.000.000.','Alleen volledige kalendermaanden (UTC); ontbrekende maanden blijven leeg en worden niet aangevuld of geïnterpoleerd.'];
+export const BTC_INTERPRETATION_TEXT='Een daling betekent minder BTC per gemiddeld verkochte woning volgens deze referentiemethode; dit zegt niet dat een identieke woning goedkoper is geworden. De teller is de nominale CBS-gemiddelde verkoopprijs in euro en hangt af van de samenstelling van de verkochte woningen.';
+export const BTC_HOLD_TEXT='Juni 2011 is bewust niet beschikbaar; de lijn wordt niet over deze maand verbonden.';
+// Only a month the contract marks PUBLISHED yields a value; a number without that status is never shown.
+export function btcMonthValue(p:Point):number|null{return p.btc_meta?.status==='PUBLISHED'&&ok(p.btc_per_house)?p.btc_per_house:null}
 export const isIsoDate=(s:string):boolean=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&(()=>{const t=new Date(`${s}T00:00:00Z`);return !Number.isNaN(t.getTime())&&t.toISOString().slice(0,10)===s})();
 export function viewHasGold(keys:SeriesKey[]):boolean{return keys.some(k=>SERIES[k].gold===true)}
 // First and last month with a finite value over all gold series of the view, computed from the loaded rows.
