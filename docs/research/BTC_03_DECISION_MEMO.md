@@ -1,6 +1,23 @@
-# BTC-03 methodology decision memo for Project Control (all PROPOSED, nothing decided)
+# BTC-03 methodology decision memo for Project Control (research decisions recorded 2026-10-22)
 
-Research only. Nothing below is accepted; no Bitcoin or satoshi data is published; ADR-004 (BTC part), ADR-007..010 stay PROPOSED. Evidence and numbers: `BTC_03_HOUSING_BTC_SAT.md`.
+**Scope: RESEARCH ONLY; NO BTC OR SATOSHI PUBLICATION.** Project Control accepted the research choices in the decision record below. This does **not** accept or amend ADR-004 (BTC part) or ADR-007..010, change a public dataset, authorize PR merge, or establish third-party redistribution rights. The original option matrix follows for audit provenance; its "Needed" column documents questions at the time of proposal, not the present status. Evidence: `BTC_03_HOUSING_BTC_SAT.md`.
+
+## Project Control research decision record — 2026-10-22
+
+| Item | Decision | Status |
+|---|---|---|
+| 1 — A1 | Arithmetic mean of daily UTC closes **only for complete calendar months**; absent days/months stay null. Month-end close is not the primary price. | ACCEPTED — BTC-03 research only |
+| 2 — C1 | For USD-derived EUR prices, ratio of complete-month mean BTC/USD to valid-day monthly-mean ECB USD/EUR; do not forward-fill weekends or holidays. | ACCEPTED — BTC-03 research only |
+| 3 — Q1 | Bitstamp EUR-native from 2016-05; separate primary-quality research segment, not automatically publishable. | ACCEPTED — BTC-03 research only |
+| 3 — Q2 | Bitstamp USD-derived EUR from **2013-07** under the proposed sustained >= USD 1 million average daily notional rule; 2013-04..2013-06 remain Q3 pending any future reassessment. | ACCEPTED AS A RESEARCH CLASSIFICATION; USD 1m liquidity threshold remains a provisional heuristic, not a validated general market-liquidity standard |
+| 3/4 — Q3 | Earlier Mt. Gox and Bitstamp months stay individually identified Q3 research segments; archive provenance, gaps and venue effects visible; never splice. | ACCEPTED — BTC-03 research only |
+| 5 — NVM | No NVM/BTC or NVM/satoshi series: NVM ends in 2000-H2, BTC price begins in 2010. Half-year BTC aggregation remains **DEFERRED**, not adopted as policy. | ACCEPTED scope boundary |
+| 6 — tolerances | 1% investigation / 5% failure and venue-transition policy require further review; no blanket automated cross-venue failure rule adopted. | PROPOSED |
+| 7 — storage | Retain source-window pins and derived hash as research evidence. Raw-vintage private storage and long-term reproducibility remain unresolved; hashes are not archives. | PINNING IMPLEMENTED; storage decision DEFERRED |
+| 8 — rights | No additional rights or raw-byte retention authorized. Evaluate source-specific terms before any public release. | UNRESOLVED |
+| 9 — publication | No public Bitcoin/satoshi series or frontend changes; existing publication allowlist remains empty. | WITHHELD — no authorization |
+
+## Original proposal matrix (preserved for traceability)
 
 | # | Decision | Options | Quantified impact | Recommendation | Needed |
 |---|---|---|---|---|---|
