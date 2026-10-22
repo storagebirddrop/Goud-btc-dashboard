@@ -24,7 +24,9 @@ EXPECTED = {
     "hpi_index": ("index", "index", "open", "2000", "indexpunten, januari 2000 = 100"),
     "gold_index": ("index", "index", "gated", "2000", "indexpunten, januari 2000 = 100"),
     "gold_grams_per_house": ("alternative", "gram", "gated", None, "gram"),
-    "sat_per_house": ("alternative", "sat", "withheld", None, "satoshi"),
+    # BTC-07B: Bitcoin series are 'pinned': visible only for exactly approved served bytes (btc.ts BTC_APPROVED_COMPOSITE_SHA256, empty)
+    "btc_per_house": ("alternative", "btc", "pinned", None, "BTC"),
+    "sat_per_house": ("alternative", "sat", "pinned", None, "satoshi"),
 }
 
 
@@ -75,12 +77,13 @@ def test_index_base_matches_the_unit_text():
 
 def test_withheld_series_is_never_offered_in_cards():
     text = SERIES_TS.read_text(encoding="utf-8")
-    withheld = {k for k, e in _registry().items() if e["publication"] == "withheld"}
-    assert withheld == {"sat_per_house"}
+    withheld = {k for k, e in _registry().items() if e["publication"] in ("withheld", "pinned")}
+    assert withheld == {"btc_per_house", "sat_per_house"}
     for const in ("CARD_KEYS",):
         line = re.search(rf"export const {const}:SeriesKey\[\]=\[([^\]]*)\]", text).group(1)
         assert not withheld & set(re.findall(r"'(\w+)'", line)), const
     assert "isWithheld(k)" in text and "!isWithheld(k)&&" in text, "visibleKeys must exclude withheld series"
+    assert "SERIES[k].publication!=='pinned'||pinned" in text, "visibleKeys must exclude pinned series unless the caller passes the pin result"
 
 
 def test_sat_per_house_is_not_in_the_public_json_contract():
@@ -91,7 +94,7 @@ def test_sat_per_house_is_not_in_the_public_json_contract():
 
 def test_registry_keys_match_the_json_columns_and_raw_gold_is_not_registered():
     row = json.loads(MONTHLY.read_text(encoding="utf-8"))["data"][0]
-    registered = set(_registry()) - {"sat_per_house"}
+    registered = set(_registry()) - {"sat_per_house", "btc_per_house"}
     assert registered <= set(row)
     assert "gold_eur_oz" not in _registry()
     assert "gold_eur_oz" not in MAIN_TSX.read_text(encoding="utf-8").replace("gold_eur_oz:number|null", "")
@@ -127,7 +130,7 @@ def test_research_artifacts_stay_out_of_the_frontend():
 
 def test_main_uses_the_registry_and_keeps_its_functionality():
     text = MAIN_TSX.read_text(encoding="utf-8")
-    assert "from './series'" in text and "visibleKeys(data)" in text
+    assert "from './series'" in text and "visibleKeys(data,!!btc)" in text
     assert "const SERIES" not in text, "the registry lives in series.ts only"
     for needle in ("id=\"h-cards\"", "id=\"h-chart\"", "Bronnen &amp; methode", "Toon als tabel",
                    "'Alles'", "'Sinds 2008'", "'Laatste 10 jaar'", "<Chart", "<Card", "baseLine={curView.baseLine}",

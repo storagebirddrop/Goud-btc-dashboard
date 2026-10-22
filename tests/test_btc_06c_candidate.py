@@ -612,13 +612,16 @@ def test_contract_constants_cannot_drift_from_the_research_method():
 
 
 # ---------------------------------------------------------------- frontend (static; browser end-to-end NOT executed) and governance
-def test_frontend_keeps_gaps_and_stays_inactive():
+def test_frontend_keeps_gaps_and_is_gated_by_the_empty_approval_pin():
+    # BTC-07B: the Bitcoin logic lives in btc.ts and is shown only for exactly approved bytes (pin list empty)
     main = (ROOT / "frontend/src/main.tsx").read_text(encoding="utf-8")
-    assert "connectNulls={false}" in main or "connectNulls" in main
+    assert "connectNulls={false}" in main
+    btc = (ROOT / "frontend/src/btc.ts").read_text(encoding="utf-8")
+    assert "export type BtcStatus='PUBLISHED'|'WITHHELD'|'MISSING'" in btc and "m.status!=='PUBLISHED'" in btc
+    assert "export const BTC_APPROVED_COMPOSITE_SHA256:readonly string[]=[];" in btc
+    assert "nf8" in main and "maximumFractionDigits:8" in main
     series = (ROOT / "frontend/src/series.ts").read_text(encoding="utf-8")
-    assert "export type BtcStatus='PUBLISHED'|'WITHHELD'|'MISSING'" in series and "btc_meta?:BtcMeta" in series
-    assert "p.btc_meta?.status==='PUBLISHED'" in series and "nf8" in main and "maximumFractionDigits:8" in main
-    assert "sat_per_house:{label:'Satoshi per woning'" in series and "publication:'withheld'" in series
+    assert "sat_per_house:{label:'Satoshi per woning'" in series and "publication:'pinned'" in series
 
 
 def test_governance_records_the_accepted_documents_without_inventing_a_release():

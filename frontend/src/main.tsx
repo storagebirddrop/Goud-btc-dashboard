@@ -5,6 +5,8 @@ import './style.css';
 
 import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRange,sliceRange,viewAnnotations,viewHasGold,goldPeriod,GOLD_SOURCE_ASOF,GOLD_SOURCE_LINKS,GOLD_OWN_CALC_TEXT,GOLD_METHOD_TEXT,GOLD_BREAK_TEXT,METHODOLOGY_URL,MONTH_RE,ok} from './series';
 import type {SeriesKey,Point,Kind,Range,PresetId} from './series';
+import {activateBtc,applyBtc,btcNote,btcDefaultFrom,btcQualitiesIn,btcMissingSummary,BTC_QUALITY_TEXT,BTC_SOURCE_LINKS,BTC_LICENSE_URL,BTC_ATTRIBUTION_TEXT,BTC_DERIVED_TEXT,BTC_METHOD_TEXT,BTC_INTERPRETATION_TEXT,BTC_HOLD_TEXT,BTC_HEADING_TEXT,BTC_NOTE_HEADER} from './btc';
+import type {BtcRoot} from './btc';
 
 const PRESETS:{id:PresetId;label:string}[]=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}];
 const WARNING='De reeks toont de prijs van een gemiddeld verkochte bestaande koopwoning uitgedrukt in de gekozen rekeneenheid. De mix van verkochte woningen kan veranderen; de reeks meet geen constante woningkwaliteit of algemene betaalbaarheid. Dit is geen beleggingsadvies.';
@@ -13,9 +15,13 @@ const MIX_HINT='De verandering van de gemiddelde verkoopprijs weerspiegelt niet 
 const nf0=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:0});
 const nf1=new Intl.NumberFormat('nl-NL',{minimumFractionDigits:1,maximumFractionDigits:1});
 const nf8=new Intl.NumberFormat('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:8});
+const nf2=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:2});
 const euro=new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',maximumFractionDigits:0});
 const pct=new Intl.NumberFormat('nl-NL',{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1,signDisplay:'exceptZero'});
 function fmt(kind:Kind,v:number){return kind==='eur'?euro.format(v):kind==='gram'?`${nf0.format(v)} g`:kind==='sat'?`${nf0.format(v)} sat`:kind==='btc'?`${nf8.format(v)} BTC`:nf1.format(v)}
+async function sha256Hex(buf:ArrayBuffer):Promise<string|null>{
+ try{const d=await crypto.subtle.digest('SHA-256',buf);return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return null}
+}
 function month(p:string){const [y,m]=p.split('-').map(Number);return new Date(Date.UTC(y,m-1,1)).toLocaleDateString('nl-NL',{month:'long',year:'numeric',timeZone:'UTC'})}
 function useDark(){
  const q='(prefers-color-scheme: dark)';
@@ -53,6 +59,22 @@ function Card({k,rows}:{k:SeriesKey;rows:Point[]}){
 }
 
 function asOfText(){const [y,m,d]=GOLD_SOURCE_ASOF.date.split('-').map(Number);return new Date(Date.UTC(y,m-1,d)).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'})}
+function BtcSources({rows,root}:{rows:Point[];root:BtcRoot}){
+ const qs=btcQualitiesIn(rows,root),gaps=btcMissingSummary(rows,root);
+ return <aside className="gold-src btc-src" aria-labelledby="h-btc-src">
+  <h3 id="h-btc-src">{BTC_HEADING_TEXT}</h3>
+  <ul>{BTC_SOURCE_LINKS.map(l=><li key={l.url}>{l.name}, {l.detail}: <a href={l.url}>{l.linkText}</a></li>)}</ul>
+  <p>{BTC_ATTRIBUTION_TEXT} Licentie: <a href={BTC_LICENSE_URL}>CC BY-NC 4.0</a>.</p>
+  <p>{BTC_DERIVED_TEXT}</p>
+  <p><strong>Methode.</strong> {BTC_METHOD_TEXT.join(' ')} <a href={METHODOLOGY_URL}>Volledige methodologie</a></p>
+  <p>{BTC_INTERPRETATION_TEXT}</p>
+  <p>Release: <span data-btc-release>{root.release.id}</span>, besluit {root.release.decision_ref}. Geautoriseerde periode: {month(root.coverage.authorized_from)} t/m {month(root.coverage.authorized_through)}.</p>
+  {qs.length>0&&<ul className="btc-quality" aria-label="Kwaliteit per periode">{qs.map(q=><li key={q} data-q={q}>{BTC_QUALITY_TEXT[q]}</li>)}</ul>}
+  {gaps.length>0&&<ul className="btc-gaps" aria-label="Maanden zonder waarde">{gaps.map(g=><li key={g.reason} data-reason={g.reason}>{g.text} ({g.months.length===1?month(g.months[0]):`${g.months.length} maanden`})</li>)}</ul>}
+  {gaps.some(g=>g.reason==='RESEARCH_ONLY_HOLD')&&<p className="gold-break">{BTC_HOLD_TEXT}</p>}
+  <p className="gold-break">Dit is geen beleggingsadvies en geen koersvoorspelling.</p>
+ </aside>
+}
 function GoldSources({data,keys}:{data:Point[];keys:SeriesKey[]}){
  const per=goldPeriod(data,keys);
  return <aside className="gold-src" aria-labelledby="h-gold-src">
@@ -65,10 +87,11 @@ function GoldSources({data,keys}:{data:Point[];keys:SeriesKey[]}){
  </aside>
 }
 
-type TipProps={active?:boolean;payload?:{dataKey:string;value:number}[];label?:string};
-function Tip({active,payload,label}:TipProps){
+type TipProps={active?:boolean;payload?:{dataKey:string;value:number}[];label?:string;rows?:Point[]};
+function Tip({active,payload,label,rows}:TipProps){
  if(!active||!payload?.length||!label)return null;
- return <div className="tip"><strong>{month(label)}</strong>{payload.filter(p=>ok(p.value)).map(p=>{const s=SERIES[p.dataKey as SeriesKey];return <div key={p.dataKey}>{s.short}: <b>{fmt(s.kind,p.value)}</b>{s.kind==='index'&&<small> ({s.unit})</small>}</div>})}</div>
+ const q=rows?.find(r=>r.period===label)?.btc_meta?.quality;
+ return <div className="tip"><strong>{month(label)}</strong>{payload.filter(p=>ok(p.value)).map(p=>{const s=SERIES[p.dataKey as SeriesKey];return <div key={p.dataKey}>{s.short}: <b>{fmt(s.kind,p.value)}</b>{s.kind==='index'&&<small> ({s.unit})</small>}{(s.kind==='btc'||s.kind==='sat')&&q&&<small> ({q==='Q1_CANDIDATE'?'Q1-kandidaat':q})</small>}</div>})}</div>
 }
 
 function isoDot(rows:Point[],k:SeriesKey,color:string){
@@ -87,8 +110,8 @@ function Chart({rows,keys,dark,ariaLabel,yLabel,baseLine,height}:{rows:Point[];k
    <LineChart data={rows} accessibilityLayer margin={{top:8,right:16,bottom:4,left:4}}>
     <CartesianGrid stroke={grid} vertical={false}/>
     <XAxis dataKey="period" ticks={ticks} interval={0} tickFormatter={(p:string)=>p.slice(0,4)} tick={{fill:axis,fontSize:12}} stroke={grid} tickMargin={6}/>
-    <YAxis width={kind==='eur'?78:48} domain={['auto','auto']} tickFormatter={(v:number)=>kind==='eur'?euro.format(v):nf0.format(v)} tick={{fill:axis,fontSize:12}} stroke={grid}/>
-    <Tooltip content={<Tip/>} cursor={{stroke:axis,strokeDasharray:'3 3'}}/>
+    <YAxis width={kind==='eur'?78:kind==='btc'||kind==='sat'?64:48} domain={['auto','auto']} tickFormatter={(v:number)=>kind==='eur'?euro.format(v):kind==='btc'?nf2.format(v):nf0.format(v)} tick={{fill:axis,fontSize:12}} stroke={grid}/>
+    <Tooltip content={<Tip rows={rows}/>} cursor={{stroke:axis,strokeDasharray:'3 3'}}/>
     {keys.length>1&&<Legend verticalAlign="top" height={30} formatter={(_v,e)=>{const k=(e as {dataKey?:string}).dataKey as SeriesKey;return <span style={{color:axis}}>{SERIES[k].short}</span>}}/>}
     {baseLine&&<ReferenceLine y={100} stroke={axis} strokeDasharray="2 4" label={{value:'basis = 100',position:'insideBottomRight',fill:axis,fontSize:11}}/>}
     {notes.map(a=><ReferenceLine key={a.period+a.label} x={a.period} stroke={axis} strokeDasharray="4 3" label={{value:a.label,position:'insideTopLeft',fill:axis,fontSize:11}}/>)}
@@ -114,6 +137,7 @@ function MonthField({id,label,value,min,max,onCommit}:{id:string;label:string;va
 
 function App(){
  const [data,setData]=React.useState<Point[]>([]);
+ const [btc,setBtc]=React.useState<BtcRoot|null>(null);
  const [error,setError]=React.useState('');
  const [loading,setLoading]=React.useState(true);
  const [range,setRange]=React.useState<Range|null>(null);
@@ -123,12 +147,13 @@ function App(){
  const [table,setTable]=React.useState(false);
  const dark=useDark();
  const narrow=useNarrow();
- React.useEffect(()=>{fetch('/data/monthly.json').then(r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}).then((j:{data:Point[]}|null)=>{if(!j||!Array.isArray(j.data))throw Error('Ongeldig dataformaat');const rows=j.data.filter(p=>p&&typeof p.period==='string'&&/^\d{4}-\d{2}$/.test(p.period));if(rows.length!==j.data.length)throw Error('Ongeldig dataformaat (periode)');setData(rows)}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
+ React.useEffect(()=>{fetch('/data/monthly.json').then(async r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);const buf=await r.arrayBuffer();return {sha:await sha256Hex(buf),j:JSON.parse(new TextDecoder().decode(buf)) as {data:Point[]}|null}}).then(({sha,j})=>{if(!j||!Array.isArray(j.data))throw Error('Ongeldig dataformaat');const rows=j.data.filter(p=>p&&typeof p.period==='string'&&/^\d{4}-\d{2}$/.test(p.period));if(rows.length!==j.data.length)throw Error('Ongeldig dataformaat (periode)');const root=activateBtc(sha,j);setBtc(root);setData(applyBtc(rows,root))}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
 
- const avail=React.useMemo(()=>new Set<SeriesKey>(visibleKeys(data)),[data]);
+ const avail=React.useMemo(()=>new Set<SeriesKey>(visibleKeys(data,!!btc)),[data,btc]);
  const periods=React.useMemo(()=>data.map(p=>p.period),[data]);
  const full=periods.length?{from:periods[0],to:periods[periods.length-1]}:null;
- const eff=(range&&clampRange(range,periods))||full;
+ const isBtcView=!!btc&&(viewId==='btc_per_house'||viewId==='sat_per_house');
+ const eff=(range&&clampRange(range,periods))||(isBtcView&&full?{from:btcDefaultFrom(full.from,btc),to:full.to}:full);
  const rows=eff?sliceRange(data,eff):[];
  const views=chartViews([...avail]);
  const cats=CATEGORIES.filter(c=>views.some(v=>v.category===c.id));
@@ -137,8 +162,9 @@ function App(){
  const curView=catViews.find(v=>v.id===viewId)??catViews[0];
  const cardKeys=CARD_KEYS.filter(k=>avail.has(k)&&rows.some(p=>ok(p[k])));
  const hasGold=[...avail].some(k=>SERIES[k].gold);
- const missing=['reële EUR',...(hasGold?[]:['goud']),'Bitcoin'].join(', ').replace(/, ([^,]*)$/,' en $1');
+ const missing=['reële EUR',...(hasGold?[]:['goud']),...(btc?[]:['Bitcoin'])].join(', ').replace(/, ([^,]*)$/,' en $1');
  const shown=(Object.keys(SERIES) as SeriesKey[]).filter(k=>avail.has(k));
+ const btcCols=!!btc&&shown.some(k=>SERIES[k].publication==='pinned');
  const first=data[0]?.period,last=data[data.length-1]?.period;
  const pressed=(id:PresetId)=>{const p=presetRange(id,periods);return !!p&&!!eff&&p.from===eff.from&&p.to===eff.to};
  const chartHasData=!!curView&&curView.keys.some(k=>rows.some(p=>ok(p[k])));
@@ -167,6 +193,7 @@ function App(){
    <p className="cap">Eenheid: <strong>{curView.unit}</strong>{curView.keys[0]==='house_eur'&&<InfoHint id="hint-chart"/>}</p>
    {chartHasData?<Chart rows={rows} keys={curView.keys} dark={dark} height={narrow?260:340} yLabel={curView.unit} baseLine={curView.baseLine} ariaLabel={`Lijngrafiek, ${curView.unit}. ${summary(rows,curView.keys)}`}/>:<p className="notice" role="status">Geen gegevens voor deze weergave in de gekozen periode.</p>}
    {viewHasGold(curView.keys)&&<GoldSources data={data} keys={curView.keys}/>}
+   {btc&&curView.keys.some(k=>SERIES[k].publication==='pinned')&&<BtcSources rows={rows} root={btc}/>}
    <p className="status">Bron: {sources}. Gebruik de pijltjestoetsen op de grafiek om waarden per maand te lezen; de tabel onder Bronnen &amp; methode bevat alle waarden.</p>
   </section>}
 
@@ -188,8 +215,8 @@ function App(){
     <h3>Gegevens als tabel</h3>
     <button type="button" className="seg" aria-expanded={table} aria-controls="data-table" onClick={()=>setTable(!table)}>{table?'Verberg tabel':'Toon als tabel'}</button>
     {table&&<div className="table-wrap" tabIndex={0} role="region" aria-label="Maandgegevens (scrollbaar)"><table id="data-table"><caption>Maandelijkse waarden van {month(rows[0].period)} t/m {month(rows[rows.length-1].period)} ({rows.length} {rows.length===1?'maand':'maanden'}, dezelfde periode als de grafiek); leeg betekent geen gegevens.</caption>
-     <thead><tr><th scope="col">Maand</th>{shown.map(k=><th scope="col" key={k}>{SERIES[k].label} ({SERIES[k].unit})</th>)}</tr></thead>
-     <tbody>{rows.map(p=><tr key={p.period}><th scope="row">{p.period}</th>{shown.map(k=><td key={k}>{ok(p[k])?fmt(SERIES[k].kind,p[k] as number):''}</td>)}</tr>)}</tbody></table></div>}
+     <thead><tr><th scope="col">Maand</th>{shown.map(k=><th scope="col" key={k}>{SERIES[k].label} ({SERIES[k].unit})</th>)}{btcCols&&<th scope="col">{BTC_NOTE_HEADER}</th>}</tr></thead>
+     <tbody>{rows.map(p=><tr key={p.period}><th scope="row">{p.period}</th>{shown.map(k=><td key={k}>{ok(p[k])?fmt(SERIES[k].kind,p[k] as number):''}</td>)}{btcCols&&<td data-btc-note>{btcNote(p,btc)}</td>}</tr>)}</tbody></table></div>}
    </div>
   </details>
   </>}

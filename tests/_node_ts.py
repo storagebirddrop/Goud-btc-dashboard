@@ -37,3 +37,15 @@ def run_series(body):
                          capture_output=True, text=True, timeout=60)
     assert res.returncode == 0, res.stderr
     return json.loads(res.stdout.strip().splitlines()[-1])
+
+
+BTC_TS = SERIES_TS.with_name("btc.ts")
+
+
+def run_modules(body):
+    """Like run_series, with both modules in scope: S = series.ts, B = btc.ts."""
+    script = f"import * as S from {json.dumps(SERIES_TS.as_uri())};\nimport * as B from {json.dumps(BTC_TS.as_uri())};\n{body}"
+    res = subprocess.run([need_node(), "--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", script],
+                         capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0, res.stderr
+    return json.loads(res.stdout.strip().splitlines()[-1])
