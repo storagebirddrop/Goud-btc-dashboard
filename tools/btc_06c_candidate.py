@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from etl import btc_contract as bc  # noqa: E402
 from tools import btc_04e_cm_replay as b4  # noqa: E402
+from tools import btc_public_report as pr  # noqa: E402
 
 SOURCES = [
     {"id": "coinmetrics_community_priceusd", "metric": "btc.PriceUSD.1d", "url": "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics",
@@ -199,6 +200,7 @@ def main(argv=None):
     try:
         if a.compare_snapshot:
             res = revision_checks(a.snapshot, a.compare_snapshot, a.cbs_csv)
+            pr.assert_value_free(res)
             print("SUMMARY revision_checks", json.dumps(res, sort_keys=True))
             return 0 if res["status"] == "CLEAN" else 1
         preview, sidecar, summary = build_candidate(a.snapshot, a.cbs_csv, a.legacy_json)
@@ -207,7 +209,12 @@ def main(argv=None):
         if a.out_dir:
             summary["written"] = write_private(a.out_dir, preview, sidecar)
     except (b4.Btc04eError, bc.BtcContractError, OSError, ValueError) as exc:
-        print("DEFECT", type(exc).__name__, str(exc)[:300])
+        print("DEFECT", type(exc).__name__, pr.safe_text(exc, 300))
+        return 1
+    try:
+        pr.assert_value_free(summary)  # public log: refuse (and print nothing) if the summary carries anything numeric-looking
+    except pr.PublicReportError as exc:
+        print("DEFECT", type(exc).__name__, pr.safe_text(exc, 200))
         return 1
     print("SUMMARY candidate", json.dumps(summary, sort_keys=True))
     return 0

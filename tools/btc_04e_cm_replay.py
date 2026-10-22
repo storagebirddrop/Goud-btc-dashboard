@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 from etl import hist_model as hm  # noqa: E402
 from tools import btc_02_history as H  # noqa: E402
 from tools import btc_03_housing as b3  # noqa: E402
+from tools import btc_public_report as pr  # noqa: E402
 from tools import hist_08_bundle as hb  # noqa: E402
 from tools import hist_10_gold_housing as h10  # noqa: E402
 
@@ -869,6 +870,21 @@ def finalize(R: dict, mode: str) -> dict:
     return R
 
 
+def _write_public(a, R) -> bool:
+    """Write the allowlisted public summary. If the allowlist refuses the document nothing public is written and the run fails."""
+    if not a.public_summary_out:
+        return True
+    target = Path(a.public_summary_out)
+    try:
+        doc = pr.public_summary(R)
+    except pr.PublicReportError as exc:
+        print("DEFECT", type(exc).__name__, pr.safe_text(exc, 200))
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
+    return True
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="BTC-04E Coin Metrics validation (research only)")
     ap.add_argument("--cbs-csv")
@@ -878,17 +894,23 @@ def main(argv=None):
     ap.add_argument("--export-snapshot", help="explicit new directory for the local vintage snapshot (never uploaded, never overwritten)")
     ap.add_argument("--baseline-snapshot", help="stored vintage to compare against (revision detection and monthly update plan)")
     ap.add_argument("--replay-snapshot", help="OFFLINE replay of a stored vintage: no provider request, no live fallback")
-    ap.add_argument("--summary-out")
-    ap.add_argument("--print-summary")
-    ap.add_argument("--keys", default="")
+    ap.add_argument("--summary-out", help="PRIVATE full research summary (price-bearing); keep it outside any uploaded directory")
+    ap.add_argument("--public-summary-out", help="allowlisted price-free summary: the only file that may be uploaded or printed in CI")
+    ap.add_argument("--print-summary", help="print sections of a PUBLIC summary (a private or unreviewed summary is refused)")
+    ap.add_argument("--keys", default="", help="top-level sections to print; default: all of the public summary")
     a = ap.parse_args(argv)
     if a.print_summary:
-        S = json.loads(Path(a.print_summary).read_text())
-        for key in [k for k in a.keys.split(",") if k]:
-            node = S
-            for part in key.split("."):
-                node = node.get(part) if isinstance(node, dict) else None
-            print("SUMMARY", key, json.dumps(node, sort_keys=True, default=str)[:7000])
+        try:
+            S = pr.load_public(a.print_summary)
+        except (OSError, ValueError) as exc:  # json errors are ValueError; PublicReportError too
+            print("DEFECT", type(exc).__name__, pr.safe_text(exc, 160))
+            return 1
+        keys = [k for k in a.keys.split(",") if k] or sorted(k for k in S if k not in ("schema", "caveat"))
+        for key in keys:
+            if key not in S:
+                print("SUMMARY", key, "not in the public summary")
+                continue
+            print("SUMMARY", key, json.dumps(S[key], sort_keys=True))
         return 0
     if a.replay_snapshot:
         if not a.cbs_csv:
@@ -896,7 +918,7 @@ def main(argv=None):
         try:
             res = replay(a.replay_snapshot, hb.cbs_2000_series(a.cbs_csv), hashlib.sha256(Path(a.cbs_csv).read_bytes()).hexdigest())
         except (hm.ModelError, Btc04eError, OSError) as exc:
-            print("DEFECT", type(exc).__name__, str(exc)[:300])
+            print("DEFECT", type(exc).__name__, pr.safe_text(exc, 300))
             return 1
         print("REPLAY", json.dumps(res, sort_keys=True))
         return 0 if res["status"] == "IDENTICAL" else 1
@@ -907,12 +929,16 @@ def main(argv=None):
     try:
         R = run(a)
     except (hm.ModelError, Btc04eError, H.HistoryError, OSError) as exc:
-        out.write_text(json.dumps({"status": "FAILED", "error": f"{type(exc).__name__}: {str(exc)[:400]}"}, indent=1) + "\n")
-        print("DEFECT", type(exc).__name__, str(exc)[:400])
+        R = {"status": "FAILED", "error": f"{type(exc).__name__}: {pr.safe_text(exc, 400)}"}
+        out.write_text(json.dumps(R, indent=1) + "\n")
+        _write_public(a, R)
+        print("DEFECT", type(exc).__name__, pr.safe_text(exc, 400))
         return 1
     if R.get("status") != "INCOMPLETE":
         R = finalize(R, a.mode)
     out.write_text(json.dumps(R, indent=1, sort_keys=True, default=str) + "\n")
+    if not _write_public(a, R):
+        return 1
     print("STATUS", R["status"], "mode", R.get("mode"), "failures", R.get("failures"), "missing", R.get("missing_sources"))
     return 0 if R["status"] in OK_STATUSES else 1
 

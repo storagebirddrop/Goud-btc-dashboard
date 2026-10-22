@@ -588,7 +588,7 @@ def test_no_private_artifact_is_tracked_or_uploaded():
     tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
     assert not [f for f in tracked if f.endswith(("candidate.json", "candidate_values.json", "snapshot_manifest.json"))]
     wf = (ROOT / ".github/workflows/btc-04e-cm-replay.yml").read_text()
-    assert wf.count("upload-artifact") == 1 and "path: ${{ runner.temp }}/btc-04e/" in wf
+    assert wf.count("upload-artifact") == 1 and "path: ${{ runner.temp }}/btc-04e-public/" in wf
     assert "--out-dir \"$RUNNER_TEMP/btc-06c-private\"" in wf and "--verify-release-path" in wf
     uploaded = wf.split("uses: actions/upload-artifact@v4")[1].split("- name:")[0]
     assert "btc-06c-private" not in uploaded and "btc-04e-private-snapshot" not in uploaded
