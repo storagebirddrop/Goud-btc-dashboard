@@ -132,6 +132,12 @@
 - **OPEN / RELEASE-GATES:** (1) bronrechten/attributie, (2) toegestane duurzame raw-vintageopslag en revisiebeleid, (3) BTC-productie-ADR/datacontract, (4) UI en maandselectie inclusief juni-gat, (5) release-/rollbackvalidatie en afzonderlijke eigenaarautorisatie. BTC/satoshi-publicatie en frontendactivatie blijven **HOLD**.
 - **NEXT:** BTC-04F governance-PR beoordelen en na afzonderlijke mergeautorisatie verwerken; daarna per open gate een afgebakend voorstel. Deze aanvulling wijzigt geen productiecode, `monthly.json`, goudautorisaties of historische onderzoekspins.
 
+## Project Control-status — BTC-07B publicatieveiligheid en releaseverificatie (2026-10-22; Draft PR, niet gemerged)
+
+- **TECHNISCH:** (P0) publieke CI-uitvoer van BTC-research is begrensd tot een prijsloze allowlist; de volledige samenvatting blijft privé op de runner; (P1) uitvoerbaar privépakket-/restoreprotocol, lokaal getest; (P2) bestaande compositegate aangesloten op exportzijde en productievalidator, standaard gesloten; (P3) BTC/SAT-weergave lokaal testbaar, zichtbaar uitsluitend voor exact goedgekeurde bytes (lege code-pin); (P4) lokale release-/rollbackrepetitie in een sandbox.
+- **PUBLICATIE-HOLD (ongewijzigd):** registers leeg, `monthly.json` en `cbs-housing.csv` byte-identiek, geen deployment, geen echte rollback.
+- **OPEN:** beoordeling van bestaande prijsdragende artifacts/logs (PC), private bewaarlocatie en echte restore (eigenaar), NC-exploitatieverklaring en CM/Talos-contractcheck (eigenaar), echte kandidaat en exact record (PC/eigenaar). Details: `docs/research/btc-07b/BTC_07B_VERIFICATION_REPORT.md`.
+
 ## Project Control-status — BTC-06C productiekandidaat en datacontract (2026-10-22; actueler dan eerdere BTC-momentopnamen)
 
 - **DECIDED / ACCEPTED (Project Control):** PC-BTC06-1 t/m 7; **PC-BTC06-6 uitsluitend voorwaardelijk** (voorwaarden in [DECISIONS.md](DECISIONS.md), ADR-012). Productiemethodologie `CM_PRICEUSD_MONTHMEAN_C1_V1` en het ontwerp `btc-monthly/1` zijn aanvaard als methodologische definitie respectievelijk datacontractontwerp; de drie BTC-06-documenten staan ongewijzigd in `docs/research/btc-06/`. Zie [DATA_CONTRACT.md](DATA_CONTRACT.md).

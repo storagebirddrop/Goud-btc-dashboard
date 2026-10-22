@@ -588,7 +588,7 @@ def test_no_private_artifact_is_tracked_or_uploaded():
     tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
     assert not [f for f in tracked if f.endswith(("candidate.json", "candidate_values.json", "snapshot_manifest.json"))]
     wf = (ROOT / ".github/workflows/btc-04e-cm-replay.yml").read_text()
-    assert wf.count("upload-artifact") == 1 and "path: ${{ runner.temp }}/btc-04e/" in wf
+    assert wf.count("upload-artifact") == 1 and "path: ${{ runner.temp }}/btc-04e-public/" in wf
     assert "--out-dir \"$RUNNER_TEMP/btc-06c-private\"" in wf and "--verify-release-path" in wf
     uploaded = wf.split("uses: actions/upload-artifact@v4")[1].split("- name:")[0]
     assert "btc-06c-private" not in uploaded and "btc-04e-private-snapshot" not in uploaded
@@ -612,13 +612,16 @@ def test_contract_constants_cannot_drift_from_the_research_method():
 
 
 # ---------------------------------------------------------------- frontend (static; browser end-to-end NOT executed) and governance
-def test_frontend_keeps_gaps_and_stays_inactive():
+def test_frontend_keeps_gaps_and_is_gated_by_the_empty_approval_pin():
+    # BTC-07B: the Bitcoin logic lives in btc.ts and is shown only for exactly approved bytes (pin list empty)
     main = (ROOT / "frontend/src/main.tsx").read_text(encoding="utf-8")
-    assert "connectNulls={false}" in main or "connectNulls" in main
+    assert "connectNulls={false}" in main
+    btc = (ROOT / "frontend/src/btc.ts").read_text(encoding="utf-8")
+    assert "export type BtcStatus='PUBLISHED'|'WITHHELD'|'MISSING'" in btc and "m.status!=='PUBLISHED'" in btc
+    assert "export const BTC_APPROVED_COMPOSITE_SHA256:readonly string[]=[];" in btc
+    assert "nf8" in main and "maximumFractionDigits:8" in main
     series = (ROOT / "frontend/src/series.ts").read_text(encoding="utf-8")
-    assert "export type BtcStatus='PUBLISHED'|'WITHHELD'|'MISSING'" in series and "btc_meta?:BtcMeta" in series
-    assert "p.btc_meta?.status==='PUBLISHED'" in series and "nf8" in main and "maximumFractionDigits:8" in main
-    assert "sat_per_house:{label:'Satoshi per woning'" in series and "publication:'withheld'" in series
+    assert "sat_per_house:{label:'Satoshi per woning'" in series and "publication:'pinned'" in series
 
 
 def test_governance_records_the_accepted_documents_without_inventing_a_release():

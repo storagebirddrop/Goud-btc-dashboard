@@ -263,6 +263,10 @@ def validate_production_state(csv_path, json_path, gold_release_record=DEFAULT_R
     APPROVED_PUBLIC_JSON_SHA256 AND all content checks pass. The authorization lives in the
     committed record, so no env flag is needed here. A NOT_AUTHORIZED record, a missing record,
     a changed byte or any gold the record does not identify fails."""
+    root = json.loads(Path(json_path).read_bytes().decode("utf-8"))
+    if isinstance(root, dict) and "btc" in root:  # extended payload: only through the closed release gate (etl.btc_release)
+        from etl import btc_release
+        return btc_release.validate_composite_state(csv_path, json_path, gold_release_record), None
     if not public_json_has_gold(json_path):
         return validate(csv_path, json_path), None
     if not Path(gold_release_record).is_file():
