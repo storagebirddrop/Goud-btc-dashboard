@@ -6,6 +6,7 @@ on:
       - '.github/workflows/hist-10-gold-housing.yml'
       - 'tools/hist_10_*.py'
       - 'tests/test_hist_10_*.py'
+      - 'data/fixtures/hist10/**'
       - 'etl/hist_*.py'
 permissions:
   contents: read
@@ -30,6 +31,7 @@ jobs:
           --inputs data/fixtures/hist09
           --cbs-csv data/cbs-housing.csv
           --production-json frontend/public/data/monthly.json
+          --pins data/fixtures/hist10/source_pins.json
           --summary-out "$RUNNER_TEMP/hist-10/summary.json"
           --csv-out "$RUNNER_TEMP/hist-10/derived_grams_halfyear.csv"
           --bundles-out "$RUNNER_TEMP/hist-10-bundles"

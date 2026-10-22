@@ -549,3 +549,14 @@ def test_manifest_records_identifiers_hashes_method_and_quality(world):
     assert m["method_id"] == "HIST10_M1_V1" and m["acquired_at_utc"].startswith("2026-10-22") and m["derived_halfyear_values_sha256"] == "d" * 64
     assert m["bundle_sha256"] == {"b.json": "e" * 64} and set(m["quality_flags"]) >= {"GOLD_LEVEL_B", "GOLD_LEVEL_A", "RETROSPECTIVE_EUR"}
     assert "code determinism only" in m["note"] and "M5" in m["method"]["sensitivity_only"]
+
+
+def test_committed_pin_file_holds_hashes_only_and_matches_the_method():
+    pins = json.loads((ROOT / "data" / "fixtures" / "hist10" / "source_pins.json").read_text())
+    assert pins["method_id"] == h10.METHOD_ID and set(pins["sources"]) == set(h10.PIN_WINDOWS)
+    for name, w in pins["sources"].items():
+        assert (w["first"], w["last"]) == h10.PIN_WINDOWS[name] or w["first"] >= h10.PIN_WINDOWS[name][0]
+        assert len(w["sha256"]) == 64 and int(w["sha256"], 16) >= 0 and w["n"] > 0
+        assert set(w) == {"first", "last", "n", "sha256"}  # no raw values
+    assert len(pins["derived"]["halfyear_values_sha256"]) == 64 and pins["derived"]["series"] == list(h10.DERIVED_PIN_SERIES)
+    assert "RESEARCH PIN" in pins["status"] and "no raw third-party data" in pins["status"]
