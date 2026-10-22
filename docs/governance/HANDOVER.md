@@ -30,3 +30,14 @@ Bij nieuwe sessie: verifieer branch, HEAD, CI en open PR's; neem dit document ni
 - Diagnose: 320 maanden (2000-01–2026-08), 640/640 exacte matches met actuele officiële CBS OData; geen gaps in gecontroleerd venster.
 - Audit bewijst geen historisch revisieverloop zonder oudere CBS-snapshots. Geen productiebronwaarden gewijzigd.
 - Volgende stap: einddiff en CI na deze documentatiecommit verifiëren; PR #43 ter review aanbieden, niet mergen zonder aparte autorisatie.
+
+## Sessieoverdracht — 2026-10-22 (na BTC-03 merge)
+
+- Vastgelegd: 2026-10-22; repository `storagebirddrop/Goud-btc-dashboard`; geverifieerde `main` HEAD `4758e251ac1c5ad0216da38a8d1cc0abca7ac4cd`.
+- **Status: DONE** HIST-09 (PR #91), HIST-10 (PR #92) en BTC-03 (PR #93) squash-merged met groene PR-CI; uitsluitend onderzoeksfundament. De afzonderlijke merge-SHA's staan in `PROJECT_STATUS.md`.
+- **Goedgekeurd voor research, niet productie:** HIST-10 `HIST10_M1_V1` en BTC-03 `BTC03_A1_C1_V1`; BTC-03 Q1 Bitstamp EUR-native vanaf 2016-05, Q2 USD-afgeleid vanaf 2013-07 met voorlopige liquiditeitsdrempel, Q3 vroeg/thin/archive apart.
+- **Data-integriteit:** NVM mediane woningprijs 1975-2000 ≠ CBS gemiddelde woningprijs 1995+; geen splice; NVM/BTC-overlap = 0; bronvenster-hashes en methodestatus genoteerd in `data/fixtures/hist10/source_pins.json` en `data/fixtures/btc03/source_pins.json`. Exacte oude bronbytes worden niet door hashes bewaard.
+- **Publicatiegrens:** bestaande GOLD-03/04 ongewijzigd; historische goud-, NVM-, BTC- en satoshireeksen niet vrijgegeven. Publicatie-allowlist research leeg. Geen wijziging aan productie-ADR's door deze overdracht.
+- **Open besluiten:** source-specific rights, BTC productiebron en kwaliteitsstart, publieke visualisatielabels, data-contract/release-aanpak. `PROJECT_STATUS.md` geeft de actuele gates.
+- **Volgende autonome stap:** Project Control maakt een publicatie-readiness matrix, gescheiden voor (a) historische NVM/goud, (b) CBS/goud vóór 2000, (c) CBS/BTC Q1 vanaf 2016-05, (d) oudere BTC Q2/Q3. Advies per reeks GO/HOLD en expliciete eigenaarbesluiten voorbereiden. Geen publicatie of merge zonder autorisatie en groene CI.
+- **Deze overdracht:** documentatie-only op een afzonderlijke PR; CI-status van die nieuwe PR moet afzonderlijk worden geverifieerd. Voor gebruik in een andere chat: altijd actuele HEAD en checks opnieuw ophalen.
