@@ -103,3 +103,22 @@
 - `VERIFIED_RUN`: productie (`goud-btc-dashboard.pages.dev`, na herstel van de Cloudflare-GitHub-koppeling, productiecommit `cbc385f`) serveert de geautoriseerde GOLD-03-release: JSON sha256 `1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd`, 320 maanden, `gold_index` en `gold_grams_per_house` 320/320, `gold_eur_oz` `null`, CBS-velden ongewijzigd, bronnen en juni-2025-uitleg zichtbaar, desktop en mobiel (live-run 39577148435: 27/27 HTTP, 68/68 browser). Details in VERIFICATION_LOG.md (V-GOLD-04).
 - `VERIFIED_RUN`: BTC-publicatiebescherming: geen BTC-/satoshi-veld in de publieke JSON, `sat_per_house` blijft `withheld`, geen selecteerbare Bitcoin-reeks of -grafiek, geen omzeiling via URL of vergiftigde JSON. Alleen de statische zin "Nog niet beschikbaar: reële EUR en Bitcoin." noemt Bitcoin (productbeslissing van de eigenaar of die blijft).
 - `PENDING`: formele afsluiting van GOLD-04 na merge van PR #87 (verificatietooling, grenscontrole en regressietests); geen wijziging aan data, ADR-004 of applicatiecode.
+
+
+## Project Control actuele status — 2026-10-22 (vervangt achterhaalde operationele conclusies hierboven)
+
+**VERIFIED_REPO / VERIFIED_MERGE:** GitHub `main` HEAD is `4758e251ac1c5ad0216da38a8d1cc0abca7ac4cd`, na de squash-merges van [PR #91](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/91) (HIST-09/ARCH-02, `b9b28832e450ee19fd8357eb827866f286554557`), [PR #92](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/92) (HIST-10, `d5cac04d1bb9f34785f060ddb067d72da4c99eab`) en [PR #93](https://github.com/storagebirddrop/Goud-btc-dashboard/pull/93) (BTC-03, `4758e251ac1c5ad0216da38a8d1cc0abca7ac4cd`). Alle vereiste PR-checks waren groen vóór de betreffende merges; dit is **geen claim** dat huidige post-merge productiechecks opnieuw zijn uitgevoerd.
+
+**GEVALIDEERDE ONDERZOEKSBASIS (niet gepubliceerd):**
+- HIST-09: NVM/OTB 52 halfjaren 1975-H1..2000-H2, mediane verkoopprijzen NLG; officiële CBS 85773NED 72 maanden 1995-01..2000-12; 12 NVM/CBS-overlap-halfjaren, apart gehouden. Geen NVM/CBS-splice.
+- HIST-10: goud per woning voor NVM vanaf 1975 en CBS vanaf 1995 (research only). Onderzoeksmethode `HIST10_M1_V1`, expliciete valuta-eras en kwaliteit, SHA-256-bronvenster-pins. Bronrechten voor uitgebreide historische publicatie onbeslist.
+- BTC-03: CBS-prijzen in BTC en satoshi's met gescheiden Mt. Gox-, USD-afgeleide Bitstamp- en EUR-native Bitstamp-segmenten. Onderzoeksmethode `BTC03_A1_C1_V1`; A1/C1 geaccepteerd **voor onderzoek**, Q1 EUR-native 2016-05+, Q2 USD-afgeleid 2013-07+ onder voorlopige liquiditeitsheuristiek, Q3 eerder/thin/archive research only. NVM eindigt in 2000-H2: **geen** BTC-overlap, dus geen NVM/BTC-reeks. Bronvenster-pins zijn vastgelegd; hashes alleen bewaren geen oude bronbytes.
+- Bestaande publieke goudstatus blijft GOLD-03/GOLD-04: uitsluitend `gold_index` en `gold_grams_per_house` vanaf 2000-01 geautoriseerd/live; `gold_eur_oz` blijft null. BTC/satoshi, nieuwe historische goud- en woningprijsreeksen zijn **NIET** voor publicatie geautoriseerd. Onderzoeksallowlist blijft leeg volgens mergechecks.
+
+**OPEN / RELEASE-GATES (niet vervallen door succesvolle CI):**
+1. Juridisch en feitelijk hergebruik per BTC/NVM/historische goudbron, inclusief derived-data rechten en attributie; CBS-export vermeldt CC BY 4.0.
+2. Bronkwaliteit/segmentkeuze voor eventuele publieke BTC-grafieken: Q1/Q2/Q3-verschillen, de voorlopige liquiditeitsdrempel en onafhankelijke bronvalidatie; BTC-methodologie is nog niet als productie-ADR aanvaard.
+3. Definities/presentatie: CBS gemiddelde vs NVM mediaan apart, bronbreuken expliciet, 1975-1978 goudkwaliteitslabel, 1998/1999 valuta-overgang en 2016 BTC EUR-native overgang.
+4. Nieuwe publicatie vereist afzonderlijke expliciete eigenaarbesluiten en tests voor data-contract, release-gate, frontend, browser en rollback. Een onderzoek-PR-merge is **nooit** publicatieautorisatie.
+
+**NEXT (Project Control):** een afgebakende publicatie-readiness matrix uitwerken met per voorgestelde grafiek reeks, jaarrange, kwaliteit, rechtenstatus, methodologisch besluit, technische releaseafhankelijkheden en voorstel `GO/HOLD`. Geen code-publicatie, source-splice of ADR-statuswijziging in deze documentatiesynchronisatie. `docs/governance/HANDOVER.md` bevat de sessieoverdracht. De oudere momentopnamen hierboven zijn historisch, geen huidige blokkadestatus.
