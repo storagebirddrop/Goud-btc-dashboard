@@ -38,6 +38,11 @@ Directory chosen explicitly (`--export-snapshot DIR`, refused if it already hold
 
 Total 364,633 B. The snapshot id (`btc04e-…`) is a hash of versions, canonical input hashes and derived hash — not of timestamps.
 
+### Review corrections (PC review of head `7fc6e65`)
+
+- **Raw presence is explicit and checked.** The manifest carries `raw.retention` (`RETAINED` / `NOT_RETAINED`). A `RETAINED` snapshot must list exactly as many raw pages as the acquisition record (`pages`, `page_sha256`), every listed file must exist with the recorded hash, and no unreferenced file may sit in `raw/`; otherwise the import fails (`MISSING` / `CORRUPT` / `SOURCE_HASH_MISMATCH`). `NOT_RETAINED` is accepted only for a snapshot exported without raw bytes and only while no raw file or reference exists. The retention state is part of the snapshot id, so `RETAINED` cannot be edited down to `NOT_RETAINED` (or its pages deleted and references removed) without an integrity error. Limit: someone who rewrites the manifest, all hashes and the id consistently is not detected; this protects against loss and accidental edits, not against deliberate forgery.
+- **Export never overwrites.** The target must not exist or must be an empty directory; a valid snapshot, a partial export, unrelated files or a plain file are refused (`EXISTS`) with nothing written. Files are created exclusively (`open(..., "xb")`), the manifest is written last, and files created by a failed export are removed again. Raw pages offered for export must match the acquisition record.
+
 ## 4. Replay guarantees and limits
 
 `load_snapshot` fails closed (`SnapshotError`) with codes `MISSING`, `CORRUPT`, `SOURCE_HASH_MISMATCH`, `NORMALIZED_HASH_MISMATCH`, `METHOD_CHANGED`, `EXISTS`. It checks: manifest/format; method, parser, exception and quality versions against the running code; file hashes and counts; canonical daily hashes; response pages vs recorded hashes and response id; raw pages re-parsed with the current parser must reproduce the stored normalized values; snapshot id. `replay` and `--replay-snapshot` use only the snapshot (no provider request, no live fallback); result `IDENTICAL` / `DIFFERENT` / `CBS_INPUT_DIFFERS`.
@@ -52,7 +57,7 @@ Limits: replay is proven only for a snapshot that is still available locally; th
 
 ## 6. Tests
 
-Added to `tests/test_btc_04e_cm_replay.py` (119 tests there; 1,576 passed, 5 skipped in the full suite): byte-identical export/import, no overwrite, offline replay with network and live acquisition forbidden, CLI exit codes, missing/corrupt snapshot, source and normalized hash mismatch (both directions), method/parser/policy/quality version mismatch, snapshot id semantics, revision categories (unchanged, new observations, revised, missing, inserted), validate-mode failure on revisions, monthly update plan, bad baseline stops before any request, June 2011 HOLD after replay, unsuitable months blocked by the candidate selector, no raw data tracked in git / uploaded / present in public JSON.
+Added to `tests/test_btc_04e_cm_replay.py` (see the PR for the current counts): byte-identical export/import, no overwrite, offline replay with network and live acquisition forbidden, CLI exit codes, missing/corrupt snapshot, source and normalized hash mismatch (both directions), method/parser/policy/quality version mismatch, snapshot id semantics, revision categories (unchanged, new observations, revised, missing, inserted), validate-mode failure on revisions, monthly update plan, bad baseline stops before any request, June 2011 HOLD after replay, unsuitable months blocked by the candidate selector, no raw data tracked in git / uploaded / present in public JSON.
 
 ## 7. Not operational / open
 

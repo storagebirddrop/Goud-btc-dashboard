@@ -609,6 +609,7 @@ def test_blocking_does_not_change_the_pinned_derived_hash_when_the_calendar_is_c
 # ---------------------------------------------------------------- BTC-05D: local vintage snapshot, offline replay, revision detection
 import argparse  # noqa: E402
 import gzip  # noqa: E402
+import shutil  # noqa: E402
 import socket  # noqa: E402
 import subprocess  # noqa: E402
 
@@ -860,3 +861,173 @@ def test_no_raw_source_data_is_tracked_uploaded_or_printed():
     assert 'prefix="btc-04e-private-snapshot-"' in src and 'k not in ("daily", "raw_pages")' in src
     public = (ROOT / "frontend/public/data/monthly.json").read_text().lower()
     assert "priceusd" not in public and "btc" not in public
+
+
+# ---------------------------------------------------------------- BTC-05D review corrections: raw presence and export safety
+def rewrite_manifest(snap, edit):
+    path = snap / c.SNAPSHOT_MANIFEST
+    doc = json.loads(path.read_text())
+    edit(doc)
+    path.write_text(json.dumps(doc))
+
+
+def three_page_snapshot(tmp_path, built, name="multi"):
+    pages = raw_pages(CM, per_page=500)
+    assert len(pages) == 3
+    return export(tmp_path, built, name=name, pages=pages)
+
+
+def test_manifest_states_raw_presence_explicitly(tmp_path, built):
+    snap = export(tmp_path, built)
+    doc = json.loads((snap / c.SNAPSHOT_MANIFEST).read_text())
+    assert doc["raw"]["retention"] == "RETAINED" and len(doc["raw"]["cm_priceusd"]) == doc["manifest"]["coinmetrics"]["pages"] == len(raw_pages(CM)) >= 1
+    bare = tmp_path / "bare"
+    c.export_snapshot(bare, cm_daily=CM, ecb_daily=ECB, man=full_manifest(built))
+    assert json.loads((bare / c.SNAPSHOT_MANIFEST).read_text())["raw"]["retention"] == "NOT_RETAINED"
+    assert not (bare / "raw").exists()
+
+
+def test_snapshot_exported_without_raw_bytes_is_legitimately_not_retained(tmp_path, built):
+    bare = tmp_path / "bare"
+    c.export_snapshot(bare, cm_daily=CM, ecb_daily=ECB, man=full_manifest(built))
+    assert c.replay(bare, house())["raw_source_bytes"] == "NOT_RETAINED"
+    (bare / "raw").mkdir()
+    (bare / "raw/cm_priceusd_page_000.json.gz").write_bytes(gzip.compress(b"{}", mtime=0))
+    with pytest.raises(c.SnapshotError) as e:  # raw bytes appearing in a NOT_RETAINED snapshot are an inconsistency, not an upgrade
+        c.load_snapshot(bare)
+    assert e.value.code == "CORRUPT"
+
+
+def test_all_raw_pages_removed_from_a_retained_snapshot_is_refused(tmp_path, built):
+    snap = export(tmp_path, built)
+    shutil.rmtree(snap / "raw")
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "MISSING"  # manifest still says RETAINED with a page listed -> inconsistent, never silently NOT_RETAINED
+
+
+def test_removed_manifest_references_are_refused(tmp_path, built):
+    snap = export(tmp_path, built)
+    rewrite_manifest(snap, lambda d: d["raw"].update(cm_priceusd=[]))  # file still on disk, reference deleted
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "CORRUPT"
+
+
+def test_retained_cannot_be_downgraded_to_not_retained_without_an_integrity_error(tmp_path, built):
+    snap = export(tmp_path, built, name="a")
+    rewrite_manifest(snap, lambda d: d["raw"].update(retention="NOT_RETAINED", cm_priceusd=[]))
+    with pytest.raises(c.SnapshotError):  # raw file still present -> inconsistent
+        c.load_snapshot(snap)
+    shutil.rmtree(snap / "raw")
+    with pytest.raises(c.SnapshotError) as e:  # every raw trace removed: the snapshot id (which covers retention) no longer matches
+        c.load_snapshot(snap)
+    assert e.value.code == "CORRUPT" and "snapshot id" in str(e.value)
+    again = export(tmp_path, built, name="b")
+    rewrite_manifest(again, lambda d: d["raw"].update(retention="NOT_RETAINED"))
+    with pytest.raises(c.SnapshotError):
+        c.load_snapshot(again)
+
+
+def test_inconsistent_page_counts_are_refused(tmp_path, built):
+    snap = three_page_snapshot(tmp_path, built)
+    assert c.replay(snap, house())["raw_source_bytes"] == "RETAINED_AND_VERIFIED"
+    last = snap / "raw/cm_priceusd_page_002.json.gz"
+    last.unlink()
+    rewrite_manifest(snap, lambda d: d["raw"].update(cm_priceusd=d["raw"]["cm_priceusd"][:2]))  # file and reference both dropped
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "CORRUPT" and "acquisition record has 3" in str(e.value)
+    other = three_page_snapshot(tmp_path, built, name="other")
+    rewrite_manifest(other, lambda d: d["manifest"]["coinmetrics"].update(pages=2))  # acquisition metadata disagrees
+    with pytest.raises(c.SnapshotError):
+        c.load_snapshot(other)
+    third = three_page_snapshot(tmp_path, built, name="third")
+    (third / "raw/cm_priceusd_page_001.json.gz").unlink()  # one referenced page missing
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(third)
+    assert e.value.code == "MISSING"
+
+
+def test_unreferenced_raw_file_in_a_retained_snapshot_is_refused(tmp_path, built):
+    snap = export(tmp_path, built)
+    (snap / "raw/cm_priceusd_page_009.json.gz").write_bytes(gzip.compress(b"{}", mtime=0))
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "CORRUPT"
+
+
+def test_export_refuses_raw_pages_that_disagree_with_the_acquisition_record(tmp_path, built):
+    man = full_manifest(built, pages=raw_pages(CM, per_page=500))  # acquisition says 3 pages
+    with pytest.raises(c.SnapshotError) as e:
+        c.export_snapshot(tmp_path / "x", cm_daily=CM, ecb_daily=ECB, man=man, raw_pages=raw_pages(CM))  # but 1 page offered
+    assert e.value.code == "SOURCE_HASH_MISMATCH" and not (tmp_path / "x").exists()
+
+
+@pytest.mark.parametrize("preexisting", ["valid_snapshot", "cm_file_only", "raw_dir_only", "manifest_only", "unrelated_file", "plain_file"])
+def test_export_never_writes_into_a_non_empty_or_non_directory_target(tmp_path, built, preexisting):
+    target = tmp_path / "t"
+    if preexisting == "valid_snapshot":
+        export(tmp_path, built, name="t")
+    elif preexisting == "cm_file_only":
+        target.mkdir()
+        (target / "cm_priceusd_daily.txt").write_text("keep\n")
+    elif preexisting == "raw_dir_only":
+        (target / "raw").mkdir(parents=True)
+    elif preexisting == "manifest_only":
+        target.mkdir()
+        (target / c.SNAPSHOT_MANIFEST).write_text("keep")
+    elif preexisting == "unrelated_file":
+        target.mkdir()
+        (target / "notes.txt").write_text("keep")
+    else:
+        target.write_text("keep")
+    before = tree(target) if target.is_dir() else {"file": target.read_bytes()}
+    with pytest.raises(c.SnapshotError) as e:
+        c.export_snapshot(target, cm_daily=CM, ecb_daily=ECB, man=full_manifest(built, pages=raw_pages(CM)), raw_pages=raw_pages(CM))
+    assert e.value.code == "EXISTS"
+    after = tree(target) if target.is_dir() else {"file": target.read_bytes()}
+    assert after == before  # nothing replaced, nothing added
+
+
+def test_export_into_an_existing_empty_directory_is_allowed(tmp_path, built):
+    (tmp_path / "empty").mkdir()
+    c.export_snapshot(tmp_path / "empty", cm_daily=CM, ecb_daily=ECB, man=full_manifest(built, pages=raw_pages(CM)), raw_pages=raw_pages(CM))
+    assert c.replay(tmp_path / "empty", house())["status"] == "IDENTICAL"
+
+
+def test_failed_export_leaves_no_readable_or_partial_snapshot(tmp_path, built, monkeypatch):
+    pages = raw_pages(CM, per_page=500)
+    real, calls = gzip.compress, []
+
+    def flaky(data, *a, **k):
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError("disk full")
+        return real(data, *a, **k)
+    monkeypatch.setattr(c.gzip, "compress", flaky)
+    with pytest.raises(OSError):
+        c.export_snapshot(tmp_path / "new", cm_daily=CM, ecb_daily=ECB, man=full_manifest(built, pages=pages), raw_pages=pages)
+    assert not (tmp_path / "new").exists()  # directory created by the export is removed again
+    (tmp_path / "pre").mkdir()
+    calls.clear()
+    with pytest.raises(OSError):
+        c.export_snapshot(tmp_path / "pre", cm_daily=CM, ecb_daily=ECB, man=full_manifest(built, pages=pages), raw_pages=pages)
+    assert list((tmp_path / "pre").iterdir()) == []  # a pre-existing empty directory is left empty
+    monkeypatch.setattr(c.gzip, "compress", real)
+    c.export_snapshot(tmp_path / "pre", cm_daily=CM, ecb_daily=ECB, man=full_manifest(built, pages=pages), raw_pages=pages)
+    assert c.replay(tmp_path / "pre", house())["status"] == "IDENTICAL"
+
+
+def test_file_created_between_the_check_and_the_write_is_never_replaced(tmp_path, built, monkeypatch):
+    target = tmp_path / "race"
+    real = c.hm.canonical_json
+
+    def sneaky(obj):
+        (target / c.SNAPSHOT_MANIFEST).write_text("someone else")  # appears after the emptiness check, before the exclusive create
+        return real(obj)
+    monkeypatch.setattr(c.hm, "canonical_json", sneaky)
+    with pytest.raises(c.SnapshotError) as e:
+        c.export_snapshot(target, cm_daily=CM, ecb_daily=ECB, man=full_manifest(built))
+    assert e.value.code == "EXISTS"
+    assert sorted(p.name for p in target.iterdir()) == [c.SNAPSHOT_MANIFEST] and (target / c.SNAPSHOT_MANIFEST).read_text() == "someone else"

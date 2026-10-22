@@ -469,41 +469,76 @@ def _normalized(daily: dict) -> str:
     return "".join(f"{k}:{hm.dec_str(v)}\n" for k, v in sorted(daily.items()))
 
 
-def snapshot_id(man: dict, cut_before, derived_cutoff) -> str:
-    """Identity of a vintage: method/parser/policy versions, both canonical input hashes and the derived hash. Not timestamps."""
+def snapshot_id(man: dict, cut_before, derived_cutoff, raw_retention="NOT_RETAINED") -> str:
+    """Identity of a vintage: versions, both canonical input hashes, the derived hash and whether the original bytes are retained.
+
+    Retention is part of the identity so that RETAINED cannot be edited down to NOT_RETAINED without an integrity error. Not timestamps."""
     ident = {"method_id": man["method_id"], "parser_version": man["parser_version"], "exception_policy_version": man["exception_policy_version"],
              "quality_version": man["quality_version"], "cm": man["coinmetrics"]["canonical_daily_sha256"], "ecb": man["ecb"]["canonical_daily_sha256"],
-             "derived": man["derived_values_sha256"], "cut_before": cut_before, "derived_cutoff": derived_cutoff}
+             "derived": man["derived_values_sha256"], "cut_before": cut_before, "derived_cutoff": derived_cutoff,
+             "raw_retention": raw_retention}
     return "btc04e-" + hashlib.sha256(hm.canonical_json(ident)).hexdigest()[:16]
 
 
 def export_snapshot(directory, *, cm_daily: dict, ecb_daily: dict, man: dict, raw_pages=None, cut_before=None,
                     derived_cutoff=RESEARCH_CUTOFF, cbs_input_sha256=None) -> dict:
-    """Write a LOCAL vintage snapshot to an explicitly chosen directory. No upload, no network, never overwrites a snapshot.
+    """Write a LOCAL vintage snapshot to an explicitly chosen directory. No upload, no network.
 
-    Layout: two normalized 'day:value' files, optional original CM response pages (gzip, mtime 0) and one manifest. The ECB response
-    bytes are not retained by the acquisition code (only normalized values), which the manifest states. Never committed or uploaded.
+    The target must not exist or must be an EMPTY directory; anything else (a valid snapshot, a partial export, unrelated files) is refused
+    with EXISTS and nothing is written. Every file is created exclusively (never truncated or replaced) and the manifest is written last,
+    so an interrupted export is never readable as a snapshot; files created by a failed export are removed again.
+
+    Layout: two normalized 'day:value' files, the original CM response pages (gzip, mtime 0) when `raw_pages` is given, and one manifest.
+    `raw.retention` states RETAINED or NOT_RETAINED explicitly; RETAINED pages must match the acquisition record (count and hashes).
+    The ECB response bytes are not retained by the acquisition code (only normalized values). Never committed or uploaded.
     """
     d = Path(directory)
-    if (d / SNAPSHOT_MANIFEST).exists():
-        raise SnapshotError("EXISTS", f"{d} already holds a snapshot; choose a new directory")
+    if d.exists() and (not d.is_dir() or any(d.iterdir())):
+        raise SnapshotError("EXISTS", f"{d} exists and is not an empty directory; choose a new directory")
+    pages = list(raw_pages) if raw_pages else []
+    if pages:
+        hashes = [hashlib.sha256(b).hexdigest() for b in pages]
+        cmm = man["coinmetrics"]
+        if len(pages) != cmm["pages"] or hashes != cmm["page_sha256"] or hashlib.sha256("".join(hashes).encode()).hexdigest() != cmm["response_sha256"]:
+            raise SnapshotError("SOURCE_HASH_MISMATCH", "raw pages to export differ from the acquisition record (count or hashes)")
+    retention = "RETAINED" if pages else "NOT_RETAINED"
+    made_dir = not d.exists()
     d.mkdir(parents=True, exist_ok=True)
-    files = {}
-    for name, daily in ((CM_FILE, cm_daily), (ECB_FILE, ecb_daily)):
-        body = _normalized(daily)
-        (d / f"{name}.txt").write_text(body, encoding="utf-8")
-        files[name] = {"file": f"{name}.txt", "sha256": hashlib.sha256(body.encode()).hexdigest(), "n": len(daily)}
-    raw = {"cm_priceusd": [], "ecb": "NOT_RETAINED"}
-    if raw_pages:
-        (d / "raw").mkdir(exist_ok=True)
-        for i, blob in enumerate(raw_pages):
-            name = f"raw/cm_priceusd_page_{i:03d}.json.gz"
-            (d / name).write_bytes(gzip.compress(blob, mtime=0))
-            raw["cm_priceusd"].append({"file": name, "raw_sha256": hashlib.sha256(blob).hexdigest(), "bytes": len(blob)})
-    sid = snapshot_id(man, cut_before, derived_cutoff)
-    doc = {"format": SNAPSHOT_FORMAT, "snapshot_id": sid, "files": files, "raw": raw, "cut_before": cut_before, "derived_cutoff": derived_cutoff,
-           "cbs_input_sha256": cbs_input_sha256, "manifest": man}
-    (d / SNAPSHOT_MANIFEST).write_bytes(hm.canonical_json(doc))
+    created = []
+
+    def put(path: Path, data: bytes) -> None:
+        try:
+            with open(path, "xb") as fh:  # exclusive creation: an existing file is never replaced
+                created.append(path)
+                fh.write(data)
+        except FileExistsError:
+            raise SnapshotError("EXISTS", f"{path} already exists") from None
+
+    try:
+        files = {}
+        for name, daily in ((CM_FILE, cm_daily), (ECB_FILE, ecb_daily)):
+            body = _normalized(daily)
+            put(d / f"{name}.txt", body.encode("utf-8"))
+            files[name] = {"file": f"{name}.txt", "sha256": hashlib.sha256(body.encode()).hexdigest(), "n": len(daily)}
+        raw = {"retention": retention, "cm_priceusd": [], "ecb": "NOT_RETAINED"}
+        if pages:
+            (d / "raw").mkdir(exist_ok=False)
+            for i, blob in enumerate(pages):
+                name = f"raw/cm_priceusd_page_{i:03d}.json.gz"
+                put(d / name, gzip.compress(blob, mtime=0))
+                raw["cm_priceusd"].append({"file": name, "raw_sha256": hashlib.sha256(blob).hexdigest(), "bytes": len(blob)})
+        sid = snapshot_id(man, cut_before, derived_cutoff, retention)
+        doc = {"format": SNAPSHOT_FORMAT, "snapshot_id": sid, "files": files, "raw": raw, "cut_before": cut_before, "derived_cutoff": derived_cutoff,
+               "cbs_input_sha256": cbs_input_sha256, "manifest": man}
+        put(d / SNAPSHOT_MANIFEST, hm.canonical_json(doc))
+    except BaseException:
+        for path in reversed(created):
+            path.unlink(missing_ok=True)
+        if (d / "raw").is_dir() and not any((d / "raw").iterdir()):
+            (d / "raw").rmdir()
+        if made_dir and d.is_dir() and not any(d.iterdir()):
+            d.rmdir()
+        raise
     return {"snapshot_id": sid, "bytes": {str(f.relative_to(d)): f.stat().st_size for f in sorted(d.rglob("*")) if f.is_file()}}
 
 
@@ -555,8 +590,20 @@ def load_snapshot(directory) -> dict:
             if canonical_daily_sha256(daily[name]) != man[key]["canonical_daily_sha256"]:
                 raise SnapshotError("NORMALIZED_HASH_MISMATCH", f"{name}: canonical daily hash differs from the manifest")
         pages = []
-        entries = doc["raw"]["cm_priceusd"]
-        if entries:
+        raw = doc["raw"]
+        retention, entries = raw["retention"], raw["cm_priceusd"]
+        cmm = man["coinmetrics"]
+        listed = {e["file"] for e in entries}
+        on_disk = {str(f.relative_to(d)) for f in (d / "raw").rglob("*") if f.is_file()} if (d / "raw").is_dir() else set()
+        if retention == "NOT_RETAINED":
+            if entries or on_disk:
+                raise SnapshotError("CORRUPT", "snapshot is marked NOT_RETAINED but raw pages or references exist")
+        elif retention == "RETAINED":
+            # raw presence is part of the manifest and must agree with the acquisition record: no silent loss of pages
+            if not entries or len(entries) != cmm["pages"] or len(cmm["page_sha256"]) != cmm["pages"]:
+                raise SnapshotError("CORRUPT", f"RETAINED snapshot lists {len(entries)} raw page(s), acquisition record has {cmm['pages']}")
+            if on_disk != listed:
+                raise SnapshotError("MISSING" if listed - on_disk else "CORRUPT", f"raw files differ from manifest references: missing {sorted(listed - on_disk)[:3]}, unreferenced {sorted(on_disk - listed)[:3]}")
             hashes = []
             for e in entries:
                 try:
@@ -569,7 +616,7 @@ def load_snapshot(directory) -> dict:
                     raise SnapshotError("SOURCE_HASH_MISMATCH", f"{e['file']}: response bytes differ from the recorded hash")
                 hashes.append(e["raw_sha256"])
                 pages.append(blob)
-            if hashes != man["coinmetrics"]["page_sha256"] or hashlib.sha256("".join(hashes).encode()).hexdigest() != man["coinmetrics"]["response_sha256"]:
+            if hashes != cmm["page_sha256"] or hashlib.sha256("".join(hashes).encode()).hexdigest() != cmm["response_sha256"]:
                 raise SnapshotError("SOURCE_HASH_MISMATCH", "response pages differ from the acquisition record")
             try:
                 parsed, gaps = merge_rows([r for blob in pages for r in parse_page(json.loads(blob))[0]])
@@ -579,14 +626,17 @@ def load_snapshot(directory) -> dict:
                 parsed = cut_to_complete(parsed, doc["cut_before"])
             if parsed != daily[CM_FILE]:
                 raise SnapshotError("NORMALIZED_HASH_MISMATCH", "normalized CM values are not what the stored response bytes produce")
-        if snapshot_id(man, doc["cut_before"], doc["derived_cutoff"]) != doc["snapshot_id"]:
+        else:
+            raise SnapshotError("CORRUPT", f"unknown raw retention {retention!r}")
+        if snapshot_id(man, doc["cut_before"], doc["derived_cutoff"], retention) != doc["snapshot_id"]:
             raise SnapshotError("CORRUPT", "snapshot id does not match its content")
     except SnapshotError:
         raise
     except (KeyError, TypeError, AttributeError) as exc:
         raise SnapshotError("CORRUPT", f"manifest incomplete ({type(exc).__name__})") from None
     return {"cm_daily": daily[CM_FILE], "ecb_daily": daily[ECB_FILE], "man": man, "raw_pages": pages or None, "cut_before": doc["cut_before"],
-            "derived_cutoff": doc["derived_cutoff"], "cbs_input_sha256": doc["cbs_input_sha256"], "snapshot_id": doc["snapshot_id"]}
+            "derived_cutoff": doc["derived_cutoff"], "cbs_input_sha256": doc["cbs_input_sha256"], "snapshot_id": doc["snapshot_id"],
+            "raw_retention": retention}
 
 
 def read_snapshot(directory) -> tuple:
@@ -616,7 +666,7 @@ def replay(directory, house: hm.Series, cbs_input_sha256=None) -> dict:
     else:
         status = "IDENTICAL" if got == snap["man"]["derived_values_sha256"] else "DIFFERENT"
     return {"status": status, "snapshot_id": snap["snapshot_id"], "derived_values_sha256": got,
-            "raw_source_bytes": "RETAINED_AND_VERIFIED" if snap["raw_pages"] else "NOT_RETAINED"}
+            "raw_source_bytes": "RETAINED_AND_VERIFIED" if snap["raw_retention"] == "RETAINED" else "NOT_RETAINED"}
 
 
 # ------------------------------------------------------------------ revision detection and monthly update (against a stored vintage)
