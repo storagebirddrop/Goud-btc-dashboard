@@ -48,6 +48,10 @@ MIN_FX_COVERAGE = Decimal("0.5")
 PIN_WINDOWS = {"cm_priceusd_daily": ("2010-07-18", "2026-08-31"), "ecb_usd_per_eur_daily": ("1999-01-04", "2026-08-31")}
 EXCEPTIONS = {"2011-06": "HOLD_2011_06"}  # research-only/HOLD: no published value, no connection across it
 STALE_MIN_RUN = 5
+MODES = ("validate", "bootstrap")  # normal pinned validation fails closed; pin generation needs the explicit bootstrap mode
+OK_STATUSES = ("COMPLETE_RESEARCH", "BOOTSTRAP_PINS_CANDIDATE")
+ELIGIBILITY = ("RESEARCH_ONLY", "RESEARCH_ONLY_HOLD", "RELEASE_ELIGIBLE")
+RELEASE_APPROVALS = frozenset()  # months a future Project Control release record approves; empty: nothing is publishable
 TIME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})T00:00:00(?:\.0+)?Z$")
 INDEPENDENT_MONTHS = ("2010-08", "2011-06", "2013-01", "2014-02", "2016-05", "2017-12")
 RETRIES, RETRY_STATUS = 5, {429, 500, 502, 503, 504}
@@ -240,7 +244,13 @@ def ecb_calendar_report(ecb: dict) -> dict:
     for d in unexpected:
         by_month[d[:7]] = by_month.get(d[:7], 0) + 1
     return {"weekend_days_with_rate": len(weekend), "target_holidays_missing": closed, "unexpected_missing_business_days": len(unexpected),
+            "unexpected_in_validation_window": sum(n for m, n in by_month.items() if m <= RESEARCH_CUTOFF),
             "unexpected_sample": unexpected[:10], "unexpected_by_month": by_month}
+
+
+def blocked_ecb_months(ecb: dict) -> list:
+    """Months with at least one UNEXPECTED missing ECB business day: no complete-month FX mean may be formed for them."""
+    return sorted(ecb_calendar_report(ecb)["unexpected_by_month"])
 
 
 # ------------------------------------------------------------------ model construction
@@ -293,6 +303,34 @@ def build(cm: hm.Series, ecb: hm.Series, house: hm.Series) -> dict:
     return out
 
 
+def month_eligibility(month: str, approvals=None) -> str:
+    """Explicit month-level release eligibility. HOLD wins over everything; RELEASE_ELIGIBLE needs an explicit approval record."""
+    approvals = RELEASE_APPROVALS if approvals is None else frozenset(approvals)
+    if month in EXCEPTIONS:
+        return "RESEARCH_ONLY_HOLD"
+    if month < FIRST_SUPPORTED_MONTH:
+        return "NONE"
+    return "RELEASE_ELIGIBLE" if month in approvals else "RESEARCH_ONLY"
+
+
+def candidate_values(built: dict, approved=None, series_id="cbs_btc_per_house_cm_c1") -> dict:
+    """The ONLY export selector for public-candidate values: {month: value} for explicitly approved months.
+
+    Nothing is selected by default. An approved month must have a value and must not be HOLD; June 2011 can never pass,
+    whatever an approval list says. Research diagnostics read the series directly and never go through this boundary.
+    """
+    approved = RELEASE_APPROVALS if approved is None else frozenset(approved)
+    values = {p.period: p.value for p in built[series_id].points if p.value is not None}
+    out = {}
+    for m in sorted(approved):
+        if month_eligibility(m, approved) == "RESEARCH_ONLY_HOLD":
+            raise Btc04eError(f"{m}: RESEARCH_ONLY_HOLD month cannot be a release candidate")
+        if m not in values:
+            raise Btc04eError(f"{m}: approved month has no value")
+        out[m] = values[m]
+    return out
+
+
 def month_metadata(built: dict, daily: dict, corroboration: dict | None = None) -> dict:
     """Per-month research metadata: quality, completeness, stale runs, exception, corroboration availability, eligibility."""
     stats = H.monthly_stats(daily)
@@ -316,7 +354,7 @@ def month_metadata(built: dict, daily: dict, corroboration: dict | None = None) 
                   "stale_days": stale_by_month.get(m, 0), "exception": exc, "has_value": value is not None,
                   "corroboration": (corroboration or {}).get(m, {}),
                   "provider_methodology": "UNCERTAIN: PriceUSD is a provider reference price; its early-history construction is undocumented here",
-                  "release_eligibility": "RESEARCH_ONLY_HOLD" if exc else "RESEARCH_ONLY"}
+                  "release_eligibility": month_eligibility(m)}
     return out
 
 
@@ -325,7 +363,7 @@ def chart_segments(built: dict) -> list:
     pts = built["cbs_btc_per_house_cm_c1"].points
     segs, cur = [], []
     for p in pts:
-        usable = p.value is not None and p.period not in EXCEPTIONS
+        usable = p.value is not None and month_eligibility(p.period) != "RESEARCH_ONLY_HOLD"
         if usable and cur and not _next_month(cur[-1], p.period):
             segs.append(cur)
             cur = []
@@ -450,7 +488,10 @@ def read_snapshot(directory) -> tuple:
 
 
 def build_from_daily(cm_daily: dict, ecb_daily: dict, house: hm.Series, acquired_at: str, cm_raw="0" * 64, ecb_raw="0" * 64) -> dict:
-    return build(cm_daily_series(cm_daily, cm_raw, acquired_at), ecb_series(ecb_daily, ecb_raw, acquired_at), house)
+    """Months with an unexpected missing ECB business day get no FX mean (null), never a mean of the remaining days."""
+    blocked = set(blocked_ecb_months(ecb_daily))
+    usable = {d: v for d, v in ecb_daily.items() if d[:7] not in blocked}
+    return build(cm_daily_series(cm_daily, cm_raw, acquired_at), ecb_series(usable, ecb_raw, acquired_at), house)
 
 
 def replay(directory, house: hm.Series) -> dict:
@@ -590,8 +631,29 @@ def run(args):  # noqa: C901
     R["replay_from_private_snapshot"] = replay(snap, house)
     R["replay_limit"] = ("Exact replay of this run is possible only with the private snapshot; the repository keeps window hashes and the derived hash, "
                          "so a later run can detect revisions but cannot reconstruct the original bytes.")
-    R["status"] = "COMPLETE_RESEARCH"
     R["source_notes"] = [ln[:200] for ln in notes.getvalue().splitlines() if ln.strip()][:12]
+    return R  # main() applies finalize(): status and exit code are decided in one place
+
+
+def finalize(R: dict, mode: str) -> dict:
+    """Decide the run status. Normal validation fails closed on any vintage status except MATCH; bootstrap is explicit."""
+    if mode not in MODES:
+        raise Btc04eError(f"unknown mode {mode!r}")
+    failures = []
+    vintage = (R.get("vintage_check") or {}).get("status")
+    if mode == "validate" and vintage != "MATCH":
+        failures.append(f"vintage_check {vintage} (normal validation requires MATCH)")
+    if (R.get("replay_from_private_snapshot") or {}).get("status") != "IDENTICAL":
+        failures.append("private-snapshot replay is not IDENTICAL")
+    if R.get("rebuild_identical") is not True:
+        failures.append("rebuild is not identical")
+    cal = R.get("ecb_calendar") or {}
+    if cal.get("unexpected_in_validation_window", 1) != 0:
+        failures.append(f"unexpected missing ECB business days in the validation window: {cal.get('unexpected_in_validation_window')}")
+    if cal.get("weekend_days_with_rate", 1) != 0:
+        failures.append(f"ECB fixings on weekend days: {cal.get('weekend_days_with_rate')}")
+    R["mode"], R["failures"] = mode, failures
+    R["status"] = "VALIDATION_FAILED" if failures else ("COMPLETE_RESEARCH" if mode == "validate" else "BOOTSTRAP_PINS_CANDIDATE")
     return R
 
 
@@ -599,6 +661,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="BTC-04E Coin Metrics validation (research only)")
     ap.add_argument("--cbs-csv")
     ap.add_argument("--pins")
+    ap.add_argument("--mode", choices=MODES, default="validate",
+                    help="validate (default): fail closed unless the pins MATCH; bootstrap: explicit research mode for generating pins")
     ap.add_argument("--summary-out")
     ap.add_argument("--print-summary")
     ap.add_argument("--keys", default="")
@@ -621,9 +685,11 @@ def main(argv=None):
         out.write_text(json.dumps({"status": "FAILED", "error": f"{type(exc).__name__}: {str(exc)[:400]}"}, indent=1) + "\n")
         print("DEFECT", type(exc).__name__, str(exc)[:400])
         return 1
+    if R.get("status") != "INCOMPLETE":
+        R = finalize(R, a.mode)
     out.write_text(json.dumps(R, indent=1, sort_keys=True, default=str) + "\n")
-    print("STATUS", R["status"], "missing", R["missing_sources"])
-    return 0
+    print("STATUS", R["status"], "mode", R.get("mode"), "failures", R.get("failures"), "missing", R.get("missing_sources"))
+    return 0 if R["status"] in OK_STATUSES else 1
 
 
 if __name__ == "__main__":

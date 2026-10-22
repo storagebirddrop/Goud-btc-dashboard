@@ -437,3 +437,158 @@ def test_committed_pin_file_is_hashes_only_and_ecb_equals_earlier_phases():
     assert (ecb["sha256"], ecb["n"]) == (b3pins["sha256"], b3pins["n"]) == (h10pins["sha256"], h10pins["n"])
     text = json.dumps(pins)
     assert "USD_per_BTC" not in text and not any(len(k) == 10 and k[4] == "-" for k in pins)
+
+
+# ---------------------------------------------------------------- review corrections: enforced vintage, HOLD boundary, ECB integrity
+def good_run(**over):
+    R = {"vintage_check": {"status": "MATCH"}, "replay_from_private_snapshot": {"status": "IDENTICAL"}, "rebuild_identical": True,
+         "ecb_calendar": {"unexpected_in_validation_window": 0, "weekend_days_with_rate": 0}}
+    R.update(over)
+    return R
+
+
+def test_normal_validation_succeeds_only_on_a_clean_match():
+    R = c.finalize(good_run(), "validate")
+    assert R["status"] == "COMPLETE_RESEARCH" and R["failures"] == [] and R["mode"] == "validate"
+
+
+@pytest.mark.parametrize("status", ["SOURCE_REVISED", "DEFECT_DERIVED_DRIFT", "METHOD_CHANGED", "UNPINNED", None, "SOMETHING_NEW"])
+def test_any_non_match_vintage_fails_normal_validation(status):
+    R = c.finalize(good_run(vintage_check={"status": status}), "validate")
+    assert R["status"] == "VALIDATION_FAILED" and any("vintage_check" in f for f in R["failures"])
+
+
+def test_missing_vintage_key_cannot_pass():
+    R = good_run()
+    del R["vintage_check"]
+    assert c.finalize(R, "validate")["status"] == "VALIDATION_FAILED"
+
+
+@pytest.mark.parametrize("mode", ["validate", "bootstrap"])
+@pytest.mark.parametrize("bad", [{"replay_from_private_snapshot": {"status": "DIFFERENT"}}, {"rebuild_identical": False},
+                                 {"ecb_calendar": {"unexpected_in_validation_window": 2, "weekend_days_with_rate": 0}},
+                                 {"ecb_calendar": {"unexpected_in_validation_window": 0, "weekend_days_with_rate": 1}}])
+def test_replay_rebuild_and_ecb_failures_fail_in_every_mode(mode, bad):
+    assert c.finalize(good_run(**bad), mode)["status"] == "VALIDATION_FAILED"
+
+
+def test_bootstrap_is_explicit_and_never_reports_complete_research():
+    R = c.finalize(good_run(vintage_check={"status": "UNPINNED"}), "bootstrap")
+    assert R["status"] == "BOOTSTRAP_PINS_CANDIDATE" and R["status"] != "COMPLETE_RESEARCH"
+    with pytest.raises(c.Btc04eError):
+        c.finalize(good_run(), "other")
+
+
+@pytest.mark.parametrize("status", ["SOURCE_REVISED", "DEFECT_DERIVED_DRIFT", "METHOD_CHANGED", "UNPINNED"])
+def test_a_reported_pin_mismatch_cannot_end_in_a_successful_run(monkeypatch, tmp_path, status):
+    monkeypatch.setattr(c, "run", lambda args: good_run(vintage_check={"status": status}, missing_sources=[]))
+    out = tmp_path / "s.json"
+    assert c.main(["--cbs-csv", "x.csv", "--summary-out", str(out)]) == 1  # default mode is validate
+    assert json.loads(out.read_text())["status"] == "VALIDATION_FAILED"
+    assert c.main(["--cbs-csv", "x.csv", "--summary-out", str(out), "--mode", "validate"]) == 1
+
+
+def test_match_exits_zero_and_bootstrap_must_be_selected_explicitly(monkeypatch, tmp_path):
+    out = tmp_path / "s.json"
+    monkeypatch.setattr(c, "run", lambda args: good_run(missing_sources=[]))
+    assert c.main(["--cbs-csv", "x.csv", "--summary-out", str(out)]) == 0
+    monkeypatch.setattr(c, "run", lambda args: good_run(vintage_check={"status": "UNPINNED"}, missing_sources=[]))
+    assert c.main(["--cbs-csv", "x.csv", "--summary-out", str(out)]) == 1
+    assert c.main(["--cbs-csv", "x.csv", "--summary-out", str(out), "--mode", "bootstrap"]) == 0
+    assert json.loads(out.read_text())["status"] == "BOOTSTRAP_PINS_CANDIDATE"
+    with pytest.raises(SystemExit):
+        c.main(["--cbs-csv", "x.csv", "--summary-out", str(out), "--mode", "skip"])
+
+
+def test_incomplete_sources_and_defects_exit_nonzero(monkeypatch, tmp_path):
+    out = tmp_path / "s.json"
+    monkeypatch.setattr(c, "run", lambda args: {"status": "INCOMPLETE", "missing_sources": ["ecb"]})
+    assert c.main(["--cbs-csv", "x.csv", "--summary-out", str(out), "--mode", "bootstrap"]) == 1
+
+    def boom(args):
+        raise c.Btc04eError("pin file unreadable")
+    monkeypatch.setattr(c, "run", boom)
+    assert c.main(["--cbs-csv", "x.csv", "--summary-out", str(out), "--mode", "bootstrap"]) == 1
+    assert json.loads(out.read_text())["status"] == "FAILED"
+
+
+def test_workflow_runs_validate_by_default_and_never_ignores_failure():
+    wf = (ROOT / ".github/workflows/btc-04e-cm-replay.yml").read_text()
+    assert '--mode "${BTC04E_MODE:-validate}"' in wf and "default: validate" in wf
+    assert "continue-on-error" not in wf and "|| true" not in wf
+
+
+# ---- June 2011 at the export boundary
+def test_month_eligibility_is_explicit_and_hold_always_wins():
+    assert c.month_eligibility("2011-06") == "RESEARCH_ONLY_HOLD"
+    assert c.month_eligibility("2011-06", approvals={"2011-06"}) == "RESEARCH_ONLY_HOLD"
+    assert c.month_eligibility("2011-05") == "RESEARCH_ONLY" and c.month_eligibility("2010-07") == "NONE"
+    assert c.month_eligibility("2011-05", approvals={"2011-05"}) == "RELEASE_ELIGIBLE"
+    assert c.RELEASE_APPROVALS == frozenset()
+
+
+def test_default_export_selects_nothing(built):
+    assert c.candidate_values(built) == {}
+
+
+def test_future_export_selector_cannot_include_june_2011(built):
+    every = {m for m, v in vals(built["cbs_btc_per_house_cm_c1"]).items() if v is not None}
+    assert "2011-06" in every  # the diagnostic value still exists for research
+    with pytest.raises(c.Btc04eError):
+        c.candidate_values(built, approved=every)
+    with pytest.raises(c.Btc04eError):
+        c.candidate_values(built, approved={"2011-06"})
+    ok = c.candidate_values(built, approved={"2011-05", "2011-07"})
+    assert sorted(ok) == ["2011-05", "2011-07"] and "2011-06" not in ok
+    assert [m for m in sorted(every) if c.month_eligibility(m, approvals=every) == "RELEASE_ELIGIBLE"].count("2011-06") == 0
+    with pytest.raises(c.Btc04eError):
+        c.candidate_values(built, approved={"2010-07"})  # null / unsupported month
+
+
+def test_june_2011_is_hold_in_metadata_and_outside_chart_segments(built):
+    meta = c.month_metadata(built, CM)
+    assert meta["2011-06"]["release_eligibility"] == "RESEARCH_ONLY_HOLD" and meta["2011-05"]["release_eligibility"] == "RESEARCH_ONLY"
+    segs = c.chart_segments(built)
+    assert segs and all(not (s["first"] <= "2011-06" <= s["last"]) for s in segs)
+    assert vals(built["cbs_btc_per_house_cm_c1"])["2011-06"] is not None  # internal diagnostic value is preserved
+
+
+# ---- ECB calendar integrity
+def test_unexpected_missing_ecb_business_day_blocks_that_month_only():
+    ecb = {k: v for k, v in ECB.items() if k != "2012-05-15"}  # a Tuesday, not a TARGET holiday
+    assert c.blocked_ecb_months(ecb) == ["2012-05"]
+    b = c.build_from_daily(CM, ecb, house(), STAMP)
+    assert vals(b["ecb_usd_per_eur_monthly"])["2012-05"] is None and vals(b["cbs_btc_per_house_cm_c1"])["2012-05"] is None
+    assert vals(b["cbs_btc_per_house_cm_c1"])["2012-04"] is not None and vals(b["cbs_btc_per_house_cm_c1"])["2012-06"] is not None
+    assert vals(b["cm_priceusd_monthly"])["2012-05"] is not None  # the BTC leg is intact; only the FX leg is blocked
+
+
+def test_target_holidays_and_weekends_do_not_block_a_month():
+    ecb = {k: v for k, v in ECB.items() if k not in ("2012-04-06", "2012-04-09", "2012-05-01")}  # Good Friday, Easter Monday, 1 May
+    assert c.blocked_ecb_months(ecb) == []
+    b = c.build_from_daily(CM, ecb, house(), STAMP)
+    assert vals(b["cbs_btc_per_house_cm_c1"])["2012-04"] is not None and vals(b["cbs_btc_per_house_cm_c1"])["2012-05"] is not None
+    rep = c.ecb_calendar_report(ecb)
+    assert rep["unexpected_missing_business_days"] == 0 and rep["target_holidays_missing"] >= 3 and rep["weekend_days_with_rate"] == 0
+
+
+def test_validation_window_count_drives_the_run_status():
+    ecb = {k: v for k, v in ECB.items() if k != "2012-05-15"}
+    cal = c.ecb_calendar_report(ecb)
+    assert cal["unexpected_in_validation_window"] == 1
+    assert c.finalize(good_run(ecb_calendar=cal), "validate")["status"] == "VALIDATION_FAILED"
+    clean = c.ecb_calendar_report(ECB)
+    assert clean["unexpected_in_validation_window"] == 0
+    assert c.finalize(good_run(ecb_calendar=clean), "validate")["status"] == "COMPLETE_RESEARCH"
+
+
+def test_weekend_fixing_is_reported_and_fails_validation():
+    ecb = dict(ECB)
+    ecb["2012-05-19"] = Decimal("1.3")  # Saturday
+    cal = c.ecb_calendar_report(ecb)
+    assert cal["weekend_days_with_rate"] == 1 and c.finalize(good_run(ecb_calendar=cal), "validate")["status"] == "VALIDATION_FAILED"
+
+
+def test_blocking_does_not_change_the_pinned_derived_hash_when_the_calendar_is_clean(built):
+    assert c.blocked_ecb_months(ECB) == []
+    assert c.derived_values_sha256(c.build_from_daily(CM, ECB, house(), STAMP)) == c.derived_values_sha256(built)

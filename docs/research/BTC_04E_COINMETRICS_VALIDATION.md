@@ -60,7 +60,7 @@ Against Bitstamp (live API): CM monthly mean vs Bitstamp USD A1, 181 shared mont
 
 ## 6. Failure-injection tests (all pass)
 
-Missing UTC day; duplicate same/conflicting values; wrong timestamp; leap February; partial current month; ECB holiday vs unexpected missing business day; wrong FX direction; zero/negative/non-finite/float prices; Decimal context independence and exact satoshi conversion; wrong housing statistic (median refused); unsupported early period; changed old price → `SOURCE_REVISED`; identical input but different derived hash → `DEFECT_DERIVED_DRIFT`; changed method/parser/exception/quality version → `METHOD_CHANGED`; appended data outside the pin window → unchanged; corrupted/truncated/missing snapshot → fail closed; June 2011 HOLD and segment splitting; no public leakage (production hashes, empty allowlist, no BTC strings in public JSON/frontend). Results: focused 56 passed; full suite 1,513 passed, 5 skipped.
+Missing UTC day; duplicate same/conflicting values; wrong timestamp; leap February; partial current month; ECB holiday vs unexpected missing business day; wrong FX direction; zero/negative/non-finite/float prices; Decimal context independence and exact satoshi conversion; wrong housing statistic (median refused); unsupported early period; changed old price → `SOURCE_REVISED`; identical input but different derived hash → `DEFECT_DERIVED_DRIFT`; changed method/parser/exception/quality version → `METHOD_CHANGED`; appended data outside the pin window → unchanged; corrupted/truncated/missing snapshot → fail closed; June 2011 HOLD and segment splitting; no public leakage (production hashes, empty allowlist, no BTC strings in public JSON/frontend). Results at the first review head: focused 56 passed; full suite 1,513 passed, 5 skipped (see §8a for the corrected counts).
 
 ## 7. Reproducibility limits
 
@@ -77,6 +77,14 @@ Missing UTC day; duplicate same/conflicting values; wrong timestamp; leap Februa
 3. Final June 2011 treatment beyond research HOLD, and whether any Q3 start (2010-08) is ever publishable.
 4. Whether CM-based and Bitstamp EUR-native series stay separate candidates or one is chosen (never an automatic fallback).
 5. Production BTC ADR, data contract, UI labels, release and rollback verification.
+
+## 8a. Project Control review corrections (applied after review of head `5b70caa`)
+
+1. **Vintage enforced.** The tool has an explicit `--mode`. The default `validate` mode finishes `COMPLETE_RESEARCH` only if `vintage_check` is `MATCH`, the private-snapshot replay is `IDENTICAL`, the rebuild is identical and the ECB calendar is clean; every other result (`SOURCE_REVISED`, `DEFECT_DERIVED_DRIFT`, `METHOD_CHANGED`, `UNPINNED`, missing key) ends `VALIDATION_FAILED` with exit code 1. Pin generation needs the separately selected `bootstrap` mode, which reports `BOOTSTRAP_PINS_CANDIDATE` and never `COMPLETE_RESEARCH`. A corrupt pin file still fails closed. The workflow runs `validate` for pull requests and for dispatch unless `bootstrap` is chosen as an input.
+2. **June 2011 at the export boundary.** `month_eligibility()` gives every month an explicit state (`RESEARCH_ONLY`, `RESEARCH_ONLY_HOLD`, `RELEASE_ELIGIBLE`, `NONE`); HOLD wins over any approval. `candidate_values()` is the only export selector: it selects nothing by default (`RELEASE_APPROVALS` is empty), and it raises if an approved month is HOLD, null or unsupported. The diagnostic June 2011 value is kept in the research series and metadata; chart segments and candidate values exclude it. No public JSON was created or changed.
+3. **ECB calendar integrity.** A month with an unexpected missing ECB business day gets no FX mean (null, so no BTC-per-house value for that month); TARGET holidays and weekends do not block. In `validate` mode any unexpected absence in the validated window (up to 2026-08), or any ECB fixing on a weekend, fails the run. With the real data both counts are 0, so the pinned derived hash is unchanged.
+
+Method, quality periods and source pins are unchanged. Tests: focused 89 passed; full suite 1,546 passed, 5 skipped.
 
 ## 9. Merge-readiness
 

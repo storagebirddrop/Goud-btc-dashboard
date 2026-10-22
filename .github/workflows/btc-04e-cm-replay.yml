@@ -1,6 +1,12 @@
 name: BTC-04E Coin Metrics validation and replay (research only)
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'validate (default, fails closed unless the pins MATCH) or bootstrap (explicit pin generation)'
+        type: choice
+        options: [validate, bootstrap]
+        default: validate
   pull_request:
     paths:
       - '.github/workflows/btc-04e-cm-replay.yml'
@@ -29,7 +35,10 @@ jobs:
           python -m tools.btc_04e_cm_replay
           --cbs-csv data/cbs-housing.csv
           --pins data/fixtures/btc04e/source_pins.json
+          --mode "${BTC04E_MODE:-validate}"
           --summary-out "$RUNNER_TEMP/btc-04e/summary.json"
+        env:
+          BTC04E_MODE: ${{ inputs.mode }}
       - name: Derived research artifact (aggregates only; no raw price data; rights UNVERIFIED)
         if: always()
         uses: actions/upload-artifact@v4
@@ -42,6 +51,6 @@ jobs:
         if: always()
         run: >
           python -m tools.btc_04e_cm_replay --print-summary "$RUNNER_TEMP/btc-04e/summary.json"
-          --keys "${BTC04E_KEYS:-status,missing_sources,acquisition,observations_used,rebuild_identical,replay_from_private_snapshot,replay_limit,vintage_check,pins_candidate,derived_values_sha256,coverage,quality_months,chart_segments,june_2011,stale_runs,ecb_calendar,independent,corroboration,quality_metadata_sample,source_notes}"
+          --keys "${BTC04E_KEYS:-status,mode,failures,missing_sources,acquisition,observations_used,rebuild_identical,replay_from_private_snapshot,replay_limit,vintage_check,pins_candidate,derived_values_sha256,coverage,quality_months,chart_segments,june_2011,stale_runs,ecb_calendar,independent,corroboration,quality_metadata_sample,source_notes}"
         env:
           BTC04E_KEYS: ''
