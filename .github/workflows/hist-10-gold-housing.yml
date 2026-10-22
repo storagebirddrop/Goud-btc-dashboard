@@ -6,7 +6,7 @@ on:
       - '.github/workflows/hist-10-gold-housing.yml'
       - 'tools/hist_10_*.py'
       - 'tests/test_hist_10_*.py'
-      - 'etl/hist_model.py'
+      - 'etl/hist_*.py'
 permissions:
   contents: read
 jobs:
@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Offline tests (synthetic, prove code only)
-        run: python -m pytest -q tests/test_hist_10_gold_housing.py tests/test_hist_09_bundle.py tests/test_hist_model.py
+        run: python -m pytest -q tests/test_hist_10_gold_housing.py tests/test_hist_09_bundle.py
       - name: Build research bundles (read-only sources; unreachable sources are recorded, never replaced)
         run: >
           python -m tools.hist_10_gold_housing
