@@ -36,7 +36,9 @@ INCOMPATIBLE_KINDS = (frozenset({"average_price", "constant_quality_index"}),
                       frozenset({"median_price", "constant_quality_index"}),
                       frozenset({"price_return", "total_return"}))
 QUALITY = ("CONFIRMED", "PROPOSED", "INFERRED", "UNRESOLVED")  # best to worst
-INCOMPATIBLE_DEFINITIONS = (frozenset({"derived_grams_per_house", "derived_grams_per_house_median"}),)
+INCOMPATIBLE_DEFINITIONS = (frozenset({"derived_grams_per_house", "derived_grams_per_house_median"}),
+                            frozenset({"derived_sats_per_house", "derived_sats_per_house_median"}),
+                            frozenset({"derived_btc_per_house", "derived_btc_per_house_median"}))
 RESTRICTED_CLASSES = ("bitcoin", "equity")
 RESTRICTED_TOKENS = frozenset({"btc", "bitcoin", "sat", "sats", "satoshi", "sp500", "spx", "aex", "equity"})
 
@@ -841,13 +843,28 @@ def grams_per_house(house: Series, gold: Series, *, series_id="grams_per_house")
                     else "derived_grams_per_house_median")
 
 
+def _btc_house_inputs(house: Series, btc: Series):
+    if house.kind not in ("average_price", "median_price"):
+        raise DefinitionMismatch(f"house {house.series_id}: kind {house.kind!r}, expected average_price or median_price")
+    _expect(house, "house", currencies=("EUR",), unit="EUR")
+    _expect(btc, "btc", kind="spot_price", unit="EUR_per_BTC")
+    return "" if house.kind == "average_price" else "_median"
+
+
+def btc_per_house(house: Series, btc: Series, *, series_id="btc_per_house") -> Series:
+    """house_eur / btc_eur (bitcoin per house). Derivation only; publication stays denied without a release record."""
+    suffix = _btc_house_inputs(house, btc)
+    return _combine(house, btc, lambda h, b: h / b, series_id=series_id,
+                    step={"op": "btc_per_house", "formula": "house_eur / btc_eur", "house_statistic": house.kind},
+                    currency="NONE", unit="btc", kind="spot_price", definition_id=f"derived_btc_per_house{suffix}")
+
+
 def sats_per_house(house: Series, btc: Series, *, series_id="sats_per_house") -> Series:
     """house_eur / btc_eur * 100000000 (derivation only; publication stays denied without a release record)."""
-    _expect(house, "house", kind="average_price", currencies=("EUR",), unit="EUR")
-    _expect(btc, "btc", kind="spot_price", unit="EUR_per_BTC")
+    suffix = _btc_house_inputs(house, btc)
     return _combine(house, btc, lambda h, b: h / b * SATOSHIS_PER_BTC, series_id=series_id,
-                    step={"op": "sats_per_house", "formula": "house_eur / btc_eur * 100000000"},
-                    currency="NONE", unit="satoshi", kind="spot_price", definition_id="derived_sats_per_house")
+                    step={"op": "sats_per_house", "formula": "house_eur / btc_eur * 100000000", "house_statistic": house.kind},
+                    currency="NONE", unit="satoshi", kind="spot_price", definition_id=f"derived_sats_per_house{suffix}")
 
 
 def common_base_period(a: Series, b: Series, base_period=None) -> str:

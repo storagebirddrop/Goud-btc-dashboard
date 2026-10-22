@@ -142,7 +142,7 @@ def test_weighted_half_year_mean_is_exact_independent_recalculation(built):
 def test_nlg_to_eur_is_denomination_only(built):
     series, _ = built
     eur = {p.period: p.value for p in series["nvm_median_eur_halfyear"].points}
-    assert abs(eur["1975-H1"] - Decimal("88900") / Decimal("2.20371")) < Decimal("1e-25")
+    assert abs(Fraction(eur["1975-H1"]) - Fraction(88900) / Fraction("2.20371")) < Fraction(1, 10 ** 25)  # context-independent
     assert abs(eur["1995-H1"] - Decimal("99831.64754")) < Decimal("1e-5")
     s = series["nvm_median_eur_halfyear"]
     assert s.basis == "nominal" and s.transforms[0]["op"] == "redenominate" and s.transforms[0]["applied"] == 1

@@ -1,0 +1,50 @@
+name: BTC-03 housing in BTC and satoshi (research only)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/btc-03-housing.yml'
+      - 'tools/btc_03_*.py'
+      - 'tests/test_btc_03_*.py'
+      - 'data/fixtures/btc03/**'
+      - 'etl/hist_*.py'
+permissions:
+  contents: read
+jobs:
+  btc-03:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_btc_03_housing.py tests/test_btc_02_history.py tests/test_hist_08_btc_definition.py
+      - name: Build research bundles (read-only sources; unreachable sources are recorded, never replaced)
+        run: >
+          python -m tools.btc_03_housing
+          --inputs data/fixtures/hist09
+          --cbs-csv data/cbs-housing.csv
+          --hist10-pins data/fixtures/hist10/source_pins.json
+          --summary-out "$RUNNER_TEMP/btc-03/summary.json"
+          --bundles-out "$RUNNER_TEMP/btc-03-bundles"
+      - name: Derived research artifact (aggregates only; no raw exchange data; rights UNVERIFIED)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-03-summary-not-approved
+          path: ${{ runner.temp }}/btc-03/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Print summary sections (aggregates only)
+        if: always()
+        run: >
+          python -m tools.btc_03_housing --print-summary "$RUNNER_TEMP/btc-03/summary.json"
+          --keys "${BTC03_KEYS:-status,missing_sources,quality,vintage_check,pins_candidate,hist10_ecb_pin_consistency,rebuild_identical,bundles,bundle_validation,coverage,nvm_overlap,independent,sensitivity.a2_month_end_vs_a1,sensitivity.usd_to_eur_vs_native_bitstamp_eur,sensitivity.transition_2016_05_c1_vs_native_first_12_months,sensitivity.q2_cross_validation_c1_vs_kraken_eur_2014_02_2016_04,sensitivity.cross_venue_kraken_eur_vs_bitstamp_eur_native,sensitivity.transition_mtgox_vs_bitstamp_usd_shared_months,sensitivity.mtgox_first_last_complete,sensitivity.early_usd_notional_below_threshold_months,sensitivity.mtgox_trade_definitions_vs_a1,sensitivity.kraken_trade_definitions_vs_a1,sensitivity.sats_per_house_effect,half_year_btc,provenance,source_notes}"
+        env:
+          BTC03_KEYS: ''
