@@ -1,0 +1,56 @@
+name: BTC-04E Coin Metrics validation and replay (research only)
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'validate (default, fails closed unless the pins MATCH) or bootstrap (explicit pin generation)'
+        type: choice
+        options: [validate, bootstrap]
+        default: validate
+  pull_request:
+    paths:
+      - '.github/workflows/btc-04e-cm-replay.yml'
+      - 'tools/btc_04e_*.py'
+      - 'tests/test_btc_04e_*.py'
+      - 'data/fixtures/btc04e/**'
+permissions:
+  contents: read
+jobs:
+  btc-04e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_btc_04e_cm_replay.py tests/test_btc_03_housing.py
+      - name: Validate Coin Metrics PriceUSD x ECB x CBS (read-only; the replay snapshot stays private on the runner)
+        run: >
+          python -m tools.btc_04e_cm_replay
+          --cbs-csv data/cbs-housing.csv
+          --pins data/fixtures/btc04e/source_pins.json
+          --mode "${BTC04E_MODE:-validate}"
+          --summary-out "$RUNNER_TEMP/btc-04e/summary.json"
+        env:
+          BTC04E_MODE: ${{ inputs.mode }}
+      - name: Derived research artifact (aggregates only; no raw price data; rights UNVERIFIED)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-04e-summary-not-approved
+          path: ${{ runner.temp }}/btc-04e/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Print summary sections (aggregates only)
+        if: always()
+        run: >
+          python -m tools.btc_04e_cm_replay --print-summary "$RUNNER_TEMP/btc-04e/summary.json"
+          --keys "${BTC04E_KEYS:-status,mode,failures,missing_sources,acquisition,observations_used,rebuild_identical,replay_from_private_snapshot,replay_limit,vintage_check,pins_candidate,derived_values_sha256,coverage,quality_months,chart_segments,june_2011,stale_runs,ecb_calendar,independent,corroboration,quality_metadata_sample,source_notes}"
+        env:
+          BTC04E_KEYS: ''

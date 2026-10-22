@@ -1,0 +1,22 @@
+{
+  "method_id": "CM_PRICEUSD_MONTHMEAN_C1_V1",
+  "parser_version": "cm-priceusd-parser/1",
+  "exception_policy_version": "CM_EXC_V1",
+  "quality_version": "CM_Q_V1",
+  "pinned_on": "2026-10-22",
+  "status": "RESEARCH PIN: window hashes of canonical daily values and a hash of the derived monthly values only; no raw third-party data; rights UNVERIFIED; the method is conditionally accepted for research only; a hash is not an archive of the original bytes",
+  "sources": {
+    "cm_priceusd_daily": {"first": "2010-07-18", "last": "2026-08-31", "n": 5889, "sha256": "d57d692f4953d6b1fbab3a8a71310ba9ca95cd82b932522d0c210e2dea8837e8"},
+    "ecb_usd_per_eur_daily": {"first": "1999-01-04", "last": "2026-08-31", "n": 7082, "sha256": "0daadfe82fbbbd562dcce955324e4543029858ae5167392dd431417516e1f294"}
+  },
+  "derived": {"values_sha256": "82316fb33a2fd31e49e44d5ef1bd1de363e4254ac400edc8ddb9f8ba879a7c82", "cutoff": "2026-08"},
+  "acquisition_reference": {
+    "provider": "Coin Metrics Community API v4, asset btc, metric PriceUSD, frequency 1d",
+    "query": "start_time=2010-07-18, end_time=2026-10-21, page_size=10000 (1 page)",
+    "retrieved_at_utc": "2026-10-22T15:13:52+00:00",
+    "response_sha256_of_page_hashes": "9633cb7249325ea7921701808c671254c782b7126d64eace05a8e270a7f26136",
+    "page_sha256": ["8519daacb6f7978ad124ebce32fb65fbd3601ad5b06c5829555dffdec51b5903"],
+    "observations_in_run": 5940
+  },
+  "window_rule": "sha256 over 'day:value' lines (canonical decimals) for first <= day <= last; observations after 'last' do not change the pin, a revision inside the window does. The ECB window equals the BTC-03 and HIST-10 pin."
+}
