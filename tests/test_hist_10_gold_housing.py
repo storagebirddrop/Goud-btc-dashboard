@@ -37,7 +37,8 @@ def wb_gold(first="1975-01", last="2000-12"):
 def daily_fx(first, last, base, step):
     out = {}
     for i, m in enumerate(months(first, last)):
-        for day in range(1, 17):  # 16 days: above the 50% calendar-day coverage threshold for every month
+        # 16 days is above the 50% coverage threshold; the final month is complete (a partial final month is rejected)
+        for day in range(1, (monthrange(int(m[:4]), int(m[5:]))[1] if m == last else 16) + 1):
             out[date(int(m[:4]), int(m[5:]), day)] = Decimal(base) + Decimal(i % 9) * Decimal(step) + Decimal(day % 3) / Decimal(100)
     return out
 
@@ -371,3 +372,180 @@ def test_coverage_matrix_reports_nulls_and_counts(world):
     cov = h10.coverage_matrix(world["gold"], world["houses"], world["nvm"], {"price": world["price"], "count": world["count"]})
     assert cov["gold_usd_monthly"]["n"] == 312 and cov["nvm_grams_nlg_era"]["n"] == 48 and cov["nvm_grams_eur_era"]["n"] == 4
     assert cov["gold_nlg_monthly"]["first"] == "1975-01" and cov["gold_nlg_monthly"]["last"] == "1998-12"
+
+
+# ---------------------------------------------------------------- Project Control decisions: audit tests
+def fx_through(last_day, first=date(1998, 12, 1), unit="NLG_per_USD"):
+    d, vals = first, {}
+    from datetime import timedelta
+    while d <= last_day:
+        vals[d] = Decimal("2.0") + Decimal(d.day) / Decimal(100)
+        d += timedelta(days=1)
+    return h10.fx_daily_series("fed_nlg_per_usd_daily", vals, currency="NLG", unit=unit, source_id="s", raw_sha=RAW, definition="d")
+
+
+@pytest.mark.parametrize("last,partial", [(date(1998, 12, 31), False), (date(1998, 12, 30), True), (date(1998, 12, 18), True),
+                                          (date(1999, 1, 29), False), (date(1999, 1, 28), True)])
+def test_partial_final_month_is_not_accepted_even_above_the_coverage_threshold(last, partial):
+    first = last.replace(day=1)
+    s = fx_through(last, first=first)
+    strict = hm.monthly_mean(s, min_coverage=h10.MIN_DAY_COVERAGE, series_id="m_strict", complete_final_month=True)
+    point = strict.points[-1]
+    if partial:
+        assert point.value is None and point.flags == ("PARTIAL_FINAL_MONTH",)
+        assert last.day / 31 >= 0.5 or last.day >= 16  # it would have passed the 50% rule
+    else:
+        assert point.value is not None
+    lax = hm.monthly_mean(s, min_coverage=h10.MIN_DAY_COVERAGE, series_id="m_lax")
+    if last.day >= 16:
+        assert lax.points[-1].value is not None  # without the rule the partial month would pass silently
+
+
+def test_partial_final_month_propagates_to_a_null_gold_and_grams_period():
+    first_days = {d: v for d, v in FED.items() if d < date(1998, 12, 1)}
+    partial = {**first_days, **{date(1998, 12, d): Decimal("2.5") for d in range(1, 21)}}
+    fed = h10.fx_daily_series("fed_nlg_per_usd_daily", partial, currency="NLG", unit="NLG_per_USD", source_id="s", raw_sha=RAW, definition="d")
+    ecb = h10.fx_daily_series("ecb_usd_per_eur_daily", ECB, currency="USD", unit="USD_per_EUR", source_id="s", raw_sha=RAW, definition="d")
+    gold = h10.build_gold(h10.gold_usd_series(WB, RAW), fed, ecb)
+    assert pts(gold["fed_nlg_per_usd_monthly"])["1998-12"] is None
+    assert pts(gold["gold_nlg_monthly"])["1998-12"] is None
+    assert pts(gold["gold_nlg_half_mean"])["1998-H2"] is None  # no plausible-looking half-year value from a partial month
+    nvm, _ = nvm_nlg_series()
+    grams = pts(hm.grams_per_house(nvm, gold["gold_nlg_half_mean"], series_id="g"))
+    assert grams.get("1998-H2") is None and max(grams) == "1998-H1"  # the result simply stops: no value is produced
+
+
+def test_fx_coverage_report_flags_the_final_month():
+    cov = h10.fx_coverage(dict(ECB), hm.monthly_mean(h10.fx_daily_series("ecb_usd_per_eur_daily", ECB, currency="USD", unit="USD_per_EUR",
+                                                                         source_id="s", raw_sha=RAW, definition="d"),
+                                                      min_coverage=h10.MIN_DAY_COVERAGE, series_id="m", complete_final_month=True))
+    assert cov["final_month"] == "2000-12" and cov["final_month_complete"] is True and cov["null_months"] == []
+    cut = {d: v for d, v in ECB.items() if d <= date(2000, 12, 20)}
+    cov = h10.fx_coverage(cut, hm.monthly_mean(h10.fx_daily_series("ecb_usd_per_eur_daily", cut, currency="USD", unit="USD_per_EUR",
+                                                                   source_id="s", raw_sha=RAW, definition="d"),
+                                               min_coverage=h10.MIN_DAY_COVERAGE, series_id="m", complete_final_month=True))
+    assert cov["final_month_complete"] is False and cov["null_months"] == [("2000-12", "PARTIAL_FINAL_MONTH")]
+
+
+def test_fx_series_carry_direction_in_their_units(world):
+    g = world["gold"]
+    assert (g["fed_nlg_per_usd_daily"].unit, g["fed_nlg_per_usd_daily"].currency) == ("NLG_per_USD", "NLG")
+    assert (g["ecb_usd_per_eur_daily"].unit, g["ecb_usd_per_eur_daily"].currency) == ("USD_per_EUR", "USD")
+    assert g["gold_nlg_monthly"].unit == "NLG_per_troy_oz" and g["gold_eur_monthly"].unit == "EUR_per_troy_oz"
+
+
+def test_era_boundary_and_retrospective_labels(world):
+    g, h = world["gold"], world["houses"]
+    assert [b.period for b in g["gold_nlg_monthly"].breaks] == ["1998-12"]
+    assert [b.period for b in g["gold_eur_monthly"].breaks] == ["1999-01"]
+    assert any(b.period == "1998-H2" and "NLG era ends" in b.reason for b in h["nvm_grams_nlg_era"].breaks)
+    assert any(b.period == "1999-H1" and "observed-EUR era starts" in b.reason for b in h["nvm_grams_eur_era"].breaks)
+    for name in ("gold_eur_retro_monthly", "nvm_grams_eur_retro", "cbs_grams_eur_retro_halfyear"):
+        s = g.get(name) or h[name]
+        assert all("RETROSPECTIVE_EUR" in p.flags for p in s.points), name
+    for name in ("gold_nlg_monthly", "gold_eur_monthly", "nvm_grams_nlg_era"):
+        s = g.get(name) or h[name]
+        assert not any("RETROSPECTIVE_EUR" in p.flags for p in s.points), name
+    # NVM_EUR is a redenomination of NLG source data, so the observed-EUR NVM grams carry the label through the house side only
+    assert all("RETROSPECTIVE_EUR" in p.flags for p in h["nvm_median_eur_halfyear"].points)
+    assert not any("RETROSPECTIVE_EUR" in p.flags for p in g["gold_eur_half_mean"].points)
+
+
+def test_quality_levels_and_method_flag_reach_the_results(world):
+    flags = {p.period: p.flags for p in world["houses"]["nvm_grams_nlg_era"].points}
+    level = lambda f: [x for x in f if x.startswith("GOLD_LEVEL") or x.startswith("GOLD_ADR")]  # noqa: E731
+    assert level(flags["1975-H1"]) == ["GOLD_LEVEL_B"] and level(flags["1978-H2"]) == ["GOLD_LEVEL_B"]
+    assert level(flags["1979-H1"]) == ["GOLD_LEVEL_A"] and level(flags["1998-H2"]) == ["GOLD_LEVEL_A"]
+    eur = {p.period: p.flags for p in world["houses"]["nvm_grams_eur_era"].points}
+    assert level(eur["1999-H1"]) == ["GOLD_LEVEL_E"] and level(eur["2000-H1"]) == ["GOLD_ADR004_PERIOD"]
+    for s in (world["houses"]["nvm_grams_nlg_era"], world["houses"]["nvm_grams_eur_era"], world["houses"]["cbs_grams_eur_halfyear"]):
+        assert all(h10.METHOD_FLAG in p.flags and "HALF_RULE:MEAN" in p.flags for p in s.points)
+    assert h10.METHOD_FLAG == "METHOD:HIST10_M1_V1"
+
+
+def test_sensitivity_alternatives_are_not_primary_series(world):
+    primary = {"nvm_grams_nlg_era", "nvm_grams_eur_era", "nvm_grams_eur_retro", "cbs_grams_eur_retro_halfyear", "cbs_grams_eur_halfyear"}
+    assert primary <= set(world["houses"])
+    assert all("half_mean" in s.series_id or s.series_id == "nvm_median_eur_halfyear" or "grams" in s.series_id or "price" in s.series_id
+               for s in world["houses"].values())
+    # grams use the M1 gold series only
+    lineage_ids = {sid for s in (world["houses"]["nvm_grams_nlg_era"],) for sid, _ in s.inputs}
+    assert lineage_ids == {"nvm_median_nlg_halfyear", "gold_nlg_half_mean"}
+
+
+def test_m1_vs_m2_difference_is_small_and_ordered_on_synthetic_data(world):
+    m1, m2 = pts(world["gold"]["gold_nlg_half_mean"]), pts(world["gold"]["gold_nlg_half_ratio_of_means"])
+    assert set(m1) == set(m2) and any(m1[p] != m2[p] for p in m1)
+    assert max(abs(Fraction(m1[p]) / Fraction(m2[p]) - 1) for p in m1) < Fraction(5, 100)
+
+
+# ---- source vintage and pins
+def points_for_hash():
+    return {f"1975-{m:02d}": Decimal(100 + m) for m in range(1, 13)}
+
+
+def test_window_hash_ignores_appended_data_but_detects_a_revision_inside_the_window():
+    pts0 = points_for_hash()
+    a = h10.window_hash(pts0, "1975-01", "1975-12")
+    appended = {**pts0, "1976-01": Decimal(999)}
+    assert h10.window_hash(appended, "1975-01", "1975-12") == a  # newer observations do not change the pinned window
+    revised = {**pts0, "1975-06": Decimal(999)}
+    assert h10.window_hash(revised, "1975-01", "1975-12")["sha256"] != a["sha256"]
+    assert h10.window_hash({k: v for k, v in pts0.items() if k != "1975-06"}, "1975-01", "1975-12")["n"] == 11
+    assert h10.window_hash({k: Decimal(str(v) + ".0") for k, v in pts0.items()}, "1975-01", "1975-12") == a  # canonical decimals
+    with pytest.raises(h10.Hist10Error):
+        h10.window_hash(pts0, "1990-01", "1990-12")
+
+
+def test_pin_check_distinguishes_a_changed_source_from_the_pinned_result(world):
+    wb = {m: v for m, v in WB.items()}
+    cur = {"world_bank_gold_monthly": h10.window_hash(wb, "1975-01", "2000-12"),
+           "fed_nlg_per_usd_daily": h10.window_hash({d.isoformat(): v for d, v in FED.items()}, "1975-01-01", "1998-12-31"),
+           "ecb_usd_per_eur_daily": h10.window_hash({d.isoformat(): v for d, v in ECB.items()}, "1999-01-01", "2000-12-31")}
+    derived = h10.derived_values_sha256(world["houses"])
+    pins = {"method_id": h10.METHOD_ID, "sources": cur, "derived": {"halfyear_values_sha256": derived}}
+    assert h10.check_pins(cur, derived, pins)["status"] == "MATCH"
+    assert h10.check_pins(cur, derived, None)["status"] == "UNPINNED"
+    revised = {**cur, "world_bank_gold_monthly": h10.window_hash({**wb, "1980-01": Decimal(1)}, "1975-01", "2000-12")}
+    out = h10.check_pins(revised, "different", pins)
+    assert out["status"] == "SOURCE_REVISED" and out["sources"]["world_bank_gold_monthly"] == "REVISED"
+    assert h10.check_pins(cur, "different", pins)["status"] == "DEFECT_DERIVED_DRIFT"  # same sources, different values: code defect
+    assert h10.check_pins(cur, derived, {**pins, "method_id": "OTHER"})["status"] == "METHOD_CHANGED"
+    missing = {**pins, "sources": {k: v for k, v in cur.items() if k != "fed_nlg_per_usd_daily"}}
+    assert h10.check_pins(cur, derived, missing)["status"] == "UNPINNED"
+
+
+def test_derived_values_hash_is_stable_and_value_sensitive(world):
+    a = h10.derived_values_sha256(world["houses"])
+    assert a == h10.derived_values_sha256(world["houses"])
+    s = world["houses"]["nvm_grams_nlg_era"]
+    changed = dict(world["houses"], nvm_grams_nlg_era=replace(s, points=(replace(s.points[0], value=s.points[0].value + 1),) + s.points[1:]))
+    assert h10.derived_values_sha256(changed) != a
+
+
+def test_acquisition_timestamp_is_recorded_and_changes_bundles_not_derived_values():
+    stamp1, stamp2 = "2026-10-22T10:00:00+00:00", "2026-10-23T10:00:00+00:00"
+
+    def build(stamp):
+        g = h10.build_gold(h10.gold_usd_series(WB, RAW, acquired_at=stamp),
+                           h10.fx_daily_series("fed_nlg_per_usd_daily", FED, currency="NLG", unit="NLG_per_USD", source_id="s", raw_sha=RAW,
+                                               definition="d", acquired_at=stamp),
+                           h10.fx_daily_series("ecb_usd_per_eur_daily", ECB, currency="USD", unit="USD_per_EUR", source_id="s", raw_sha=RAW,
+                                               definition="d", acquired_at=stamp))
+        nvm, _ = nvm_nlg_series()
+        price, count, fixture, csv_s = cbs_series()
+        return g, h10.build_housing_grams(g, nvm, price, count, fixture, csv_s), nvm, price, count, fixture, csv_s
+    a, b = build(stamp1), build(stamp2)
+    assert all(o.retrieved_at == stamp1 for o in a[0]["gold_usd_monthly"].observations)
+    assert h10.derived_values_sha256(a[1]) == h10.derived_values_sha256(b[1])
+    ba = hb.bundle_bytes(hb.build_bundle(h10.bundles(h10.all_series(a[0], a[1], *a[2:]))["A_gold_original"]))
+    bb = hb.bundle_bytes(hb.build_bundle(h10.bundles(h10.all_series(b[0], b[1], *b[2:]))["A_gold_original"]))
+    assert ba != bb  # the bundle bytes identify the acquisition; the derived values hash identifies the result
+
+
+def test_manifest_records_identifiers_hashes_method_and_quality(world):
+    m = h10.build_manifest(acquired_at="2026-10-22T10:00:00+00:00", source_ids={"world_bank_gold": "id"}, source_hashes={"x": "y"},
+                           windows={"w": {}}, derived_hash="d" * 64, bundle_digests={"b.json": {"sha256": "e" * 64}}, vintage={"status": "MATCH"})
+    assert m["method_id"] == "HIST10_M1_V1" and m["acquired_at_utc"].startswith("2026-10-22") and m["derived_halfyear_values_sha256"] == "d" * 64
+    assert m["bundle_sha256"] == {"b.json": "e" * 64} and set(m["quality_flags"]) >= {"GOLD_LEVEL_B", "GOLD_LEVEL_A", "RETROSPECTIVE_EUR"}
+    assert "code determinism only" in m["note"] and "M5" in m["method"]["sensitivity_only"]

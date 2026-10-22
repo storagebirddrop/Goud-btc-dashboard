@@ -14,6 +14,7 @@ import hashlib
 import json
 import signal
 import sys
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -24,7 +25,13 @@ from etl import hist_model as hm  # noqa: E402
 from tools import hist_08_bundle as hb  # noqa: E402
 from tools import hist_09_bundle as h9  # noqa: E402
 
-RETRIEVED = "2026-10-22T00:00:00+00:00"  # day of the research run; the run date is recorded, not the publisher's date
+RETRIEVED = "2026-10-22T00:00:00+00:00"  # default for offline tests; a real run records its actual UTC acquisition time
+METHOD_ID = "HIST10_M1_V1"  # primary rule: mean of the six monthly local prices; carried as a flag on every point
+METHOD_FLAG = f"METHOD:{METHOD_ID}"
+ERA_NLG_END = ("1998-12", "NLG era ends: the euro starts 1999-01 at 1 EUR = 2.20371 NLG; the observed-EUR series that follows "
+               "is separate and never spliced")
+ERA_EUR_START = ("1999-01", "observed-EUR era starts; the series before is NLG-native, retrospective EUR is a derived, labelled "
+                            "equivalent")
 RATE = Fraction(220371, 100000)
 G_PER_OZ = Fraction(311034768, 10 ** 7)
 MIN_DAY_COVERAGE = Decimal("0.5")  # share of calendar days required for a monthly FX mean (explicit, recorded)
@@ -47,32 +54,33 @@ def level_flag(month: str) -> str:
 
 
 # ------------------------------------------------------------------ source adapters (verified, provenance-carrying)
-def gold_usd_series(wb: dict, raw_sha: str, *, first="1975-01") -> hm.Series:
+def gold_usd_series(wb: dict, raw_sha: str, *, first="1975-01", acquired_at=RETRIEVED) -> hm.Series:
     """World Bank monthly gold, USD per troy ounce, from `first`. Quality flags follow HIST-08 (PROPOSED thresholds)."""
     values = {m: v for m, v in sorted(wb.items()) if m >= first}
     if not values:
         raise Hist10Error("no World Bank gold observations from the research start")
     rows = tuple(hm.Observation("gold_usd_monthly", m, v, "USD", "USD_per_troy_oz", "wb_pink_sheet_gold_monthly",
-                                "world_bank_commodity_markets", raw_sha, RETRIEVED, f"sha:{raw_sha[:12]}", "CONFIRMED",
-                                ("WB_WHOLE_USD", level_flag(m))) for m, v in values.items())
+                                "world_bank_commodity_markets", raw_sha, acquired_at, f"sha:{raw_sha[:12]}", "CONFIRMED",
+                                ("WB_WHOLE_USD", level_flag(m), METHOD_FLAG)) for m, v in values.items())
     s = hm.Series("gold_usd_monthly", "source", "gold", "monthly", "USD", "USD_per_troy_oz", "wb_pink_sheet_gold_monthly",
                   "spot_price", "nominal", None, (), rows)
     hm.validate_series(s)
     return s
 
 
-def fx_daily_series(series_id, daily: dict, *, currency, unit, source_id, raw_sha, definition) -> hm.Series:
+def fx_daily_series(series_id, daily: dict, *, currency, unit, source_id, raw_sha, definition,
+                    acquired_at=RETRIEVED) -> hm.Series:
     """Daily FX quote {date: Decimal}; the quotation direction is part of `unit` (e.g. NLG_per_USD)."""
     if not daily:
         raise Hist10Error(f"{series_id}: no observations")
-    rows = tuple(hm.Observation(series_id, d.isoformat(), v, currency, unit, definition, source_id, raw_sha, RETRIEVED,
-                                f"sha:{raw_sha[:12]}", "CONFIRMED", ()) for d, v in sorted(daily.items()))
+    rows = tuple(hm.Observation(series_id, d.isoformat(), v, currency, unit, definition, source_id, raw_sha, acquired_at,
+                                f"sha:{raw_sha[:12]}", "CONFIRMED", (METHOD_FLAG,)) for d, v in sorted(daily.items()))
     s = hm.Series(series_id, "source", "fx", "daily", currency, unit, definition, "fx_rate", "nominal", None, (), rows)
     hm.validate_series(s)
     return s
 
 
-def window(s: hm.Series, first: str, last: str, series_id: str) -> hm.Series:
+def window(s: hm.Series, first: str, last: str, series_id: str, breaks=()) -> hm.Series:
     """Subset of a SOURCE series' periods (same provenance, no new values): a labelled era, never a splice."""
     if s.layer != "source":
         raise Hist10Error("window applies to source series only")
@@ -80,7 +88,7 @@ def window(s: hm.Series, first: str, last: str, series_id: str) -> hm.Series:
     if not rows:
         raise Hist10Error(f"{series_id}: empty window {first}..{last}")
     out = hm.Series(series_id, "source", s.asset_class, s.frequency, s.currency, s.unit, s.definition_id, s.kind,
-                    s.basis, s.index_base, (), rows)
+                    s.basis, s.index_base, tuple(hm.Break(p, r) for p, r in breaks), rows)
     hm.validate_series(out)
     return out
 
@@ -94,11 +102,13 @@ def replace_obs(o: hm.Observation, series_id: str) -> hm.Observation:
 def build_gold(gold_usd: hm.Series, fed_daily: hm.Series, ecb_daily: hm.Series) -> dict:
     """All gold and FX series; local-currency gold per era, plus half-year aggregations under every rule."""
     out = {"gold_usd_monthly": gold_usd, "fed_nlg_per_usd_daily": fed_daily, "ecb_usd_per_eur_daily": ecb_daily}
-    out["fed_nlg_per_usd_monthly"] = hm.monthly_mean(fed_daily, min_coverage=MIN_DAY_COVERAGE, series_id="fed_nlg_per_usd_monthly")
-    out["ecb_usd_per_eur_monthly"] = hm.monthly_mean(ecb_daily, min_coverage=MIN_DAY_COVERAGE, series_id="ecb_usd_per_eur_monthly")
+    out["fed_nlg_per_usd_monthly"] = hm.monthly_mean(fed_daily, min_coverage=MIN_DAY_COVERAGE, series_id="fed_nlg_per_usd_monthly",
+                                                     complete_final_month=True)
+    out["ecb_usd_per_eur_monthly"] = hm.monthly_mean(ecb_daily, min_coverage=MIN_DAY_COVERAGE, series_id="ecb_usd_per_eur_monthly",
+                                                     complete_final_month=True)
     last = gold_usd.observations[-1].period
-    out["gold_usd_nlg_era"] = window(gold_usd, *NLG_ERA, "gold_usd_nlg_era")
-    out["gold_usd_eur_era"] = window(gold_usd, EUR_ERA_FIRST, last, "gold_usd_eur_era")
+    out["gold_usd_nlg_era"] = window(gold_usd, *NLG_ERA, "gold_usd_nlg_era", breaks=(ERA_NLG_END,))
+    out["gold_usd_eur_era"] = window(gold_usd, EUR_ERA_FIRST, last, "gold_usd_eur_era", breaks=(ERA_EUR_START,))
     out["gold_nlg_monthly"] = hm.convert_currency_by_quote(out["gold_usd_nlg_era"], out["fed_nlg_per_usd_monthly"],
                                                            to_currency="NLG", series_id="gold_nlg_monthly")
     out["gold_eur_monthly"] = hm.convert_currency(out["gold_usd_eur_era"], out["ecb_usd_per_eur_monthly"],
@@ -282,6 +292,103 @@ def era_of(half: str) -> str:
     return "1975-1978" if half <= "1978-H2" else "1979-1998" if half <= "1998-H2" else "1999-2000"
 
 
+# ------------------------------------------------------------------ source vintage, coverage, manifest
+def window_hash(points: dict, first, last) -> dict:
+    """Identity of a source WINDOW: sha256 over canonical 'key:value' lines for first <= key <= last.
+
+    Appending newer observations (a growing daily series) does not change it; a revision of any observation inside
+    the window does. Raw values are hashed, never stored.
+    """
+    keys = sorted(k for k in points if str(first) <= str(k) <= str(last))
+    if not keys:
+        raise Hist10Error(f"empty window {first}..{last}")
+    text = "".join(f"{k}:{hm.dec_str(Decimal(points[k]))}\n" for k in keys)
+    return {"first": str(keys[0]), "last": str(keys[-1]), "n": len(keys), "sha256": hashlib.sha256(text.encode()).hexdigest()}
+
+
+PIN_WINDOWS = {"world_bank_gold_monthly": ("1975-01", "2026-08"), "fed_nlg_per_usd_daily": ("1971-01-04", "1998-12-31"),
+               "ecb_usd_per_eur_daily": ("1999-01-04", "2026-08-31")}
+
+
+def source_windows(wb: dict, fed_daily: dict, ecb_daily: dict) -> dict:
+    iso = lambda d: {k.isoformat(): v for k, v in d.items()}  # noqa: E731
+    pts = {"world_bank_gold_monthly": wb, "fed_nlg_per_usd_daily": iso(fed_daily), "ecb_usd_per_eur_daily": iso(ecb_daily)}
+    return {name: window_hash(pts[name], *PIN_WINDOWS[name]) for name in PIN_WINDOWS}
+
+
+DERIVED_PIN_SERIES = ("nvm_grams_nlg_era", "nvm_grams_eur_era", "cbs_grams_eur_retro_halfyear", "cbs_grams_eur_halfyear")
+
+
+def derived_values_sha256(houses: dict) -> str:
+    """Identity of the derived half-year results by VALUE (no timestamps, no provenance fields)."""
+    lines = "".join(f"{name}|{p.period}|{'' if p.value is None else hm.dec_str(p.value)}\n"
+                    for name in DERIVED_PIN_SERIES for p in houses[name].points)
+    return hashlib.sha256(lines.encode()).hexdigest()
+
+
+def check_pins(current_windows: dict, derived_hash: str, pins) -> dict:
+    """Compare the run with the pinned research result. A changed source is distinguishable from a code defect.
+
+    MATCH: sources and derived values equal the pinned result. SOURCE_REVISED: at least one pinned source window
+    differs (a revised or replaced upstream vintage: the run is NOT the pinned result). DEFECT_DERIVED_DRIFT: all
+    sources match but the derived values differ (code or method change). UNPINNED: no pin file.
+    """
+    if not pins:
+        return {"status": "UNPINNED", "sources": {k: "UNPINNED" for k in current_windows}}
+    if pins.get("method_id") != METHOD_ID:
+        return {"status": "METHOD_CHANGED", "pinned_method": pins.get("method_id"), "method": METHOD_ID}
+    per = {}
+    for name, cur in current_windows.items():
+        pin = pins.get("sources", {}).get(name)
+        per[name] = "UNPINNED" if not pin else "MATCH" if (pin["sha256"], pin["n"], pin["first"], pin["last"]) == (
+            cur["sha256"], cur["n"], cur["first"], cur["last"]) else "REVISED"
+    if "REVISED" in per.values() or "UNPINNED" in per.values():
+        return {"status": "SOURCE_REVISED" if "REVISED" in per.values() else "UNPINNED", "sources": per}
+    same = pins.get("derived", {}).get("halfyear_values_sha256") == derived_hash
+    return {"status": "MATCH" if same else "DEFECT_DERIVED_DRIFT", "sources": per}
+
+
+def weekday_remaining(last_obs: date) -> bool:
+    """True when a Monday-Friday still lies after the last observation inside its month (the month is partial)."""
+    from calendar import monthrange as mr
+    from datetime import timedelta
+    end = date(last_obs.year, last_obs.month, mr(last_obs.year, last_obs.month)[1])
+    return any((last_obs + timedelta(days=k)).weekday() < 5 for k in range(1, (end - last_obs).days + 1))
+
+
+def fx_coverage(daily: dict, model_monthly: hm.Series) -> dict:
+    """Coverage report of a daily FX source against the 50% rule: shares, nulls and the status of the final month."""
+    from calendar import monthrange as mr
+    per = {}
+    for d in daily:
+        per.setdefault(month_of(d), 0)
+        per[month_of(d)] += 1
+    share = {m: Fraction(n, mr(int(m[:4]), int(m[5:]))[1]) for m, n in per.items()}
+    last_obs = max(daily)
+    nulls = [(p.period, p.flags[0] if p.flags else "") for p in model_monthly.points if p.value is None]
+    return {"months_observed": len(per), "min_share": f"{float(min(share.values())):.3f}",
+            "months_below_threshold": sorted(m for m, v in share.items() if v < Fraction(str(MIN_DAY_COVERAGE))),
+            "last_observation": last_obs.isoformat(), "final_month": month_of(last_obs),
+            "final_month_complete": not weekday_remaining(last_obs), "null_months": nulls}
+
+
+def build_manifest(*, acquired_at: str, source_ids: dict, source_hashes: dict, windows: dict, derived_hash: str, bundle_digests: dict,
+                   vintage: dict) -> dict:
+    return {"method_id": METHOD_ID, "method": {"half_year_rule": "M1 arithmetic mean of the six monthly local gold prices",
+                                              "fx": "monthly arithmetic mean of daily quotes, >= 50% of calendar days, complete final month",
+                                              "sensitivity_only": ["M2", "M2d", "M3", "M4", "M6", "M7", "M5"]},
+            "acquired_at_utc": acquired_at, "source_ids": source_ids, "source_sha256": source_hashes,
+            "source_windows": windows, "derived_halfyear_values_sha256": derived_hash,
+            "bundle_sha256": {k: v["sha256"] for k, v in bundle_digests.items()},
+            "quality_flags": {"GOLD_LEVEL_B": "1975-01..1978-12", "GOLD_LEVEL_A": "1979-01..1998-12",
+                              "GOLD_LEVEL_E": "1999-01..1999-12", "GOLD_ADR004_PERIOD": "2000-01..",
+                              "RETROSPECTIVE_EUR": "NLG-era values redenominated at 2.20371 (denomination only)"},
+            "vintage_check": vintage,
+            "note": "bundle hashes include the acquisition timestamp and therefore differ between runs; the stable identity "
+                    "of a result is source window hashes + derived values hash. Two rebuilds from one download prove code "
+                    "determinism only, not that the historical sources are unchanged."}
+
+
 # ------------------------------------------------------------------ real-data run (CI only)
 def run(args):  # noqa: C901
     from tools import hist_02_acquire as acq
@@ -303,11 +410,13 @@ def run(args):  # noqa: C901
     ecb_sha = S["sources"][fx.ECB_DAILY]["sha256"]
     R["source_hashes"] = {"world_bank_workbook": wb_sha, "fed_files_combined": fed_sha, "ecb_daily": ecb_sha,
                           "cbs_zip": h9.CBS_ZIP_SHA256, "nvm_csv": h9.NVM_CSV_SHA256}
-    gold_usd = gold_usd_series(D["wb"], wb_sha)
+    acquired_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    R["acquired_at_utc"], R["method_id"] = acquired_at, METHOD_ID
+    gold_usd = gold_usd_series(D["wb"], wb_sha, acquired_at=acquired_at)
     fed = fx_daily_series("fed_nlg_per_usd_daily", D["fed_daily"], currency="NLG", unit="NLG_per_USD",
-                          source_id="fed_h10", raw_sha=fed_sha, definition="fed_h10_nlg_per_usd_daily")
+                          source_id="fed_h10", raw_sha=fed_sha, definition="fed_h10_nlg_per_usd_daily", acquired_at=acquired_at)
     ecb = fx_daily_series("ecb_usd_per_eur_daily", D["ecb_d"], currency="USD", unit="USD_per_EUR",
-                          source_id="ecb_exr_d_usd", raw_sha=ecb_sha, definition="ecb_ref_usd_per_eur_daily")
+                          source_id="ecb_exr_d_usd", raw_sha=ecb_sha, definition="ecb_ref_usd_per_eur_daily", acquired_at=acquired_at)
     inputs = Path(args.inputs)
     h9.verify_package(inputs)
 
@@ -327,6 +436,23 @@ def run(args):  # noqa: C901
     R["bundles"] = digests
     R["bundle_validation"] = {n: len(hm.validate_bundle(json.loads(hb.bundle_bytes(hb.build_bundle(s))))) for n, s in bm.items()}
     R["coverage"] = coverage_matrix(gold, houses, nvm, cbs)
+    R["fx_coverage"] = {"fed_nlg_per_usd": fx_coverage(D["fed_daily"], gold["fed_nlg_per_usd_monthly"]),
+                        "ecb_usd_per_eur": fx_coverage(D["ecb_d"], gold["ecb_usd_per_eur_monthly"])}
+    windows = source_windows(D["wb"], D["fed_daily"], D["ecb_d"])
+    derived_hash = derived_values_sha256(houses)
+    pins = json.loads(Path(args.pins).read_text(encoding="utf-8")) if args.pins else None
+    R["vintage_check"] = check_pins(windows, derived_hash, pins)
+    R["pins_candidate"] = {"method_id": METHOD_ID, "pinned_on": acquired_at[:10], "sources": windows,
+                           "derived": {"halfyear_values_sha256": derived_hash,
+                                       "series": list(DERIVED_PIN_SERIES)}}
+    R["manifest"] = build_manifest(
+        acquired_at=acquired_at, source_ids={"world_bank_gold": c7.WB_ID, "fed_nlg_per_usd": list(gn.FED_IDS),
+                                             "ecb_usd_per_eur_daily": fx.ECB_DAILY, "cbs": h9.CBS_ZIP_NAME,
+                                             "nvm": "OTB_2001_Table_B3.8"},
+        source_hashes=R["source_hashes"], windows=windows, derived_hash=derived_hash, bundle_digests=digests,
+        vintage=R["vintage_check"])
+    if args.bundles_out:
+        (Path(args.bundles_out) / "hist10_manifest.json").write_bytes(hm.canonical_json(R["manifest"]))
     R["tables"] = {name: {p.period: f"{p.value:.2f}" for p in houses[name].points if p.value is not None}
                    for name in ("nvm_grams_nlg_era", "nvm_grams_eur_era", "cbs_grams_eur_retro_halfyear", "cbs_grams_eur_halfyear")}
     R["independent"] = independent_check(D, nvm, cbs, houses, fixture, csv_series)
@@ -504,6 +630,7 @@ def main(argv=None):
     ap.add_argument("--cbs-csv", help="committed CBS csv (read only)")
     ap.add_argument("--production-json", help="public monthly json (read only), for a consistency comparison")
     ap.add_argument("--workbook")
+    ap.add_argument("--pins", help="pinned source windows and derived values hash (hashes only, no raw data)")
     ap.add_argument("--summary-out")
     ap.add_argument("--csv-out")
     ap.add_argument("--bundles-out")

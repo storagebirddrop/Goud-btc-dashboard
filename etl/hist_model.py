@@ -446,7 +446,7 @@ def redenominate_nlg_to_eur(s: Series, *, series_id: str) -> Series:
         raise CurrencyMismatch(f"{s.series_id}: redenomination needs currency NLG, got {s.currency}")
     with localcontext() as ctx:
         ctx.prec = PREC
-        points = [Point(r.period, r.value / NLG_PER_EUR, r.quality, tuple(sorted(set(r.flags) | {"REDENOMINATED"})))
+        points = [Point(r.period, r.value / NLG_PER_EUR, r.quality, tuple(sorted(set(r.flags) | {"REDENOMINATED", "RETROSPECTIVE_EUR"})))
                   if r.value is not None else r for r in _rows(s)]
     step = {"op": "redenominate", "from": "NLG", "to": "EUR", "constant": dec_str(NLG_PER_EUR),
             "formula": "eur = nlg / constant", "applied": 1}
@@ -568,10 +568,12 @@ def half_year_aggregate(monthly: Series, *, rule: str, series_id: str) -> Series
     return _build(monthly, series_id, "normalized", points, [monthly], step, frequency="semiannual", breaks=breaks)
 
 
-def monthly_mean(daily: Series, *, min_coverage: Decimal, series_id: str) -> Series:
+def monthly_mean(daily: Series, *, min_coverage: Decimal, series_id: str, complete_final_month: bool = False) -> Series:
     """Arithmetic monthly mean of daily values. min_coverage (share of calendar days) is explicit and recorded.
 
-    A month below the threshold becomes an explicit null, never a partial or filled value.
+    A month below the threshold becomes an explicit null, never a partial or filled value. With
+    complete_final_month=True the last month of the series is also null (flag PARTIAL_FINAL_MONTH) unless no weekday
+    remains after its last observation: a partial month that passes the coverage threshold is not accepted silently.
     """
     validate_series(daily)
     if daily.frequency != "daily":
@@ -585,18 +587,26 @@ def monthly_mean(daily: Series, *, min_coverage: Decimal, series_id: str) -> Ser
     for r in _vals(daily).values():
         groups.setdefault(r.period[:7], []).append(r)
     points = []
+    final = max(groups)
+    last_day = date.fromisoformat(max(r.period for r in groups[final]))
+    month_end = date(last_day.year, last_day.month, monthrange(last_day.year, last_day.month)[1])
+    final_partial = complete_final_month and any(
+        (last_day + timedelta(days=k)).weekday() < 5 for k in range(1, (month_end - last_day).days + 1))
     with localcontext() as ctx:
         ctx.prec = PREC
-        for month in expected_periods(min(groups), max(groups), "monthly"):
+        for month in expected_periods(min(groups), final, "monthly"):
             rows = groups.get(month, [])
             total = monthrange(int(month[:4]), int(month[5:]))[1]
-            if rows and Decimal(len(rows)) / total >= threshold:
+            if month == final and final_partial:
+                points.append(Point(month, None, "UNRESOLVED", ("PARTIAL_FINAL_MONTH",)))
+            elif rows and Decimal(len(rows)) / total >= threshold:
                 points.append(Point(month, sum(r.value for r in rows) / len(rows),
                                     worst_quality(*(r.quality for r in rows)),
                                     tuple(sorted({f for r in rows for f in r.flags} | {f"DAYS:{len(rows)}/{total}"}))))
             else:
                 points.append(Point(month, None, "UNRESOLVED", ("INSUFFICIENT_DAILY_COVERAGE",)))
-    step = {"op": "monthly_mean", "rule": "arithmetic mean of available days", "min_coverage": dec_str(threshold)}
+    step = {"op": "monthly_mean", "rule": "arithmetic mean of available days", "min_coverage": dec_str(threshold),
+            "complete_final_month": complete_final_month}
     return _build(daily, series_id, "normalized", points, [daily], step, frequency="monthly",
                   breaks=_union_breaks(daily, month=True))
 
