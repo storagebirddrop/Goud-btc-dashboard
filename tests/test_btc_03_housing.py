@@ -364,3 +364,15 @@ def test_production_files_unchanged_and_no_bitcoin_selector_in_the_frontend():
         "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6"
     series_ts = (ROOT / "frontend/src/series.ts").read_text()
     assert "sat_per_house" in series_ts and "withheld" in series_ts
+
+
+def test_committed_pin_file_holds_hashes_only_and_matches_the_method():
+    pins = json.loads((ROOT / "data" / "fixtures" / "btc03" / "source_pins.json").read_text())
+    assert pins["method_id"] == b3.METHOD_ID and set(pins["sources"]) == set(b3.PIN_WINDOWS)
+    for name, w in pins["sources"].items():
+        assert set(w) == {"first", "last", "n", "sha256"} and len(w["sha256"]) == 64 and int(w["sha256"], 16) >= 0 and w["n"] > 0
+        assert b3.PIN_WINDOWS[name][0] <= w["first"] and w["last"] <= b3.PIN_WINDOWS[name][1]
+    assert len(pins["derived"]["values_sha256"]) == 64 and pins["derived"]["cutoff"] == b3.RESEARCH_CUTOFF
+    assert "RESEARCH PIN" in pins["status"] and "PROPOSED" in pins["status"] and "no raw third-party data" in pins["status"]
+    hist10 = json.loads((ROOT / "data" / "fixtures" / "hist10" / "source_pins.json").read_text())["sources"]["ecb_usd_per_eur_daily"]
+    assert pins["sources"]["ecb_usd_per_eur_daily"] == {k: hist10[k] for k in ("first", "last", "n", "sha256")}  # same ECB window as HIST-10

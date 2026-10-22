@@ -31,6 +31,7 @@ jobs:
           --inputs data/fixtures/hist09
           --cbs-csv data/cbs-housing.csv
           --hist10-pins data/fixtures/hist10/source_pins.json
+          --pins data/fixtures/btc03/source_pins.json
           --summary-out "$RUNNER_TEMP/btc-03/summary.json"
           --bundles-out "$RUNNER_TEMP/btc-03-bundles"
       - name: Derived research artifact (aggregates only; no raw exchange data; rights UNVERIFIED)
