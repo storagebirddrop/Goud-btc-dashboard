@@ -18,8 +18,13 @@
 export type SeriesKey='house_eur'|'hpi'|'hpi_index'|'gold_index'|'gold_grams_per_house'|'sat_per_house';
 // sat_per_house is NOT part of the public JSON contract (etl/static_export.py does not emit it); the optional
 // field only lets the registry type-check until a separate decision adds it.
-export type Point={period:string;gold_eur_oz:number|null;house_eur:number|null;hpi:number|null;gold_grams_per_house:number|null;gold_index:number|null;hpi_index:number|null;sat_per_house?:number|null};
-export type Kind='eur'|'index'|'gram'|'sat';
+export type Point={period:string;gold_eur_oz:number|null;house_eur:number|null;hpi:number|null;gold_grams_per_house:number|null;gold_index:number|null;hpi_index:number|null;sat_per_house?:number|null;btc_per_house?:number|null;btc_meta?:BtcMeta|null};
+// btc-monthly/1 (BTC-06C) types. INERT: no registry entry, no view and no fetch uses them; the public JSON carries no BTC field. The
+// series stay 'withheld'; a field or a flag in loaded data never makes them visible (see visibleKeys).
+export type BtcQuality='Q3'|'Q2'|'Q1_CANDIDATE';
+export type BtcStatus='CANDIDATE'|'HOLD'|'MISSING';
+export type BtcMeta={status:BtcStatus;quality:BtcQuality|null;missing_reason:string|null;exception:string|null};
+export type Kind='eur'|'index'|'gram'|'sat'|'btc';
 export type Category='nominal'|'index'|'alternative';
 export type Publication='open'|'gated'|'withheld';
 export type BaseId='2000'|'2020';
@@ -136,6 +141,15 @@ export const GOLD_METHOD_TEXT:string[]=[
  'Gram goud per woning = CBS-gemiddelde verkoopprijs x 31,1034768 gram per troy ounce, gedeeld door de goudprijs in euro per troy ounce.'
 ];
 export const GOLD_BREAK_TEXT='Definitiewijziging juni 2025: de World Bank-goudprijs (GOLD) gebruikte tot en met mei 2025 de London afternoon fixing (99,5% goud) en vanaf juni 2025 gemiddelde dagelijkse spotprijzen. De reeks is daardoor niet volledig benchmarkhomogeen.';
+// ---- Future BTC view texts (BTC-06C; NOT rendered, NOT imported by the interface). Nothing here claims a licence or an approval. ----
+export const BTC_QUALITY_TEXT:Record<BtcQuality,string>={Q3:'Q3: vroege markt met beperkte liquiditeit en reconstructieprovenance; indicatief en niet numeriek gepubliceerd.',Q2:'Q2: afgeleid uit USD-referentieprijzen en de ECB-koers; voorlopige kwaliteitsindeling.',Q1_CANDIDATE:'Q1-kandidaat: sterkste bewijsdekking binnen dit onderzoek; nog niet als definitief gekwalificeerd.'};
+export const BTC_SOURCE_LINKS:SourceLink[]=[{name:'Coin Metrics Community',detail:'PriceUSD, dagelijkse BTC-referentieprijs in USD',url:'https://docs.coinmetrics.io/',linkText:'docs.coinmetrics.io'},GOLD_SOURCE_LINKS[1],GOLD_SOURCE_LINKS[2]];
+export const BTC_OWN_CALC_TEXT='Omrekening naar euro en satoshi per woning zijn eigen berekeningen. Geen van de bronorganisaties onderschrijft deze toepassing.';
+export const BTC_DERIVED_TEXT='De BTC-prijs in euro is afgeleid uit een USD-referentieprijs en de ECB-koers; het is geen native europrijs en geen beursslotkoers.';
+export const BTC_METHOD_TEXT:string[]=['BTC-prijs in euro = maandgemiddelde van de dagelijkse Coin Metrics-prijs in USD, gedeeld door het maandgemiddelde van de ECB-koers in USD per EUR.','BTC per woning = CBS-gemiddelde verkoopprijs gedeeld door die BTC-prijs in euro; satoshi per woning = BTC per woning x 100.000.000.','Alleen volledige kalendermaanden (UTC); ontbrekende maanden blijven leeg en worden niet aangevuld of geïnterpoleerd.'];
+export const BTC_HOLD_TEXT='Juni 2011 is bewust niet beschikbaar; de lijn wordt niet over deze maand verbonden.';
+// Only a month the contract marks CANDIDATE yields a value; a number without that status is never shown.
+export function btcMonthValue(p:Point):number|null{return p.btc_meta?.status==='CANDIDATE'&&ok(p.btc_per_house)?p.btc_per_house:null}
 export const isIsoDate=(s:string):boolean=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&(()=>{const t=new Date(`${s}T00:00:00Z`);return !Number.isNaN(t.getTime())&&t.toISOString().slice(0,10)===s})();
 export function viewHasGold(keys:SeriesKey[]):boolean{return keys.some(k=>SERIES[k].gold===true)}
 // First and last month with a finite value over all gold series of the view, computed from the loaded rows.

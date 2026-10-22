@@ -856,7 +856,9 @@ def test_no_raw_source_data_is_tracked_uploaded_or_printed():
     assert not [f for f in tracked if "cm_priceusd_page" in f or f.endswith("snapshot_manifest.json") or f.endswith("cm_priceusd_daily.txt")]
     assert sorted(f for f in tracked if f.startswith("data/fixtures/btc04e/")) == ["data/fixtures/btc04e/source_pins.json"]
     wf = (ROOT / ".github/workflows/btc-04e-cm-replay.yml").read_text()
-    assert wf.count("upload-artifact") == 1 and "path: ${{ runner.temp }}/btc-04e/" in wf and "private-snapshot" not in wf
+    assert wf.count("upload-artifact") == 1 and "path: ${{ runner.temp }}/btc-04e/" in wf 
+    uploaded = wf.split("uses: actions/upload-artifact@v4")[1].split("- name:")[0]
+    assert "private-snapshot" not in uploaded  # the private snapshot is used by a later step but never uploaded
     src = (ROOT / "tools/btc_04e_cm_replay.py").read_text()
     assert 'prefix="btc-04e-private-snapshot-"' in src and 'k not in ("daily", "raw_pages")' in src
     public = (ROOT / "frontend/public/data/monthly.json").read_text().lower()

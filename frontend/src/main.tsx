@@ -12,9 +12,10 @@ const MIX_HINT='De verandering van de gemiddelde verkoopprijs weerspiegelt niet 
 
 const nf0=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:0});
 const nf1=new Intl.NumberFormat('nl-NL',{minimumFractionDigits:1,maximumFractionDigits:1});
+const nf2=new Intl.NumberFormat('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
 const euro=new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',maximumFractionDigits:0});
 const pct=new Intl.NumberFormat('nl-NL',{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1,signDisplay:'exceptZero'});
-function fmt(kind:Kind,v:number){return kind==='eur'?euro.format(v):kind==='gram'?`${nf0.format(v)} g`:kind==='sat'?`${nf0.format(v)} sat`:nf1.format(v)}
+function fmt(kind:Kind,v:number){return kind==='eur'?euro.format(v):kind==='gram'?`${nf0.format(v)} g`:kind==='sat'?`${nf0.format(v)} sat`:kind==='btc'?`${nf2.format(v)} BTC`:nf1.format(v)}
 function month(p:string){const [y,m]=p.split('-').map(Number);return new Date(Date.UTC(y,m-1,1)).toLocaleDateString('nl-NL',{month:'long',year:'numeric',timeZone:'UTC'})}
 function useDark(){
  const q='(prefers-color-scheme: dark)';
