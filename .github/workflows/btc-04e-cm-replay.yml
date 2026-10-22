@@ -50,6 +50,7 @@ jobs:
           --cbs-csv data/cbs-housing.csv
           --legacy-json frontend/public/data/monthly.json
           --out-dir "$RUNNER_TEMP/btc-06c-private"
+          --verify-release-path
       - name: Derived research artifact (aggregates only; no raw price data; rights UNVERIFIED)
         if: always()
         uses: actions/upload-artifact@v4

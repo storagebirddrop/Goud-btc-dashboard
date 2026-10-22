@@ -49,7 +49,7 @@ ALLOWED_SOURCE_LINES = {
     # main.tsx: number formatting for the 'sat' kind and the static "not yet available" copy
     # BTC-06C: inert btc-monthly/1 types, formatting and future-view texts. Not imported by main.tsx, no registry entry (see the tests below).
     ("series.ts", r"^export type Btc(Quality|Status|Meta)="),
-    ("series.ts", r"^export const BTC_(QUALITY_TEXT|SOURCE_LINKS|OWN_CALC_TEXT|DERIVED_TEXT|METHOD_TEXT|HOLD_TEXT)[:=]"),
+    ("series.ts", r"^export const BTC_(QUALITY_TEXT|REASON_TEXT|SOURCE_LINKS|LICENSE_URL|ATTRIBUTION_TEXT|DERIVED_TEXT|METHOD_TEXT|INTERPRETATION_TEXT|HOLD_TEXT)[:=]"),
     ("series.ts", r"^export function btcMonthValue\(p:Point\)"),
     ("main.tsx", r"^function fmt\(kind:Kind"),
     ("main.tsx", r"^ const missing=\['reële EUR',\.\.\.\(hasGold\?\[\]:\['goud'\]\),'Bitcoin'\]\.join"),
@@ -108,10 +108,10 @@ def test_btc_data_in_loaded_json_never_makes_a_series_visible():
     from _node_ts import run_series
     res = run_series("""
 const row=(o)=>({period:'2020-01',gold_eur_oz:null,house_eur:1,hpi:1,gold_grams_per_house:null,gold_index:null,hpi_index:1,...o});
-const meta={status:'CANDIDATE',quality:'Q1_CANDIDATE',missing_reason:null,exception:null};
+const meta={quality:'Q1_CANDIDATE',status:'PUBLISHED',missing_reason:null,flags:[]};
 const data=[row({sat_per_house:1e9,btc_per_house:10,btc_meta:meta,publication_authorized:true})];
 console.log(JSON.stringify({vis:S.visibleKeys(data),views:S.chartViews(S.visibleKeys(data)).map(v=>v.id),
- cand:S.btcMonthValue(data[0]),hold:S.btcMonthValue(row({btc_per_house:10,btc_meta:{...meta,status:'HOLD'}})),nometa:S.btcMonthValue(row({btc_per_house:10})),
+ cand:S.btcMonthValue(data[0]),hold:S.btcMonthValue(row({btc_per_house:10,btc_meta:{...meta,status:'WITHHELD',missing_reason:'RESEARCH_ONLY_HOLD'}})),nometa:S.btcMonthValue(row({btc_per_house:10})),
  nan:S.btcMonthValue(row({btc_per_house:NaN,btc_meta:meta}))}));
 """)
     assert res["vis"] == ["house_eur", "hpi", "hpi_index"] and "sat_per_house" not in res["vis"]
