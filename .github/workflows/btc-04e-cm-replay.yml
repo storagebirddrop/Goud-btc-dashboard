@@ -13,6 +13,8 @@ on:
       - 'tools/btc_04e_*.py'
       - 'tools/btc_06c_*.py'
       - 'tools/btc_public_report.py'
+      - 'tools/btc_07b_*.py'
+      - 'etl/btc_release.py'
       - 'etl/btc_contract.py'
       - 'tests/test_btc_04e_*.py'
       - 'tests/test_btc_06c_*.py'
@@ -34,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Offline tests (synthetic, prove code only)
-        run: python -m pytest -q tests/test_btc_04e_cm_replay.py tests/test_btc_06c_candidate.py tests/test_btc_07b_p0_containment.py tests/test_btc_03_housing.py
+        run: python -m pytest -q tests/test_btc_04e_cm_replay.py tests/test_btc_06c_candidate.py tests/test_btc_07b_p0_containment.py tests/test_btc_07b_p1_restore.py tests/test_btc_07b_p2_release_path.py tests/test_btc_03_housing.py
       - name: Validate Coin Metrics PriceUSD x ECB x CBS (read-only; the replay snapshot stays private on the runner)
         run: >
           python -m tools.btc_04e_cm_replay
