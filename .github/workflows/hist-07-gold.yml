@@ -1,0 +1,43 @@
+name: HIST-07 gold before 2000 and NLG/EUR constructions (research only)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/hist-07-gold.yml'
+      - 'tools/hist_07_*.py'
+      - 'tests/test_hist_07_*.py'
+permissions:
+  contents: read
+jobs:
+  hist-07:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Offline tests (synthetic, prove code only)
+        run: python -m pytest -q tests/test_hist_07_gold_constructions.py tests/test_hist_07_collect.py
+      - name: Collect and compare (read-only; unreachable sources are recorded, never replaced)
+        run: >
+          python -m tools.hist_07_collect
+          --summary-out "$RUNNER_TEMP/hist-07/summary.json"
+          --table-csv-out "$RUNNER_TEMP/hist-07/table.csv"
+      - name: Derived research artifact (aggregates, hashes and a derived table; rights UNVERIFIED; no raw source bytes)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hist-07-gold-research-not-approved
+          path: ${{ runner.temp }}/hist-07/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Print selected summary keys (compact, aggregates only)
+        if: always()
+        run: >
+          python -m tools.hist_07_collect --print-summary "$RUNNER_TEMP/hist-07/summary.json"
+          --keys table,construction_coverage_1960_1998,fed_obs_per_month,worldbank_rounding
