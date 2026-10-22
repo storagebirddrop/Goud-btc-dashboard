@@ -45,6 +45,6 @@ jobs:
         if: always()
         run: >
           python -m tools.hist_10_gold_housing --print-summary "$RUNNER_TEMP/hist-10/summary.json"
-          --keys "${HIST10_KEYS:-status,flags,defects,missing_sources,source_hashes,bundles,bundle_validation,coverage,independent,transition,retro_vs_nlg_exact,monthly_mean_vs_provider,production_comparison,aggregation.all_periods,aggregation.by_era,aggregation.grams_sample,aggregation.M5_transaction_weighted_gold_vs_M1_cbs}"
+          --keys "${HIST10_KEYS:-status,flags,defects,missing_sources,source_hashes,rebuild_identical,tables,bundle_validation,coverage,independent,transition,retro_vs_nlg_exact,monthly_mean_vs_provider,production_comparison,aggregation.all_periods,aggregation.by_era,aggregation.grams_sample,aggregation.M5_transaction_weighted_gold_vs_M1_cbs}"
         env:
           HIST10_KEYS: ''

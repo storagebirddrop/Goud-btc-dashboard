@@ -308,19 +308,27 @@ def run(args):  # noqa: C901
                           source_id="fed_h10", raw_sha=fed_sha, definition="fed_h10_nlg_per_usd_daily")
     ecb = fx_daily_series("ecb_usd_per_eur_daily", D["ecb_d"], currency="USD", unit="USD_per_EUR",
                           source_id="ecb_exr_d_usd", raw_sha=ecb_sha, definition="ecb_ref_usd_per_eur_daily")
-    gold = build_gold(gold_usd, fed, ecb)
     inputs = Path(args.inputs)
     h9.verify_package(inputs)
-    nvm = h9.nvm_nlg_series(h9.read_nvm_csv(inputs), h9.NVM_CSV_SHA256)
-    cbs = h9.cbs_series(h9.read_cbs_zip(inputs))
-    fixture, csv_series = hb.cbs_1995_1999_series(), hb.cbs_2000_series(args.cbs_csv)
-    houses = build_housing_grams(gold, nvm, cbs["price"], cbs["count"], fixture, csv_series)
-    allseries = all_series(gold, houses, nvm, *cbs.values(), fixture, csv_series)
-    bm = bundles(allseries)
+
+    def construct():
+        gold_ = build_gold(gold_usd, fed, ecb)
+        nvm_ = h9.nvm_nlg_series(h9.read_nvm_csv(inputs), h9.NVM_CSV_SHA256)
+        cbs_ = h9.cbs_series(h9.read_cbs_zip(inputs))
+        fixture_, csv_ = hb.cbs_1995_1999_series(), hb.cbs_2000_series(args.cbs_csv)
+        houses_ = build_housing_grams(gold_, nvm_, cbs_["price"], cbs_["count"], fixture_, csv_)
+        return gold_, houses_, nvm_, cbs_, fixture_, csv_, bundles(all_series(gold_, houses_, nvm_, *cbs_.values(), fixture_, csv_))
+
+    gold, houses, nvm, cbs, fixture, csv_series, bm = construct()
+    again = construct()[-1]  # full rebuild from the same in-memory source bytes
+    R["rebuild_identical"] = {n: hashlib.sha256(hb.bundle_bytes(hb.build_bundle(bm[n]))).hexdigest()
+                              == hashlib.sha256(hb.bundle_bytes(hb.build_bundle(again[n]))).hexdigest() for n in bm}
     digests = write_bundles(bm, args.bundles_out) if args.bundles_out else {n: {"sha256": hashlib.sha256(hb.bundle_bytes(hb.build_bundle(s))).hexdigest(), "series": len(s)} for n, s in bm.items()}
     R["bundles"] = digests
     R["bundle_validation"] = {n: len(hm.validate_bundle(json.loads(hb.bundle_bytes(hb.build_bundle(s))))) for n, s in bm.items()}
     R["coverage"] = coverage_matrix(gold, houses, nvm, cbs)
+    R["tables"] = {name: {p.period: f"{p.value:.2f}" for p in houses[name].points if p.value is not None}
+                   for name in ("nvm_grams_nlg_era", "nvm_grams_eur_era", "cbs_grams_eur_retro_halfyear", "cbs_grams_eur_halfyear")}
     R["independent"] = independent_check(D, nvm, cbs, houses, fixture, csv_series)
     R["aggregation"] = aggregation_impact(D, nvm, cbs)
     R["transition"] = transition(D, houses, gold)
