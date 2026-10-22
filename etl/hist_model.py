@@ -39,6 +39,9 @@ QUALITY = ("CONFIRMED", "PROPOSED", "INFERRED", "UNRESOLVED")  # best to worst
 RESTRICTED_CLASSES = ("bitcoin", "equity")
 RESTRICTED_TOKENS = frozenset({"btc", "bitcoin", "sat", "sats", "satoshi", "sp500", "spx", "aex", "equity"})
 
+_MONETARY = ("NLG", "EUR", "USD")
+_MONETARY_KINDS = frozenset({"transaction_value"})  # prices may also be rebased to INDEX (see rebase_index)
+_DIMENSIONLESS_KINDS = frozenset({"transaction_count", "statistic_ratio", "growth_ratio"})
 _ID = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _FLAG = re.compile(r"[A-Z0-9_:/=.-]{1,64}")
 _HEX = re.compile(r"[0-9a-f]{64}")
@@ -277,6 +280,12 @@ def _check_meta(s: Series):
     for ok, message in checks:
         if not ok:
             raise ModelError(f"{sid}: {message}")
+    if s.kind in _MONETARY_KINDS and s.currency not in _MONETARY:
+        raise CurrencyMismatch(f"{sid}: kind {s.kind!r} needs a monetary currency {_MONETARY}, got {s.currency!r}")
+    if s.kind in ("average_price", "median_price") and s.currency not in _MONETARY + ("INDEX",):
+        raise CurrencyMismatch(f"{sid}: kind {s.kind!r} needs a monetary currency or INDEX, got {s.currency!r}")
+    if s.kind in _DIMENSIONLESS_KINDS and s.currency != "NONE":
+        raise CurrencyMismatch(f"{sid}: kind {s.kind!r} is a count or ratio and needs currency NONE, got {s.currency!r}")
     if s.currency == "INDEX" and not (s.index_base and s.index_base.endswith("=100")):
         raise CurrencyMismatch(f"{sid}: an index series needs an explicit index_base such as '2000-01=100'")
     if s.currency != "INDEX" and s.index_base is not None:
@@ -519,8 +528,16 @@ def weighted_half_year_mean(price: Series, weights: Series, *, series_id: str) -
     validate_series(weights)
     if price.frequency != "monthly" or weights.frequency != "monthly":
         raise FrequencyError("weighted_half_year_mean needs monthly price and monthly weights")
-    _expect(price, "price", kind="average_price")
-    _expect(weights, "weights", kind="transaction_count")
+    _expect(price, "price", kind="average_price", currencies=_MONETARY)
+    _expect(weights, "weights", kind="transaction_count", unit="homes")
+    for role, s in (("price", price), ("weights", weights)):
+        if s.asset_class != "housing":
+            raise DefinitionMismatch(f"{role} {s.series_id}: transaction weighting is only defined for housing, "
+                                     f"not {s.asset_class!r}")
+        if s.layer == "derived":
+            raise DefinitionMismatch(f"{role} {s.series_id}: derived series cannot be re-aggregated")
+    if price.basis != weights.basis:
+        raise DefinitionMismatch(f"{price.basis} vs {weights.basis}: price and weights must share a basis")
     pv, wv = _vals(price), _vals(weights)
     halves: dict = {}
     for month in sorted(set(pv) | set(wv)):
@@ -542,8 +559,13 @@ def weighted_half_year_mean(price: Series, weights: Series, *, series_id: str) -
                 points.append(Point(half, None, "UNRESOLVED", ("INCOMPLETE_HALF_YEAR",)))
     step = {"op": "weighted_half_year_mean", "formula": "sum(price*count)/sum(count) over the six months",
             "weights": weights.series_id}
-    return _build(price, series_id, "normalized", points, [price, weights], step, frequency="semiannual",
-                  breaks=_union_breaks(price, month=False))
+    merged: dict = {}
+    for s in (price, weights):
+        for b in s.breaks:
+            half = f"{b.period[:4]}-H{1 if int(b.period[5:7]) <= 6 else 2}"
+            merged.setdefault(half, []).append(f"{s.series_id} {b.period}: {b.reason}")
+    breaks = tuple(Break(h, "; ".join(r)) for h, r in sorted(merged.items(), key=lambda kv: period_key(kv[0], "semiannual")))
+    return _build(price, series_id, "normalized", points, [price, weights], step, frequency="semiannual", breaks=breaks)
 
 
 def statistic_ratio(median: Series, mean: Series, *, series_id: str) -> Series:
@@ -557,6 +579,8 @@ def statistic_ratio(median: Series, mean: Series, *, series_id: str) -> Series:
     validate_series(mean)
     _expect(median, "median", kind="median_price")
     _expect(mean, "mean", kind="average_price")
+    if median.asset_class != mean.asset_class:
+        raise DefinitionMismatch(f"{median.asset_class} vs {mean.asset_class}: compare statistics of one asset class")
     if median.currency != mean.currency or median.unit != mean.unit:
         raise CurrencyMismatch(f"{median.series_id} ({median.currency}/{median.unit}) vs {mean.series_id} "
                                f"({mean.currency}/{mean.unit}): compare in one currency and unit")

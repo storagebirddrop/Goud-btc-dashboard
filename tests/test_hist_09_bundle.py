@@ -324,3 +324,146 @@ def test_existing_public_data_untouched():
     assert hashlib.sha256((ROOT / "frontend/public/data/monthly.json").read_bytes()).hexdigest() == \
         "1afb0bf924cb284a7f818fbe99084fd042f594c6e46b6498c9c399373f91d8cd"
     assert hashlib.sha256(CSV.read_bytes()).hexdigest() == "ad98bba942b0bc0c43ff142c7972c3e2742f53088398edb3ccde4ff422bbd8f6"
+
+
+# ---- ARCH-02 frequency-conversion contract (pre-merge audit) ----
+from dataclasses import replace  # noqa: E402
+
+
+def _flip(series, **changes):
+    """Series copy with consistent observation metadata (currency/unit) for contract tests."""
+    obs_changes = {k: v for k, v in changes.items() if k in ("currency", "unit")}
+    rows = tuple(replace(o, **obs_changes) for o in series.observations) if obs_changes else series.observations
+    return replace(series, observations=rows, **changes)
+
+
+@pytest.mark.parametrize("source", ["annual", "semiannual", "monthly", "daily"])
+@pytest.mark.parametrize("target", ["annual", "semiannual", "monthly", "daily"])
+def test_convert_frequency_rejects_every_pair(source, target):
+    sample = {"annual": "2000", "semiannual": "2000-H1", "monthly": "2000-01", "daily": "2000-01-01"}[source]
+    s = hb.source_series("x_series", "housing", {sample: "1"}, frequency=source, currency="EUR", unit="EUR",
+                         kind="average_price", definition_id="d", source_id="s", raw_sha256="a" * 64,
+                         retrieved_at="2026-10-22T00:00:00+00:00", vintage="v", quality_of=lambda p: "PROPOSED")
+    with pytest.raises(hm.FrequencyError):
+        hm.convert_frequency(s, target)
+
+
+def test_monthly_is_produced_only_by_the_documented_daily_mean():
+    import re
+    code = (ROOT / "etl" / "hist_model.py").read_text()
+    assert len(re.findall(r'frequency="monthly"', code)) == 1 and 'frequency="semiannual"' in code
+    assert code.count("def weighted_half_year_mean") == 1
+    assert not re.search(r"def\s+\w*(expand|upsample|to_monthly|spread|distribute)", code, re.I)
+
+
+def test_nvm_halfyear_and_annual_cannot_become_monthly(built):
+    series, _ = built
+    nvm = series["nvm_median_eur_halfyear"]
+    with pytest.raises(hm.FrequencyError):
+        hm.weighted_half_year_mean(nvm, series["cbs_sold_homes_1995_2000"], series_id="bad")
+    with pytest.raises(hm.FrequencyError):
+        hm.monthly_mean(nvm, min_coverage=Decimal("1"), series_id="bad")
+    with pytest.raises(hm.FrequencyError):
+        hm.weighted_half_year_mean(series["cbs_avg_price_1995_2000"], nvm, series_id="bad")
+
+
+@pytest.mark.parametrize("label,price_changes,weight_changes,error", [
+    ("gold-labelled price", {"asset_class": "gold"}, {}, hm.DefinitionMismatch),
+    ("bitcoin-labelled price", {"asset_class": "bitcoin"}, {}, hm.DefinitionMismatch),
+    ("equity-labelled price", {"asset_class": "equity"}, {}, hm.DefinitionMismatch),
+    ("cpi-labelled price", {"asset_class": "cpi"}, {}, hm.DefinitionMismatch),
+    ("gold-labelled weights", {}, {"asset_class": "gold"}, hm.DefinitionMismatch),
+    ("spot price kind", {"kind": "spot_price"}, {}, hm.DefinitionMismatch),
+    ("median price kind", {"kind": "median_price"}, {}, hm.DefinitionMismatch),
+    ("index kind", {"kind": "constant_quality_index"}, {}, hm.DefinitionMismatch),
+    ("total return kind", {"kind": "total_return"}, {}, hm.DefinitionMismatch),
+    ("price used as weights", {}, {"kind": "average_price", "currency": "EUR", "unit": "EUR"}, hm.DefinitionMismatch),
+    ("transaction value as weights", {}, {"kind": "transaction_value", "currency": "EUR", "unit": "EUR_million"}, hm.DefinitionMismatch),
+    ("weights in wrong unit", {}, {"unit": "pieces"}, hm.CurrencyMismatch),
+    ("real vs nominal basis", {"basis": "real"}, {}, hm.DefinitionMismatch),
+])
+def test_weighted_half_year_mean_refuses_misuse(built, label, price_changes, weight_changes, error):
+    series, _ = built
+    price = _flip(series["cbs_avg_price_1995_2000"], **price_changes)
+    weights = _flip(series["cbs_sold_homes_1995_2000"], **weight_changes)
+    with pytest.raises(error):
+        hm.weighted_half_year_mean(price, weights, series_id="misuse")
+
+
+def test_weighted_half_year_mean_refuses_derived_and_non_monthly_inputs(built):
+    series, _ = built
+    count = series["cbs_sold_homes_1995_2000"]
+    price = series["cbs_avg_price_1995_2000"]
+    derived = hm._combine(price, price, lambda a, b: a, series_id="derived_price", step={"op": "copy"})
+    assert derived.layer == "derived" and derived.kind == "average_price" and derived.frequency == "monthly"
+    with pytest.raises(hm.DefinitionMismatch, match="derived"):  # derived layer cannot be re-aggregated
+        hm.weighted_half_year_mean(derived, count, series_id="m")
+    for frequency in ("annual", "semiannual", "daily"):
+        with pytest.raises(hm.FrequencyError):
+            hm.weighted_half_year_mean(replace(series["cbs_avg_price_1995_2000"], frequency=frequency), count, series_id="m")
+
+
+def test_incomplete_or_misaligned_months_never_give_a_value(built):
+    series, _ = built
+    price, count = series["cbs_avg_price_1995_2000"], series["cbs_sold_homes_1995_2000"]
+    for drop_price, drop_count in (("1996-03", None), (None, "1996-03"), ("1996-01", "1996-06")):
+        p = replace(price, observations=tuple(o for o in price.observations if o.period != drop_price))
+        c = replace(count, observations=tuple(o for o in count.observations if o.period != drop_count))
+        by = {x.period: x for x in hm.weighted_half_year_mean(p, c, series_id="gaps").points}
+        assert by["1996-H1"].value is None and "INCOMPLETE_HALF_YEAR" in by["1996-H1"].flags
+        assert by["1996-H2"].value is not None
+    # a price series that starts mid-half-year cannot yield that half-year
+    late = replace(price, observations=tuple(o for o in price.observations if o.period >= "1995-04"))
+    assert {x.period: x for x in hm.weighted_half_year_mean(late, count, series_id="late").points}["1995-H1"].value is None
+
+
+def test_zero_or_negative_weight_cannot_enter(built):
+    series, _ = built
+    count = series["cbs_sold_homes_1995_2000"]
+    for bad in ("0", "-1"):
+        rows = (replace(count.observations[0], value=Decimal(bad)),) + count.observations[1:]
+        with pytest.raises(hm.ModelError):
+            hm.weighted_half_year_mean(series["cbs_avg_price_1995_2000"], replace(count, observations=rows), series_id="w")
+
+
+def test_breaks_on_price_or_weights_are_carried_to_the_half_year(built):
+    series, _ = built
+    price = replace(series["cbs_avg_price_1995_2000"], breaks=(hm.Break("1996-03", "definition note"),))
+    count = replace(series["cbs_sold_homes_1995_2000"], breaks=(hm.Break("1996-09", "count note"),))
+    out = hm.weighted_half_year_mean(price, count, series_id="with_breaks")
+    assert [(b.period, "definition note" in b.reason or "count note" in b.reason) for b in out.breaks] == [("1996-H1", True), ("1996-H2", True)]
+    assert hm.validate_bundle(json.loads(hb.bundle_bytes(hb.build_bundle([price, count, out])))) == []
+
+
+def test_source_kind_and_currency_must_be_coherent(built):
+    series, _ = built
+    for series_id, changes in (("count_in_eur", dict(currency="EUR", unit="EUR")),
+                               ("value_none", dict(kind="transaction_value", currency="NONE", unit="EUR_million")),
+                               ("ratio_in_eur", dict(kind="statistic_ratio", currency="EUR", unit="EUR"))):
+        with pytest.raises(hm.CurrencyMismatch):
+            hm.validate_series(_flip(replace(series["cbs_sold_homes_1995_2000"], series_id=series_id), **changes))
+    with pytest.raises(hm.CurrencyMismatch):
+        hm.validate_series(_flip(series["cbs_avg_price_1995_2000"], currency="NONE", unit="homes"))
+
+
+def test_statistic_ratio_refuses_other_classes_and_mixed_units(built):
+    series, _ = built
+    nvm, cbs = series["nvm_median_eur_halfyear"], series["cbs_avg_price_eur_halfyear"]
+    with pytest.raises(hm.DefinitionMismatch):
+        hm.statistic_ratio(nvm, replace(cbs, asset_class="gold"), series_id="r")
+    with pytest.raises(hm.CurrencyMismatch):  # NLG median against a EUR mean
+        hm.statistic_ratio(series["nvm_median_nlg_halfyear"], cbs, series_id="r")
+
+
+def test_weighted_mean_precision_and_determinism(built):
+    series, _ = built
+    price, count = series["cbs_avg_price_1995_2000"], series["cbs_sold_homes_1995_2000"]
+    one = hm.weighted_half_year_mean(price, count, series_id="rep")
+    two = hm.weighted_half_year_mean(price, count, series_id="rep")
+    assert hm.canonical_json(one) == hm.canonical_json(two)
+    p = {o.period: Fraction(o.value) for o in price.observations}
+    c = {o.period: Fraction(o.value) for o in count.observations}
+    months = [f"1998-{m:02d}" for m in range(7, 13)]
+    exact = sum(p[m] * c[m] for m in months) / sum(c[m] for m in months)
+    got = Fraction({x.period: x.value for x in one.points}["1998-H2"])
+    assert abs(got - exact) < Fraction(1, 10**28)  # 34-digit Decimal precision, not float

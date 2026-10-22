@@ -2,7 +2,7 @@
 
 Status: **RESEARCH ONLY. NOT AUTHORIZED FOR PUBLICATION.** Project Control accepted HIST-09 as `RESEARCH VERIFIED / CLOSED`; that authorizes research ingestion, not release and not a joined series. `ALLOWLIST` of `etl/hist_model.py` stays empty. No change to `frontend/public/data/monthly.json`, `data/cbs-housing.csv`, production gold, ADR-004 or any ADR.
 
-Code: `tools/hist_09_bundle.py`; model additions in `etl/hist_model.py`; tests `tests/test_hist_09_bundle.py` (26). Inputs (small, hash-pinned, in Git per proposed D5): `data/fixtures/hist09/` (HIST-09 package and the original CBS export zip). Rebuild: `python -m tools.hist_09_bundle --inputs data/fixtures/hist09 --out OUT --cbs-csv data/cbs-housing.csv`.
+Code: `tools/hist_09_bundle.py`; model additions in `etl/hist_model.py`; tests `tests/test_hist_09_bundle.py` (64). Inputs (small, hash-pinned, in Git per proposed D5): `data/fixtures/hist09/` (HIST-09 package and the original CBS export zip). Rebuild: `python -m tools.hist_09_bundle --inputs data/fixtures/hist09 --out OUT --cbs-csv data/cbs-housing.csv`.
 
 ## Verified inputs (SHA-256)
 
@@ -49,3 +49,14 @@ New frequency `semiannual` (periods `YYYY-H1`/`YYYY-H2`); kinds `median_price`, 
 4. CBS euro values before 2002 are retrospective (flag `RETROSPECTIVE_EUR`); NLG originals were not obtained. The CBS export time (2026-09-22 06:30) is taken from the file name.
 5. Rights: CBS catalogue licence CC BY 4.0 (CONFIRMED in the export); OTB/NVM table rights UNVERIFIED, so no publication.
 6. How the median to mean relationship should be presented to users (if ever) is an owner decision (D1/D4); publication stays closed.
+
+## Pre-merge audit corrections (2026-10-22)
+
+An independent audit found that `weighted_half_year_mean` was more permissive than intended. Corrected in `etl/hist_model.py` (bundle hashes above are unchanged):
+
+* It now accepts only housing (`asset_class == "housing"`) `average_price` in a monetary currency and `transaction_count` in unit `homes`, from source or normalized layers (not derived), with equal basis; gold/Bitcoin/equity/CPI-labelled series, spot/median/index/return kinds, mismatched units and real-vs-nominal inputs are rejected.
+* Breaks on the monthly price or weights are carried to the half-year (before, a monthly break made the call fail with a `FrequencyError`, and weight breaks were dropped).
+* The model now enforces kind/currency coherence: `transaction_count`, `statistic_ratio`, `growth_ratio` need currency `NONE`; `transaction_value` needs a monetary currency; `average_price`/`median_price` need a monetary currency or `INDEX` (rebased prices).
+* `statistic_ratio` requires one asset class.
+* New tests: every ordered pair of frequencies is rejected by `convert_frequency`; monthly series are produced only by the daily mean; NVM half-years cannot become monthly; 13 misuse cases of the weighted mean; incomplete or misaligned months give an explicit null; zero/negative weights cannot enter; break propagation; precision against an exact Fraction.
+* Independent recalculation outside the repository code (Fractions, original CBS zip and NVM csv only) reproduces 1995-H1 (+9.644481%), 1996-H1 (+10.521447%), 2000-H2 (-0.088511%), mean +7.127252%, range -0.088511% .. +10.521447%, 11/12 positive, and growth rates.
