@@ -1,0 +1,18 @@
+{
+  "method_id": "BTC03_A1_C1_V1",
+  "pinned_on": "2026-10-22",
+  "status": "RESEARCH PIN: window hashes of daily closes and a hash of the derived monthly values only; no raw third-party data; rights UNVERIFIED; the method is PROPOSED, not accepted; a hash is not an archive of the original bytes",
+  "sources": {
+    "bitstamp_eur_daily": {"first": "2016-04-16", "last": "2026-08-31", "n": 3790, "sha256": "2384c18deff73f9b32d61ab7c02370a184d4591c87f4d7284d8abe7137f6fefe"},
+    "bitstamp_usd_daily": {"first": "2011-08-18", "last": "2026-08-31", "n": 5493, "sha256": "3c5f7ab046788b58e6f6dfc169438442fe7648827c6d48464f2b40644d4b4c3b"},
+    "ecb_usd_per_eur_daily": {"first": "1999-01-04", "last": "2026-08-31", "n": 7082, "sha256": "0daadfe82fbbbd562dcce955324e4543029858ae5167392dd431417516e1f294"},
+    "kraken_eur_daily": {"first": "2014-01-08", "last": "2021-04-30", "n": 2621, "sha256": "5ec73906016411ef95e8f5147b5a7a74e5adf7b6440d339c3fa29c2612b4969a"},
+    "mtgox_usd_daily": {"first": "2010-07-17", "last": "2014-02-25", "n": 1314, "sha256": "216e10c5ef9c7ac2291871e82d04fba4d66081dfc5599926c5f63089cc07672d"}
+  },
+  "derived": {"values_sha256": "abb46e902ec24ef507e5b56270927249239e242b266734c52464ca8a327c6a29", "cutoff": "2026-08"},
+  "archive_captures_used": {
+    "mtgoxUSD": "Internet Archive capture 20161229014309 of api.bitcoincharts.com/v1/csv/mtgoxUSD.csv.gz (59,585,679 bytes)",
+    "krakenEUR": "Internet Archive capture 20210507020401 of api.bitcoincharts.com/v1/csv/krakenEUR.csv.gz (387,008,192 bytes)"
+  },
+  "window_rule": "sha256 over 'day:value' lines (canonical decimals) for first <= day <= last; observations after 'last' do not change the pin, a revision inside the window does"
+}
