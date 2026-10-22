@@ -31,3 +31,7 @@ Status: RESEARCH ONLY. Nothing approved or published. Evidence: `tools/hist_08_n
 4. Do **not** infer values from neighbouring years, and do not concatenate NVM with CBS.
 
 NVM/CBS overlap: NOT EXECUTED (no NVM series).
+
+## Update (HIST-09, 2026-10-22)
+
+Resolved by the independently verified HIST-09 package: 52 NVM half-year medians 1975-H1..2000-H2 (OTB 2001, Table B3.8) and the CBS 1995-2000 overlap. See `HIST_09_INTEGRATION.md`. The statements above about this imgix image stay true; the data came from another route (the OTB report).

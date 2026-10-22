@@ -23,15 +23,17 @@ from etl.asset_quality import NLG_PER_EUR, SATOSHIS_PER_BTC, TROY_OUNCE_GRAMS
 
 PREC = 34
 SCHEMA = "hist-model/1"
-FREQUENCIES = ("annual", "monthly", "daily")
+FREQUENCIES = ("annual", "semiannual", "monthly", "daily")
 CURRENCIES = ("NLG", "EUR", "USD", "INDEX", "NONE")  # NONE: dimensional results such as gram, satoshi
 LAYERS = ("source", "normalized", "derived")
 ASSET_CLASSES = ("housing", "gold", "bitcoin", "equity", "fx", "cpi")
 # Definition kinds are never mixed implicitly. basis separates nominal from real.
-KINDS = ("average_price", "constant_quality_index", "spot_price", "price_return", "total_return",
-         "fx_rate", "cpi")
+KINDS = ("average_price", "median_price", "constant_quality_index", "spot_price", "price_return", "total_return",
+         "fx_rate", "cpi", "transaction_count", "transaction_value", "statistic_ratio", "growth_ratio")
 BASES = ("nominal", "real")
 INCOMPATIBLE_KINDS = (frozenset({"average_price", "constant_quality_index"}),
+                      frozenset({"average_price", "median_price"}),  # different statistics: only statistic_ratio() may relate them
+                      frozenset({"median_price", "constant_quality_index"}),
                       frozenset({"price_return", "total_return"}))
 QUALITY = ("CONFIRMED", "PROPOSED", "INFERRED", "UNRESOLVED")  # best to worst
 RESTRICTED_CLASSES = ("bitcoin", "equity")
@@ -40,7 +42,7 @@ RESTRICTED_TOKENS = frozenset({"btc", "bitcoin", "sat", "sats", "satoshi", "sp50
 _ID = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _FLAG = re.compile(r"[A-Z0-9_:/=.-]{1,64}")
 _HEX = re.compile(r"[0-9a-f]{64}")
-_PERIOD = {"annual": re.compile(r"\d{4}"), "monthly": re.compile(r"\d{4}-\d{2}"),
+_PERIOD = {"annual": re.compile(r"\d{4}"), "semiannual": re.compile(r"\d{4}-H[12]"), "monthly": re.compile(r"\d{4}-\d{2}"),
            "daily": re.compile(r"\d{4}-\d{2}-\d{2}")}
 
 
@@ -89,6 +91,8 @@ def period_key(period, frequency) -> int:
     try:
         if frequency == "annual":
             return date(int(period), 1, 1).year
+        if frequency == "semiannual":
+            return date(int(period[:4]), 1, 1).year * 2 + int(period[6]) - 1
         if frequency == "monthly":
             year, month = int(period[:4]), int(period[5:])
             return date(year, month, 1).year * 12 + month - 1
@@ -100,6 +104,8 @@ def period_key(period, frequency) -> int:
 def period_label(key: int, frequency: str) -> str:
     if frequency == "annual":
         return f"{key:04d}"
+    if frequency == "semiannual":
+        return f"{key // 2:04d}-H{key % 2 + 1}"
     if frequency == "monthly":
         return f"{key // 12:04d}-{key % 12 + 1:02d}"
     return date.fromordinal(key).isoformat()
@@ -501,6 +507,123 @@ def monthly_mean(daily: Series, *, min_coverage: Decimal, series_id: str) -> Ser
     step = {"op": "monthly_mean", "rule": "arithmetic mean of available days", "min_coverage": dec_str(threshold)}
     return _build(daily, series_id, "normalized", points, [daily], step, frequency="monthly",
                   breaks=_union_breaks(daily, month=True))
+
+
+def weighted_half_year_mean(price: Series, weights: Series, *, series_id: str) -> Series:
+    """Transaction-weighted semiannual mean of monthly averages: sum(price*weight)/sum(weight).
+
+    Both inputs are monthly and aligned. A half-year needs all six months with positive weights; an incomplete
+    half-year becomes an explicit null, never a partial value. This is the only monthly -> semiannual step.
+    """
+    validate_series(price)
+    validate_series(weights)
+    if price.frequency != "monthly" or weights.frequency != "monthly":
+        raise FrequencyError("weighted_half_year_mean needs monthly price and monthly weights")
+    _expect(price, "price", kind="average_price")
+    _expect(weights, "weights", kind="transaction_count")
+    pv, wv = _vals(price), _vals(weights)
+    halves: dict = {}
+    for month in sorted(set(pv) | set(wv)):
+        half = f"{month[:4]}-H{1 if int(month[5:]) <= 6 else 2}"
+        halves.setdefault(half, []).append(month)
+    points = []
+    with localcontext() as ctx:
+        ctx.prec = PREC
+        for half in expected_periods(min(halves, key=lambda h: period_key(h, "semiannual")),
+                                     max(halves, key=lambda h: period_key(h, "semiannual")), "semiannual"):
+            first = 1 if half.endswith("H1") else 7
+            months = [f"{half[:4]}-{m:02d}" for m in range(first, first + 6)]
+            if all(m in pv and m in wv for m in months):
+                total = sum(wv[m].value for m in months)
+                mean = sum(pv[m].value * wv[m].value for m in months) / total
+                points.append(Point(half, mean, worst_quality(*(pv[m].quality for m in months), *(wv[m].quality for m in months)),
+                                    tuple(sorted({f for m in months for f in pv[m].flags} | {"MONTHS:6/6"}))))
+            else:
+                points.append(Point(half, None, "UNRESOLVED", ("INCOMPLETE_HALF_YEAR",)))
+    step = {"op": "weighted_half_year_mean", "formula": "sum(price*count)/sum(count) over the six months",
+            "weights": weights.series_id}
+    return _build(price, series_id, "normalized", points, [price, weights], step, frequency="semiannual",
+                  breaks=_union_breaks(price, month=False))
+
+
+def statistic_ratio(median: Series, mean: Series, *, series_id: str) -> Series:
+    """Ratio median / mean of two DIFFERENT statistics at the same frequency, currency and unit.
+
+    The relative gap in percent is (ratio - 1) * 100; the ratio is stored because model values must be positive.
+    It documents how far apart the NVM median and the CBS mean are. It is not a conversion or a combined
+    series; the result has kind statistic_ratio and carries the flag STATISTICS_DIFFER.
+    """
+    validate_series(median)
+    validate_series(mean)
+    _expect(median, "median", kind="median_price")
+    _expect(mean, "mean", kind="average_price")
+    if median.currency != mean.currency or median.unit != mean.unit:
+        raise CurrencyMismatch(f"{median.series_id} ({median.currency}/{median.unit}) vs {mean.series_id} "
+                               f"({mean.currency}/{mean.unit}): compare in one currency and unit")
+    if median.frequency != mean.frequency:
+        raise FrequencyError(f"{median.frequency} vs {mean.frequency}: frequencies are never converted or mixed")
+    if median.basis != mean.basis:
+        raise DefinitionMismatch("nominal and real series cannot be compared")
+    vm, vc = _vals(median), _vals(mean)
+    common = sorted(set(vm) & set(vc), key=lambda p: period_key(p, median.frequency))
+    if not common:
+        raise OverlapError(f"{median.series_id} and {mean.series_id} have no overlapping period")
+    points = []
+    with localcontext() as ctx:
+        ctx.prec = PREC
+        for p in expected_periods(common[0], common[-1], median.frequency):
+            if p in vm and p in vc:
+                value = vm[p].value / vc[p].value
+                points.append(Point(p, value, worst_quality(vm[p].quality, vc[p].quality),
+                                    tuple(sorted(set(vm[p].flags) | set(vc[p].flags) | {"STATISTICS_DIFFER"}))))
+            else:
+                points.append(_gap(p))
+    step = {"op": "statistic_ratio", "formula": "median / mean", "gap_percent": "(ratio - 1) * 100", "span": [common[0], common[-1]],
+            "caveat": "median of broker-related sales vs mean of registered sales: not the same statistic"}
+    return _build(median, series_id, "derived", points, [median, mean], step, currency="NONE", unit="ratio",
+                  kind="statistic_ratio", definition_id="derived_statistic_ratio",
+                  breaks=_union_breaks(median, mean))
+
+
+_PER_YEAR = {"annual": 1, "semiannual": 2, "monthly": 12}
+
+
+def growth_ratio(s: Series, *, basis: str, series_id: str) -> Series:
+    """value / value one step (sequential) or one year (year_over_year) earlier; percent growth = (ratio - 1) * 100.
+
+    The predecessor must be the exact previous period of the same series; a missing predecessor gives an
+    explicit null. The first periods without a predecessor are simply absent, never filled.
+    """
+    validate_series(s)
+    if s.frequency not in _PER_YEAR:
+        raise FrequencyError(f"{s.series_id}: growth needs annual, semiannual or monthly data")
+    if basis not in ("sequential", "year_over_year"):
+        raise ModelError("basis must be 'sequential' or 'year_over_year'")
+    if s.currency == "INDEX" or s.kind in ("statistic_ratio", "growth_ratio"):
+        raise DefinitionMismatch(f"{s.series_id}: growth of a {s.kind} series is not defined here")
+    lag = 1 if basis == "sequential" else _PER_YEAR[s.frequency]
+    vals = _vals(s)
+    keys = {p: period_key(p, s.frequency) for p in vals}
+    by_key = {k: p for p, k in keys.items()}
+    first = min(keys.values()) + lag
+    last = max(keys.values())
+    if first > last:
+        raise OverlapError(f"{s.series_id}: too short for {basis} growth")
+    points = []
+    with localcontext() as ctx:
+        ctx.prec = PREC
+        for k in range(first, last + 1):
+            p = period_label(k, s.frequency)
+            q = by_key.get(k - lag)
+            if p in vals and q is not None:
+                points.append(Point(p, vals[p].value / vals[q].value, worst_quality(vals[p].quality, vals[q].quality),
+                                    tuple(sorted(set(vals[p].flags) | set(vals[q].flags)))))
+            else:
+                points.append(_gap(p))
+    step = {"op": "growth_ratio", "basis": basis, "lag_periods": lag, "formula": "value / value[t-lag]",
+            "growth_percent": "(ratio - 1) * 100"}
+    return _build(s, series_id, "derived", points, [s], step, currency="NONE", unit="ratio",
+                  kind="growth_ratio", definition_id=f"derived_growth_{basis}", breaks=s.breaks)
 
 
 def rebase_index(s: Series, base_period: str, *, series_id: str) -> Series:

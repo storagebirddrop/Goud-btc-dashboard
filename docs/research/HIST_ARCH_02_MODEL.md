@@ -158,3 +158,7 @@ OPEN owner decisions:
 5. Whether annual series may be published at all and in which file, given the single-file rule.
 6. Real values: which CPI series and base year (ADR-009 is PROPOSED).
 7. Whether `NLG` display series are allowed or all pre-1999 values are shown as redenominated EUR only.
+
+## Extension for HIST-09 (research only)
+
+Frequency `semiannual` (`YYYY-H1`/`YYYY-H2`); kinds `median_price`, `transaction_count`, `transaction_value`, `statistic_ratio`, `growth_ratio`; functions `weighted_half_year_mean`, `statistic_ratio`, `growth_ratio`. A median and a mean are incompatible kinds and can only be related through `statistic_ratio`. See `HIST_09_INTEGRATION.md`.

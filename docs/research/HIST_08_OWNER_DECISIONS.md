@@ -13,3 +13,5 @@ Status: **PROPOSED. No decision below is taken. Nothing is recorded as accepted 
 | D7 | Permissions / licences | Priority: identify an obtainable historical NVM source (owner/browser inspection of the Vastgoedmarkt page; NVM data desk request). Document exactly what permission is needed (reuse of historical average prices, derived index, attribution). S&P/Euronext licences are a later publication decision | NVM image recovery failed (HIST_08_NVM_RECOVERY) | Authorize contacting NVM / Vastgoedmarkt, or supply the original file | NVM series |
 
 Hard boundaries unchanged: no merge, deployment, publication or production-data change; no Bitcoin, NVM or equity publication; current public gold/CBS values stay byte-identical.
+
+Update 2026-10-22: for D7 an NVM source was obtained through HIST-09 (OTB 2001 Table B3.8, half-year medians 1975-2000, research use only); rights for publication remain UNVERIFIED and no decision is recorded. See `HIST_09_INTEGRATION.md`.

@@ -1,0 +1,16 @@
+{
+  "nvm_total_observations": 52,
+  "nvm_p136_visual_matches": 11,
+  "cbs_monthly_observations": 72,
+  "cbs_halfyears": 12,
+  "nvm_vs_cbs_pct_min": "-0.088511",
+  "nvm_vs_cbs_pct_max": "10.521447",
+  "nvm_vs_cbs_pct_mean": "7.127252166666666666666666666666667",
+  "nvm_vs_cbs_pct_median": "7.264029",
+  "max_abs_monthly_vs_quarter_aggregate_eur": "0.48400206343814089256281533487",
+  "cbs_csv_zip_sha256": "01d2aea00c19026e41b18ccd3a17b6beb004cd1b914a8a4a3f6683e15700584f",
+  "nvm_csv_sha256": "099489a42548f81c009607d464756871d11b8a646bfc54d0a28e687e3d5dffda",
+  "source_dataset": "CBS StatLine 85773NED",
+  "source_export_file": "85773NED-202609220630.zip",
+  "note": "NVM nominal MEDIAN of broker-related trades vs CBS transaction-weighted MEAN of registered sales; NOT comparable as same estimand; research only"
+}
