@@ -36,6 +36,7 @@ INCOMPATIBLE_KINDS = (frozenset({"average_price", "constant_quality_index"}),
                       frozenset({"median_price", "constant_quality_index"}),
                       frozenset({"price_return", "total_return"}))
 QUALITY = ("CONFIRMED", "PROPOSED", "INFERRED", "UNRESOLVED")  # best to worst
+INCOMPATIBLE_DEFINITIONS = (frozenset({"derived_grams_per_house", "derived_grams_per_house_median"}),)
 RESTRICTED_CLASSES = ("bitcoin", "equity")
 RESTRICTED_TOKENS = frozenset({"btc", "bitcoin", "sat", "sats", "satoshi", "sp500", "spx", "aex", "equity"})
 
@@ -445,7 +446,7 @@ def redenominate_nlg_to_eur(s: Series, *, series_id: str) -> Series:
         raise CurrencyMismatch(f"{s.series_id}: redenomination needs currency NLG, got {s.currency}")
     with localcontext() as ctx:
         ctx.prec = PREC
-        points = [Point(r.period, r.value / NLG_PER_EUR, r.quality, tuple(sorted(set(r.flags) | {"REDENOMINATED"})))
+        points = [Point(r.period, r.value / NLG_PER_EUR, r.quality, tuple(sorted(set(r.flags) | {"REDENOMINATED", "RETROSPECTIVE_EUR"})))
                   if r.value is not None else r for r in _rows(s)]
     step = {"op": "redenominate", "from": "NLG", "to": "EUR", "constant": dec_str(NLG_PER_EUR),
             "formula": "eur = nlg / constant", "applied": 1}
@@ -485,10 +486,94 @@ def convert_currency(price: Series, rate: Series, *, to_currency: str, series_id
                   breaks=_union_breaks(price, rate))
 
 
-def monthly_mean(daily: Series, *, min_coverage: Decimal, series_id: str) -> Series:
+def convert_currency_by_quote(price: Series, quote: Series, *, to_currency: str, series_id: str) -> Series:
+    """price * quote, where quote is quoted '<TO>_per_<FROM>' (units of the target currency per one unit of FROM).
+
+    Example: gold in USD per ounce times an NLG_per_USD quote gives gold in NLG per ounce. The quotation
+    direction is part of the unit and is enforced: an inverted quote (USD_per_NLG) is rejected, never guessed.
+    Frequencies must be equal; nothing is aligned or filled.
+    """
+    validate_series(price)
+    validate_series(quote)
+    if {price.currency, to_currency} == {"NLG", "EUR"}:
+        raise CurrencyMismatch("NLG/EUR is a fixed redenomination, not a market rate; use redenominate_nlg_to_eur")
+    if price.currency in ("INDEX", "NONE") or quote.kind != "fx_rate":
+        raise CurrencyMismatch("conversion needs a monetary price and an fx_rate series")
+    if quote.unit != f"{to_currency}_per_{price.currency}":
+        raise CurrencyMismatch(f"quote unit {quote.unit!r} cannot convert {price.currency} to {to_currency} "
+                               f"(expected {to_currency}_per_{price.currency})")
+    if quote.frequency != price.frequency:
+        raise FrequencyError(f"quote is {quote.frequency}, price is {price.frequency}: aggregate the quote first")
+    pv, qv = _vals(price), _vals(quote)
+    if not set(pv) & set(qv):
+        raise OverlapError(f"{price.series_id} and {quote.series_id} share no period")
+    points = []
+    with localcontext() as ctx:
+        ctx.prec = PREC
+        for p in (r.period for r in _rows(price)):
+            if p in pv and p in qv:
+                points.append(Point(p, pv[p].value * qv[p].value, worst_quality(pv[p].quality, qv[p].quality),
+                                    tuple(sorted(set(pv[p].flags) | set(qv[p].flags)))))
+            else:
+                points.append(_gap(p))
+    step = {"op": "convert_currency_by_quote", "from": price.currency, "to": to_currency, "quote_series": quote.series_id,
+            "quote_unit": quote.unit, "formula": "value * quote"}
+    return _build(price, series_id, "normalized", points, [price, quote], step, currency=to_currency,
+                  unit=price.unit.replace(price.currency, to_currency, 1), breaks=_union_breaks(price, quote))
+
+
+HALF_RULES = ("mean", "last", "first")
+
+
+def half_year_aggregate(monthly: Series, *, rule: str, series_id: str) -> Series:
+    """Monthly gold price or FX quote -> half-year value. Rules: mean (all six months), last (June/December), first.
+
+    Only gold spot prices and fx quotes may be aggregated here (housing uses weighted_half_year_mean). A half-year
+    whose required month(s) are missing becomes an explicit null; no partial mean, no fill.
+    """
+    validate_series(monthly)
+    if monthly.frequency != "monthly":
+        raise FrequencyError(f"{monthly.series_id}: half_year_aggregate needs a monthly series")
+    if rule not in HALF_RULES:
+        raise ModelError(f"rule must be one of {HALF_RULES}")
+    if not ((monthly.kind == "spot_price" and monthly.asset_class == "gold")
+            or (monthly.kind == "fx_rate" and monthly.asset_class == "fx")):
+        raise DefinitionMismatch(f"{monthly.series_id}: only gold spot prices and fx quotes use this aggregation "
+                                 f"(got kind {monthly.kind!r}, asset class {monthly.asset_class!r})")
+    vals = _vals(monthly)
+    if not vals:
+        raise ModelError(f"{monthly.series_id}: nothing to aggregate")
+    halves = sorted({f"{m[:4]}-H{1 if int(m[5:7]) <= 6 else 2}" for m in vals}, key=lambda h: period_key(h, "semiannual"))
+    points = []
+    with localcontext() as ctx:
+        ctx.prec = PREC
+        for half in expected_periods(halves[0], halves[-1], "semiannual"):
+            first = 1 if half.endswith("H1") else 7
+            months = [f"{half[:4]}-{m:02d}" for m in range(first, first + 6)]
+            need = months if rule == "mean" else [months[-1] if rule == "last" else months[0]]
+            if all(m in vals for m in need):
+                value = sum(vals[m].value for m in need) / len(need)
+                points.append(Point(half, value, worst_quality(*(vals[m].quality for m in need)),
+                                    tuple(sorted({f for m in need for f in vals[m].flags} | {f"HALF_RULE:{rule.upper()}"}))))
+            else:
+                points.append(Point(half, None, "UNRESOLVED", ("INCOMPLETE_HALF_YEAR",)))
+    merged: dict = {}
+    for b in monthly.breaks:
+        half = f"{b.period[:4]}-H{1 if int(b.period[5:7]) <= 6 else 2}"
+        merged.setdefault(half, []).append(f"{b.period}: {b.reason}")
+    breaks = tuple(Break(h, "; ".join(r)) for h, r in sorted(merged.items(), key=lambda kv: period_key(kv[0], "semiannual")))
+    step = {"op": "half_year_aggregate", "rule": rule,
+            "formula": {"mean": "arithmetic mean of the six monthly values", "last": "value of June / December",
+                        "first": "value of January / July"}[rule]}
+    return _build(monthly, series_id, "normalized", points, [monthly], step, frequency="semiannual", breaks=breaks)
+
+
+def monthly_mean(daily: Series, *, min_coverage: Decimal, series_id: str, complete_final_month: bool = False) -> Series:
     """Arithmetic monthly mean of daily values. min_coverage (share of calendar days) is explicit and recorded.
 
-    A month below the threshold becomes an explicit null, never a partial or filled value.
+    A month below the threshold becomes an explicit null, never a partial or filled value. With
+    complete_final_month=True the last month of the series is also null (flag PARTIAL_FINAL_MONTH) unless no weekday
+    remains after its last observation: a partial month that passes the coverage threshold is not accepted silently.
     """
     validate_series(daily)
     if daily.frequency != "daily":
@@ -502,18 +587,26 @@ def monthly_mean(daily: Series, *, min_coverage: Decimal, series_id: str) -> Ser
     for r in _vals(daily).values():
         groups.setdefault(r.period[:7], []).append(r)
     points = []
+    final = max(groups)
+    last_day = date.fromisoformat(max(r.period for r in groups[final]))
+    month_end = date(last_day.year, last_day.month, monthrange(last_day.year, last_day.month)[1])
+    final_partial = complete_final_month and any(
+        (last_day + timedelta(days=k)).weekday() < 5 for k in range(1, (month_end - last_day).days + 1))
     with localcontext() as ctx:
         ctx.prec = PREC
-        for month in expected_periods(min(groups), max(groups), "monthly"):
+        for month in expected_periods(min(groups), final, "monthly"):
             rows = groups.get(month, [])
             total = monthrange(int(month[:4]), int(month[5:]))[1]
-            if rows and Decimal(len(rows)) / total >= threshold:
+            if month == final and final_partial:
+                points.append(Point(month, None, "UNRESOLVED", ("PARTIAL_FINAL_MONTH",)))
+            elif rows and Decimal(len(rows)) / total >= threshold:
                 points.append(Point(month, sum(r.value for r in rows) / len(rows),
                                     worst_quality(*(r.quality for r in rows)),
                                     tuple(sorted({f for r in rows for f in r.flags} | {f"DAYS:{len(rows)}/{total}"}))))
             else:
                 points.append(Point(month, None, "UNRESOLVED", ("INSUFFICIENT_DAILY_COVERAGE",)))
-    step = {"op": "monthly_mean", "rule": "arithmetic mean of available days", "min_coverage": dec_str(threshold)}
+    step = {"op": "monthly_mean", "rule": "arithmetic mean of available days", "min_coverage": dec_str(threshold),
+            "complete_final_month": complete_final_month}
     return _build(daily, series_id, "normalized", points, [daily], step, frequency="monthly",
                   breaks=_union_breaks(daily, month=True))
 
@@ -713,6 +806,9 @@ def _combine(a: Series, b: Series, fn, *, series_id, step, **changes) -> Series:
         raise DefinitionMismatch(f"{a.basis} vs {b.basis}: nominal and real series cannot be combined")
     if frozenset({a.kind, b.kind}) in INCOMPATIBLE_KINDS:
         raise DefinitionMismatch(f"definition kinds {a.kind!r} and {b.kind!r} cannot be mixed")
+    if frozenset({a.definition_id, b.definition_id}) in INCOMPATIBLE_DEFINITIONS:
+        raise DefinitionMismatch(f"{a.definition_id!r} and {b.definition_id!r} (median-based vs mean-based "
+                                 "housing statistics) cannot be mixed")
     va, vb = _vals(a), _vals(b)
     common = sorted(set(va) & set(vb), key=lambda p: period_key(p, a.frequency))
     if not common:
@@ -733,11 +829,16 @@ def _combine(a: Series, b: Series, fn, *, series_id, step, **changes) -> Series:
 
 def grams_per_house(house: Series, gold: Series, *, series_id="grams_per_house") -> Series:
     """house * 31.1034768 / gold_price_per_oz, same currency and same basis."""
-    _expect(house, "house", kind="average_price", currencies=("EUR", "NLG", "USD"))
+    if house.kind not in ("average_price", "median_price"):
+        raise DefinitionMismatch(f"house {house.series_id}: kind {house.kind!r}, expected average_price or median_price")
+    _expect(house, "house", currencies=("EUR", "NLG", "USD"))
     _expect(gold, "gold", kind="spot_price", unit=f"{house.currency}_per_troy_oz")
     return _combine(house, gold, lambda h, g: h * TROY_OUNCE_GRAMS / g, series_id=series_id,
-                    step={"op": "grams_per_house", "formula": "house * 31.1034768 / gold_per_oz"},
-                    currency="NONE", unit="gram", kind="spot_price", definition_id="derived_grams_per_house")
+                    step={"op": "grams_per_house", "formula": "house * 31.1034768 / gold_per_oz",
+                          "house_statistic": house.kind},
+                    currency="NONE", unit="gram", kind="spot_price",
+                    definition_id="derived_grams_per_house" if house.kind == "average_price"
+                    else "derived_grams_per_house_median")
 
 
 def sats_per_house(house: Series, btc: Series, *, series_id="sats_per_house") -> Series:

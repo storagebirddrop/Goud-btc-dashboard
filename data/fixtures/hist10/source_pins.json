@@ -1,0 +1,15 @@
+{
+  "method_id": "HIST10_M1_V1",
+  "pinned_on": "2026-10-22",
+  "status": "RESEARCH PIN: hashes of the source windows and of the derived half-year values only; no raw third-party data; rights UNVERIFIED; not an authorization",
+  "sources": {
+    "ecb_usd_per_eur_daily": {"first": "1999-01-04", "last": "2026-08-31", "n": 7082, "sha256": "0daadfe82fbbbd562dcce955324e4543029858ae5167392dd431417516e1f294"},
+    "fed_nlg_per_usd_daily": {"first": "1971-01-04", "last": "1998-12-31", "n": 7021, "sha256": "88231593f8d8d09fe2b6c25aa729b06ffb248845728593a56c265596c41e5762"},
+    "world_bank_gold_monthly": {"first": "1975-01", "last": "2026-08", "n": 620, "sha256": "6cceb466714cf51f4a62850cc3ea8a8119d11e0914b1f119c7e756a2c2a74e78"}
+  },
+  "derived": {
+    "halfyear_values_sha256": "ad83703c9d86bb8819c81ce3ddfbda79647fabbcdf2c91b9eb0c928b85283866",
+    "series": ["nvm_grams_nlg_era", "nvm_grams_eur_era", "cbs_grams_eur_retro_halfyear", "cbs_grams_eur_halfyear"]
+  },
+  "window_rule": "sha256 over 'key:value' lines (canonical decimals) for first <= key <= last; observations after 'last' do not change the pin, a revision inside the window does"
+}

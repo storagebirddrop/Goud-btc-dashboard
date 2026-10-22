@@ -15,3 +15,7 @@ Status: **PROPOSED. No decision below is taken. Nothing is recorded as accepted 
 Hard boundaries unchanged: no merge, deployment, publication or production-data change; no Bitcoin, NVM or equity publication; current public gold/CBS values stay byte-identical.
 
 Update 2026-10-22: for D7 an NVM source was obtained through HIST-09 (OTB 2001 Table B3.8, half-year medians 1975-2000, research use only); rights for publication remain UNVERIFIED and no decision is recorded. See `HIST_09_INTEGRATION.md`.
+
+## Project Control decisions for HIST-10 research (2026-10-22)
+
+Accepted **for HIST-10 research only** (not publication, no ADR change): M1 primary half-year gold rule, monthly-mean FX, separate NLG and observed-EUR eras with labelled retrospective EUR, start 1975 with quality B/A, NVM and CBS kept separate, CBS M1 primary with M5 as sensitivity, provisional 50% FX coverage with explicit partial-final-month handling, pre-2000 gold stays research-only, storage stays workflow artifacts. Details, implementation and what stays open: `HIST_10_DECISION_MEMO.md`. Of D1-D7 above this partly answers D2 (C1/C3 construction and labelling) and D5 (hashes in Git, no permanent derived CSV) **for research**; D1, D3, D4, D6 and D7 remain open.
