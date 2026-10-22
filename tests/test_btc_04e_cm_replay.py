@@ -337,29 +337,41 @@ def test_unpinned_and_missing_window_are_not_match(built):
     assert c.check_pins(windows(), c.derived_values_sha256(built, "2014-02"), pins)["status"] == "UNPINNED"
 
 
+def full_manifest(built, cm=CM, ecb=ECB, pages=()):
+    acq = {"source": c.PROVIDER, "metric": "PriceUSD", "url": c.BASE_URL, "query": c.query("2010-07-18", "2014-03-20"), "retrieved_at_utc": STAMP,
+           "pages": len(pages), "page_sha256": [hashlib.sha256(p).hexdigest() for p in pages],
+           "response_sha256": hashlib.sha256("".join(hashlib.sha256(p).hexdigest() for p in pages).encode()).hexdigest(),
+           "first": min(cm), "last": max(cm), "n": len(cm), "provider_gaps": [], "daily": cm}
+    return c.manifest(acq, RAW, ecb, c.derived_values_sha256(built), windows(cm, ecb), "deadbeef")
+
+
 def test_snapshot_round_trip_replays_identically_and_fails_closed(tmp_path, built):
-    man = {"coinmetrics": {"retrieved_at_utc": STAMP}, "derived_values_sha256": c.derived_values_sha256(built)}
-    c.write_snapshot(tmp_path, {"cm_priceusd_daily": CM, "ecb_usd_per_eur_daily": ECB}, man)
-    assert c.replay(tmp_path, house())["status"] == "IDENTICAL"
-    f = tmp_path / "cm_priceusd_daily.txt"
+    snap = tmp_path / "snap"
+    c.export_snapshot(snap, cm_daily=CM, ecb_daily=ECB, man=full_manifest(built))
+    assert c.replay(snap, house())["status"] == "IDENTICAL"
+    f = snap / "cm_priceusd_daily.txt"
     original = f.read_text()
     f.write_text(original.replace("2012-02-10:", "2012-02-10:9", 1))  # corrupted
-    with pytest.raises(c.Btc04eError):
-        c.read_snapshot(tmp_path)
+    with pytest.raises(c.SnapshotError) as e:
+        c.read_snapshot(snap)
+    assert e.value.code == "NORMALIZED_HASH_MISMATCH"
     f.write_text(original[:-40])  # truncated
-    with pytest.raises(c.Btc04eError):
-        c.read_snapshot(tmp_path)
+    with pytest.raises(c.SnapshotError):
+        c.read_snapshot(snap)
     f.unlink()  # missing
-    with pytest.raises(c.Btc04eError):
-        c.read_snapshot(tmp_path)
-    with pytest.raises(c.Btc04eError):
+    with pytest.raises(c.SnapshotError) as e:
+        c.read_snapshot(snap)
+    assert e.value.code == "MISSING"
+    with pytest.raises(c.SnapshotError) as e:
         c.read_snapshot(tmp_path / "nowhere")
+    assert e.value.code == "MISSING"
 
 
 def test_replay_with_wrong_recorded_hash_reports_different(tmp_path, built):
-    man = {"coinmetrics": {"retrieved_at_utc": STAMP}, "derived_values_sha256": "0" * 64}
-    c.write_snapshot(tmp_path, {"cm_priceusd_daily": CM, "ecb_usd_per_eur_daily": ECB}, man)
-    assert c.replay(tmp_path, house())["status"] == "DIFFERENT"
+    man = full_manifest(built)
+    man["derived_values_sha256"] = "0" * 64
+    c.export_snapshot(tmp_path / "s", cm_daily=CM, ecb_daily=ECB, man=man)
+    assert c.replay(tmp_path / "s", house())["status"] == "DIFFERENT"
 
 
 def test_manifest_records_required_vintage_fields(built):
@@ -592,3 +604,259 @@ def test_weekend_fixing_is_reported_and_fails_validation():
 def test_blocking_does_not_change_the_pinned_derived_hash_when_the_calendar_is_clean(built):
     assert c.blocked_ecb_months(ECB) == []
     assert c.derived_values_sha256(c.build_from_daily(CM, ECB, house(), STAMP)) == c.derived_values_sha256(built)
+
+
+# ---------------------------------------------------------------- BTC-05D: local vintage snapshot, offline replay, revision detection
+import argparse  # noqa: E402
+import gzip  # noqa: E402
+import socket  # noqa: E402
+import subprocess  # noqa: E402
+
+
+def raw_pages(daily, per_page=700):
+    days_ = sorted(daily)
+    out = []
+    for i in range(0, len(days_), per_page):
+        rows = [{"asset": "btc", "time": f"{d}T00:00:00.000000000Z", "PriceUSD": str(daily[d])} for d in days_[i:i + per_page]]
+        out.append(json.dumps({"data": rows}).encode())
+    return out
+
+
+def export(tmp_path, built, name="snap", cm=CM, ecb=ECB, pages=None, **kw):
+    pages = raw_pages(cm) if pages is None else pages
+    c.export_snapshot(tmp_path / name, cm_daily=cm, ecb_daily=ecb, man=full_manifest(built, cm, ecb, pages), raw_pages=pages, **kw)
+    return tmp_path / name
+
+
+def tree(path):
+    return {str(f.relative_to(path)): f.read_bytes() for f in sorted(path.rglob("*")) if f.is_file()}
+
+
+def test_export_then_import_is_byte_identical_and_keeps_original_response_bytes(tmp_path, built):
+    snap = export(tmp_path, built, cbs_input_sha256="a" * 64)
+    loaded = c.load_snapshot(snap)
+    assert loaded["raw_pages"] == raw_pages(CM) and loaded["cm_daily"] == CM and loaded["ecb_daily"] == ECB
+    c.export_snapshot(tmp_path / "copy", cm_daily=loaded["cm_daily"], ecb_daily=loaded["ecb_daily"], man=loaded["man"], raw_pages=loaded["raw_pages"],
+                      cut_before=loaded["cut_before"], derived_cutoff=loaded["derived_cutoff"], cbs_input_sha256=loaded["cbs_input_sha256"])
+    first, second = tree(snap), tree(tmp_path / "copy")
+    assert first.keys() == second.keys() and all(first[k] == second[k] for k in first)
+    assert gzip.decompress(first["raw/cm_priceusd_page_000.json.gz"]) == raw_pages(CM)[0]
+
+
+def test_export_needs_an_explicit_new_directory_and_never_overwrites(tmp_path, built):
+    snap = export(tmp_path, built)
+    with pytest.raises(c.SnapshotError) as e:
+        export(tmp_path, built)
+    assert e.value.code == "EXISTS" and c.load_snapshot(snap)["snapshot_id"].startswith("btc04e-")
+
+
+def test_replay_runs_offline_without_any_provider_connection(tmp_path, built, monkeypatch):
+    snap = export(tmp_path, built)
+
+    def no_network(*a, **k):
+        raise AssertionError("network access during offline replay")
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.setattr(c, "fetch_priceusd", no_network)
+    res = c.replay(snap, house())
+    assert res["status"] == "IDENTICAL" and res["raw_source_bytes"] == "RETAINED_AND_VERIFIED"
+    assert res["derived_values_sha256"] == c.derived_values_sha256(built)
+
+
+def test_replay_cli_is_offline_and_exits_zero_only_on_identical(tmp_path, monkeypatch, capsys):
+    csv = ROOT / "data/cbs-housing.csv"
+    real_built = c.build_from_daily(CM, ECB, hb.cbs_2000_series(csv), STAMP)
+    pages = raw_pages(CM)
+    man = full_manifest(real_built, pages=pages)
+    man["derived_values_sha256"] = c.derived_values_sha256(real_built, "2014-02")
+    sha = hashlib.sha256(csv.read_bytes()).hexdigest()
+    c.export_snapshot(tmp_path / "s", cm_daily=CM, ecb_daily=ECB, man=man, raw_pages=pages, derived_cutoff="2014-02", cbs_input_sha256=sha)
+    monkeypatch.setattr(c, "fetch_priceusd", lambda *a, **k: (_ for _ in ()).throw(AssertionError("live acquisition")))
+    monkeypatch.setattr(socket.socket, "connect", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network access")))
+    assert c.main(["--replay-snapshot", str(tmp_path / "s"), "--cbs-csv", str(csv)]) == 0
+    assert "IDENTICAL" in capsys.readouterr().out
+    assert c.main(["--replay-snapshot", str(tmp_path / "missing"), "--cbs-csv", str(csv)]) == 1
+    assert "MISSING" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        c.main(["--replay-snapshot", str(tmp_path / "s")])  # --cbs-csv is required
+
+
+def test_replay_reports_a_different_cbs_input_instead_of_identical(tmp_path, built):
+    snap = export(tmp_path, built, cbs_input_sha256="a" * 64)
+    assert c.replay(snap, house(), "a" * 64)["status"] == "IDENTICAL"
+    assert c.replay(snap, house(), "b" * 64)["status"] == "CBS_INPUT_DIFFERS"
+
+
+def test_missing_manifest_or_raw_page_fails_without_live_fallback(tmp_path, built, monkeypatch):
+    monkeypatch.setattr(c, "fetch_priceusd", lambda *a, **k: (_ for _ in ()).throw(AssertionError("live acquisition")))
+    snap = export(tmp_path, built)
+    (snap / "raw/cm_priceusd_page_000.json.gz").unlink()
+    with pytest.raises(c.SnapshotError) as e:
+        c.replay(snap, house())
+    assert e.value.code == "MISSING"
+    (snap / c.SNAPSHOT_MANIFEST).unlink()
+    with pytest.raises(c.SnapshotError) as e:
+        c.replay(snap, house())
+    assert e.value.code == "MISSING"
+
+
+@pytest.mark.parametrize("damage", ["manifest_json", "gzip_stream", "unknown_format", "missing_key"])
+def test_corrupt_snapshot_fails_closed(tmp_path, built, damage):
+    snap = export(tmp_path, built)
+    manifest_path = snap / c.SNAPSHOT_MANIFEST
+    if damage == "manifest_json":
+        manifest_path.write_text("{broken")
+    elif damage == "gzip_stream":
+        (snap / "raw/cm_priceusd_page_000.json.gz").write_bytes(b"not gzip")
+    elif damage == "unknown_format":
+        doc = json.loads(manifest_path.read_text())
+        doc["format"] = "other/9"
+        manifest_path.write_text(json.dumps(doc))
+    else:
+        doc = json.loads(manifest_path.read_text())
+        del doc["manifest"]["derived_values_sha256"]
+        manifest_path.write_text(json.dumps(doc))
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "CORRUPT"
+
+
+def test_source_hash_mismatch_fails(tmp_path, built):
+    snap = export(tmp_path, built)
+    page = snap / "raw/cm_priceusd_page_000.json.gz"
+    altered = gzip.decompress(page.read_bytes()).replace(b"PriceUSD", b"PriceUSD ", 1)  # valid JSON, different bytes
+    page.write_bytes(gzip.compress(altered, mtime=0))
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "SOURCE_HASH_MISMATCH"
+
+
+def test_normalized_hash_mismatch_fails_in_both_directions(tmp_path, built):
+    snap = export(tmp_path, built)
+    doc = json.loads((snap / c.SNAPSHOT_MANIFEST).read_text())
+    doc["manifest"]["coinmetrics"]["canonical_daily_sha256"] = "0" * 64  # manifest disagrees with the stored values
+    (snap / c.SNAPSHOT_MANIFEST).write_text(json.dumps(doc))
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "NORMALIZED_HASH_MISMATCH"
+    other = dict(CM)
+    other["2012-02-10"] += Decimal("1")  # normalized values that the stored response bytes do not produce
+    c.export_snapshot(tmp_path / "bad", cm_daily=other, ecb_daily=ECB, man=full_manifest(built, other, ECB, raw_pages(CM)), raw_pages=raw_pages(CM))
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(tmp_path / "bad")
+    assert e.value.code == "NORMALIZED_HASH_MISMATCH"
+
+
+@pytest.mark.parametrize("field", ["PARSER_VERSION", "METHOD_ID", "EXCEPTION_POLICY_VERSION", "QUALITY_VERSION"])
+def test_method_or_parser_version_mismatch_fails(tmp_path, built, monkeypatch, field):
+    snap = export(tmp_path, built)
+    monkeypatch.setattr(c, field, "OTHER/2")
+    with pytest.raises(c.SnapshotError) as e:
+        c.load_snapshot(snap)
+    assert e.value.code == "METHOD_CHANGED"
+
+
+def test_snapshot_id_ignores_timestamps_but_not_content(tmp_path, built):
+    a = export(tmp_path, built, name="a")
+    man = full_manifest(built, pages=raw_pages(CM))
+    man["coinmetrics"]["retrieved_at_utc"] = "2030-01-01T00:00:00+00:00"
+    c.export_snapshot(tmp_path / "b", cm_daily=CM, ecb_daily=ECB, man=man, raw_pages=raw_pages(CM))
+    assert c.load_snapshot(a)["snapshot_id"] == c.load_snapshot(tmp_path / "b")["snapshot_id"]
+    other = dict(CM)
+    other["2011-03-03"] += Decimal("0.01")
+    ob = c.build_from_daily(other, ECB, house(), STAMP)
+    c.export_snapshot(tmp_path / "c", cm_daily=other, ecb_daily=ECB, man=full_manifest(ob, other, ECB, raw_pages(other)), raw_pages=raw_pages(other))
+    assert c.load_snapshot(tmp_path / "c")["snapshot_id"] != c.load_snapshot(a)["snapshot_id"]
+
+
+# ---- revision detection and monthly update
+def test_unchanged_history_and_new_observations_are_not_revisions():
+    assert c.revision_report(CM, dict(CM))["status"] == "UNCHANGED_HISTORY"
+    grown = dict(CM)
+    for d in days("2014-03-21", "2014-04-30"):
+        grown[d] = px(d)
+    rep = c.revision_report(CM, grown)
+    assert rep["status"] == "NEW_OBSERVATIONS_ONLY" and rep["new_after_window"] == 41 and rep["revised"] == 0 and rep["missing"] == 0
+
+
+def test_old_observation_changed_is_an_explicit_revision_and_nothing_is_replaced():
+    old = dict(CM)
+    snapshot_copy = dict(old)
+    new = dict(CM)
+    new["2011-03-03"] += Decimal("0.01")
+    rep = c.revision_report(old, new)
+    assert rep["status"] == "HISTORICAL_REVISION" and rep["revised_days"] == ["2011-03-03"] and old == snapshot_copy
+    assert "0.01" not in json.dumps(rep) and str(CM["2011-03-03"]) not in json.dumps(rep)  # days only, no price values
+
+
+def test_missing_and_inserted_historical_days_are_detected():
+    new = {k: v for k, v in CM.items() if k != "2012-05-15"}
+    assert c.revision_report(CM, new)["status"] == "MISSING_HISTORICAL"
+    gappy = {k: v for k, v in CM.items() if k != "2012-05-15"}
+    rep = c.revision_report(gappy, CM)
+    assert rep["status"] == "HISTORICAL_REVISION" and rep["inserted_days"] == ["2012-05-15"]
+    both = dict(new)
+    both["2011-03-03"] += 1
+    assert c.revision_report(CM, both)["status"] == "MISSING_HISTORICAL"  # missing wins over a revision
+
+
+def test_validate_mode_fails_on_a_historical_revision_but_not_on_new_days():
+    R = good_run(revision_detection={"status": "HISTORICAL_REVISION"})
+    assert c.finalize(R, "validate")["status"] == "VALIDATION_FAILED"
+    assert c.finalize(good_run(revision_detection={"status": "MISSING_HISTORICAL"}), "validate")["status"] == "VALIDATION_FAILED"
+    assert c.finalize(good_run(revision_detection={"status": "NEW_OBSERVATIONS_ONLY"}), "validate")["status"] == "COMPLETE_RESEARCH"
+
+
+def test_monthly_update_adds_only_complete_months_and_keeps_pins_and_gate():
+    grown = dict(CM)
+    for d in days("2014-03-21", "2014-05-10"):
+        grown[d] = px(d)
+    plan = c.monthly_update_plan(CM, grown)
+    assert plan["months_added"] == ["2014-03", "2014-04"] and plan["baseline_last_complete_month"] == "2014-02"  # May is partial
+    assert plan["processed"] and plan["release_gate"] == "CLOSED" and "never writes pins" in plan["pins"]
+    revised = dict(grown)
+    revised["2011-03-03"] += 1
+    refused = c.monthly_update_plan(CM, revised)
+    assert refused["months_added"] == [] and not refused["processed"]
+
+
+def test_bad_baseline_stops_the_run_before_any_provider_request(tmp_path, monkeypatch):
+    def no_network(*a, **k):
+        raise AssertionError("network access")
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.setattr(c, "fetch_priceusd", no_network)
+    args = argparse.Namespace(baseline_snapshot=str(tmp_path / "nothing"), export_snapshot=None, cbs_csv="x.csv", pins=None, mode="validate")
+    with pytest.raises(c.SnapshotError):
+        c.run(args)
+
+
+# ---- June 2011 and the candidate selector survive replay
+def test_june_2011_stays_hold_after_a_successful_replay(tmp_path, built):
+    snap = export(tmp_path, built)
+    loaded = c.load_snapshot(snap)
+    replayed = c.build_from_daily(loaded["cm_daily"], loaded["ecb_daily"], house(), STAMP)
+    assert c.replay(snap, house())["status"] == "IDENTICAL"
+    meta = c.month_metadata(replayed, loaded["cm_daily"])["2011-06"]
+    assert meta["release_eligibility"] == "RESEARCH_ONLY_HOLD" and meta["quality"] == "Q3" and meta["exception"] == "HOLD_2011_06"
+    assert vals(replayed["cbs_btc_per_house_cm_c1"])["2011-06"] is not None  # internal diagnostic value only
+    assert all(not (s["first"] <= "2011-06" <= s["last"]) for s in c.chart_segments(replayed))
+    with pytest.raises(c.Btc04eError):
+        c.candidate_values(replayed, approved={"2011-06"})
+
+
+@pytest.mark.parametrize("month", ["2011-06", "2010-07", "2014-03", "2009-01", "2030-01"])
+def test_unsuitable_months_cannot_leave_through_the_candidate_selector(built, month):
+    with pytest.raises(c.Btc04eError):
+        c.candidate_values(built, approved={month})  # HOLD, unsupported/partial (null) or absent
+
+
+# ---- no raw data outside the private snapshot
+def test_no_raw_source_data_is_tracked_uploaded_or_printed():
+    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+    assert not [f for f in tracked if "cm_priceusd_page" in f or f.endswith("snapshot_manifest.json") or f.endswith("cm_priceusd_daily.txt")]
+    assert sorted(f for f in tracked if f.startswith("data/fixtures/btc04e/")) == ["data/fixtures/btc04e/source_pins.json"]
+    wf = (ROOT / ".github/workflows/btc-04e-cm-replay.yml").read_text()
+    assert wf.count("upload-artifact") == 1 and "path: ${{ runner.temp }}/btc-04e/" in wf and "private-snapshot" not in wf
+    src = (ROOT / "tools/btc_04e_cm_replay.py").read_text()
+    assert 'prefix="btc-04e-private-snapshot-"' in src and 'k not in ("daily", "raw_pages")' in src
+    public = (ROOT / "frontend/public/data/monthly.json").read_text().lower()
+    assert "priceusd" not in public and "btc" not in public

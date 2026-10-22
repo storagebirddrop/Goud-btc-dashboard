@@ -10,12 +10,14 @@ Raw third-party prices are read in memory (and optionally written to a PRIVATE r
 never committed or uploaded. Offline tests use synthetic data and prove code, not data. Missing stays null: no fill, no fallback.
 """
 import argparse
+import gzip
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -55,10 +57,21 @@ RELEASE_APPROVALS = frozenset()  # months a future Project Control release recor
 TIME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})T00:00:00(?:\.0+)?Z$")
 INDEPENDENT_MONTHS = ("2010-08", "2011-06", "2013-01", "2014-02", "2016-05", "2017-12")
 RETRIES, RETRY_STATUS = 5, {429, 500, 502, 503, 504}
+SNAPSHOT_FORMAT = "btc04e-snapshot/2"
+SNAPSHOT_MANIFEST = "snapshot_manifest.json"
+CM_FILE, ECB_FILE = "cm_priceusd_daily", "ecb_usd_per_eur_daily"
 
 
 class Btc04eError(hm.ModelError):
     """Input or consistency defect: fail closed."""
+
+
+class SnapshotError(Btc04eError):
+    """Stored vintage cannot be trusted. `code`: MISSING, CORRUPT, SOURCE_HASH_MISMATCH, NORMALIZED_HASH_MISMATCH, METHOD_CHANGED, EXISTS."""
+
+    def __init__(self, code, message):
+        super().__init__(f"{code}: {message}")
+        self.code = code
 
 
 # ------------------------------------------------------------------ adapter: strict parsing
@@ -134,7 +147,7 @@ def fetch_priceusd(session, *, start, end, sleep=time.sleep, now=lambda: datetim
             raise Btc04eError(f"invalid date {d!r}")
     if start > end:
         raise Btc04eError("start after end")
-    url, params, rows, pages, seen = BASE_URL, query(start, end), [], [], set()
+    url, params, rows, pages, raw_pages, seen = BASE_URL, query(start, end), [], [], [], set()
     for _ in range(max_pages):
         for attempt in range(RETRIES + 1):
             r = session.get(url, params=params, timeout=60)
@@ -146,6 +159,7 @@ def fetch_priceusd(session, *, start, end, sleep=time.sleep, now=lambda: datetim
         if r.status_code != 200:
             raise Btc04eError(f"Coin Metrics HTTP {r.status_code}")
         pages.append(hashlib.sha256(r.content).hexdigest())
+        raw_pages.append(bytes(r.content))
         page, nxt = parse_page(r.json())
         rows.extend(page)
         if nxt is None:
@@ -165,7 +179,7 @@ def fetch_priceusd(session, *, start, end, sleep=time.sleep, now=lambda: datetim
         raise Btc04eError("observations outside the requested range")
     return {"source": PROVIDER, "metric": METRIC, "url": BASE_URL, "query": query(start, end), "retrieved_at_utc": now().replace(microsecond=0).isoformat(),
             "pages": len(pages), "page_sha256": pages, "response_sha256": hashlib.sha256("".join(pages).encode()).hexdigest(),
-            "first": lo, "last": hi, "n": len(daily), "provider_gaps": gaps, "daily": daily}
+            "first": lo, "last": hi, "n": len(daily), "provider_gaps": gaps, "daily": daily, "raw_pages": raw_pages}
 
 
 # ------------------------------------------------------------------ validation (never fills)
@@ -451,40 +465,134 @@ def manifest(acq: dict, ecb_raw_sha: str, ecb_daily: dict, derived_hash: str, wi
             "note": "raw hashes identify the bytes of this run, they are not an archive; exact replay needs the private snapshot"}
 
 
-def write_snapshot(directory, daily_by_name: dict, man: dict) -> None:
-    """PRIVATE replay snapshot (canonical 'day:value' lines + manifest with file hashes). Never committed or uploaded."""
+def _normalized(daily: dict) -> str:
+    return "".join(f"{k}:{hm.dec_str(v)}\n" for k, v in sorted(daily.items()))
+
+
+def snapshot_id(man: dict, cut_before, derived_cutoff) -> str:
+    """Identity of a vintage: method/parser/policy versions, both canonical input hashes and the derived hash. Not timestamps."""
+    ident = {"method_id": man["method_id"], "parser_version": man["parser_version"], "exception_policy_version": man["exception_policy_version"],
+             "quality_version": man["quality_version"], "cm": man["coinmetrics"]["canonical_daily_sha256"], "ecb": man["ecb"]["canonical_daily_sha256"],
+             "derived": man["derived_values_sha256"], "cut_before": cut_before, "derived_cutoff": derived_cutoff}
+    return "btc04e-" + hashlib.sha256(hm.canonical_json(ident)).hexdigest()[:16]
+
+
+def export_snapshot(directory, *, cm_daily: dict, ecb_daily: dict, man: dict, raw_pages=None, cut_before=None,
+                    derived_cutoff=RESEARCH_CUTOFF, cbs_input_sha256=None) -> dict:
+    """Write a LOCAL vintage snapshot to an explicitly chosen directory. No upload, no network, never overwrites a snapshot.
+
+    Layout: two normalized 'day:value' files, optional original CM response pages (gzip, mtime 0) and one manifest. The ECB response
+    bytes are not retained by the acquisition code (only normalized values), which the manifest states. Never committed or uploaded.
+    """
     d = Path(directory)
+    if (d / SNAPSHOT_MANIFEST).exists():
+        raise SnapshotError("EXISTS", f"{d} already holds a snapshot; choose a new directory")
     d.mkdir(parents=True, exist_ok=True)
     files = {}
-    for name, daily in daily_by_name.items():
-        body = "".join(f"{k}:{hm.dec_str(v)}\n" for k, v in sorted(daily.items()))
+    for name, daily in ((CM_FILE, cm_daily), (ECB_FILE, ecb_daily)):
+        body = _normalized(daily)
         (d / f"{name}.txt").write_text(body, encoding="utf-8")
         files[name] = {"file": f"{name}.txt", "sha256": hashlib.sha256(body.encode()).hexdigest(), "n": len(daily)}
-    (d / "snapshot_manifest.json").write_bytes(hm.canonical_json({"files": files, "manifest": man}))
+    raw = {"cm_priceusd": [], "ecb": "NOT_RETAINED"}
+    if raw_pages:
+        (d / "raw").mkdir(exist_ok=True)
+        for i, blob in enumerate(raw_pages):
+            name = f"raw/cm_priceusd_page_{i:03d}.json.gz"
+            (d / name).write_bytes(gzip.compress(blob, mtime=0))
+            raw["cm_priceusd"].append({"file": name, "raw_sha256": hashlib.sha256(blob).hexdigest(), "bytes": len(blob)})
+    sid = snapshot_id(man, cut_before, derived_cutoff)
+    doc = {"format": SNAPSHOT_FORMAT, "snapshot_id": sid, "files": files, "raw": raw, "cut_before": cut_before, "derived_cutoff": derived_cutoff,
+           "cbs_input_sha256": cbs_input_sha256, "manifest": man}
+    (d / SNAPSHOT_MANIFEST).write_bytes(hm.canonical_json(doc))
+    return {"snapshot_id": sid, "bytes": {str(f.relative_to(d)): f.stat().st_size for f in sorted(d.rglob("*")) if f.is_file()}}
+
+
+def write_snapshot(directory, daily_by_name: dict, man: dict, **options) -> dict:
+    """Compatibility wrapper for the BTC-04E call style."""
+    return export_snapshot(directory, cm_daily=daily_by_name[CM_FILE], ecb_daily=daily_by_name[ECB_FILE], man=man, **options)
+
+
+def load_snapshot(directory) -> dict:
+    """Import and verify a local snapshot. Any defect raises SnapshotError: there is never a fallback to live acquisition.
+
+    Checks: manifest present/well-formed; code/method/parser/policy versions equal the running code; normalized files hash and count;
+    canonical daily hashes vs manifest; original response pages hash, ordering and response id; raw pages re-parsed with the current parser
+    must reproduce the normalized CM values; snapshot id recomputed.
+    """
+    d = Path(directory)
+    try:
+        doc = json.loads((d / SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise SnapshotError("MISSING", f"no {SNAPSHOT_MANIFEST} in {d}") from None
+    except (OSError, ValueError) as exc:
+        raise SnapshotError("CORRUPT", f"manifest unreadable ({type(exc).__name__})") from None
+    try:
+        if doc["format"] != SNAPSHOT_FORMAT:
+            raise SnapshotError("CORRUPT", f"unknown snapshot format {doc['format']!r}")
+        man = doc["manifest"]
+        for key, now in (("method_id", METHOD_ID), ("parser_version", PARSER_VERSION), ("exception_policy_version", EXCEPTION_POLICY_VERSION),
+                         ("quality_version", QUALITY_VERSION)):
+            if man[key] != now:
+                raise SnapshotError("METHOD_CHANGED", f"{key}: snapshot {man[key]!r}, code {now!r}")
+        daily = {}
+        for name, meta in doc["files"].items():
+            try:
+                body = (d / meta["file"]).read_text(encoding="utf-8")
+            except FileNotFoundError:
+                raise SnapshotError("MISSING", f"{meta['file']} is missing") from None
+            if hashlib.sha256(body.encode()).hexdigest() != meta["sha256"]:
+                raise SnapshotError("NORMALIZED_HASH_MISMATCH", f"{name}: file hash differs from the manifest")
+            vals = {}
+            for line in body.splitlines():
+                day, _, rawv = line.partition(":")
+                if day in vals:
+                    raise SnapshotError("CORRUPT", f"{name}: duplicate day {day}")
+                vals[day] = parse_price(rawv, day)
+            if len(vals) != meta["n"]:
+                raise SnapshotError("CORRUPT", f"{name}: observation count differs")
+            daily[name] = vals
+        for name, key in ((CM_FILE, "coinmetrics"), (ECB_FILE, "ecb")):
+            if canonical_daily_sha256(daily[name]) != man[key]["canonical_daily_sha256"]:
+                raise SnapshotError("NORMALIZED_HASH_MISMATCH", f"{name}: canonical daily hash differs from the manifest")
+        pages = []
+        entries = doc["raw"]["cm_priceusd"]
+        if entries:
+            hashes = []
+            for e in entries:
+                try:
+                    blob = gzip.decompress((d / e["file"]).read_bytes())
+                except FileNotFoundError:
+                    raise SnapshotError("MISSING", f"{e['file']} is missing") from None
+                except (OSError, EOFError, ValueError):
+                    raise SnapshotError("CORRUPT", f"{e['file']} is not a valid gzip stream") from None
+                if hashlib.sha256(blob).hexdigest() != e["raw_sha256"]:
+                    raise SnapshotError("SOURCE_HASH_MISMATCH", f"{e['file']}: response bytes differ from the recorded hash")
+                hashes.append(e["raw_sha256"])
+                pages.append(blob)
+            if hashes != man["coinmetrics"]["page_sha256"] or hashlib.sha256("".join(hashes).encode()).hexdigest() != man["coinmetrics"]["response_sha256"]:
+                raise SnapshotError("SOURCE_HASH_MISMATCH", "response pages differ from the acquisition record")
+            try:
+                parsed, gaps = merge_rows([r for blob in pages for r in parse_page(json.loads(blob))[0]])
+            except (ValueError, Btc04eError) as exc:
+                raise SnapshotError("CORRUPT", f"raw pages do not parse: {str(exc)[:120]}") from None
+            if doc["cut_before"]:
+                parsed = cut_to_complete(parsed, doc["cut_before"])
+            if parsed != daily[CM_FILE]:
+                raise SnapshotError("NORMALIZED_HASH_MISMATCH", "normalized CM values are not what the stored response bytes produce")
+        if snapshot_id(man, doc["cut_before"], doc["derived_cutoff"]) != doc["snapshot_id"]:
+            raise SnapshotError("CORRUPT", "snapshot id does not match its content")
+    except SnapshotError:
+        raise
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise SnapshotError("CORRUPT", f"manifest incomplete ({type(exc).__name__})") from None
+    return {"cm_daily": daily[CM_FILE], "ecb_daily": daily[ECB_FILE], "man": man, "raw_pages": pages or None, "cut_before": doc["cut_before"],
+            "derived_cutoff": doc["derived_cutoff"], "cbs_input_sha256": doc["cbs_input_sha256"], "snapshot_id": doc["snapshot_id"]}
 
 
 def read_snapshot(directory) -> tuple:
-    """Fail closed on a missing, truncated, corrupted or inconsistent snapshot."""
-    d = Path(directory)
-    try:
-        doc = json.loads((d / "snapshot_manifest.json").read_text(encoding="utf-8"))
-        out = {}
-        for name, meta in doc["files"].items():
-            body = (d / meta["file"]).read_text(encoding="utf-8")
-            if hashlib.sha256(body.encode()).hexdigest() != meta["sha256"]:
-                raise Btc04eError(f"snapshot {name}: hash mismatch")
-            daily = {}
-            for line in body.splitlines():
-                day, _, raw = line.partition(":")
-                if day in daily:
-                    raise Btc04eError(f"snapshot {name}: duplicate day {day}")
-                daily[day] = parse_price(raw, day)
-            if len(daily) != meta["n"]:
-                raise Btc04eError(f"snapshot {name}: observation count mismatch")
-            out[name] = daily
-    except (OSError, KeyError, ValueError, json.JSONDecodeError) as exc:
-        raise Btc04eError(f"snapshot unreadable: {type(exc).__name__}") from None
-    return out, doc["manifest"]
+    """BTC-04E call style: ({name: daily}, manifest), fully verified by load_snapshot."""
+    snap = load_snapshot(directory)
+    return {CM_FILE: snap["cm_daily"], ECB_FILE: snap["ecb_daily"]}, snap["man"]
 
 
 def build_from_daily(cm_daily: dict, ecb_daily: dict, house: hm.Series, acquired_at: str, cm_raw="0" * 64, ecb_raw="0" * 64) -> dict:
@@ -494,12 +602,54 @@ def build_from_daily(cm_daily: dict, ecb_daily: dict, house: hm.Series, acquired
     return build(cm_daily_series(cm_daily, cm_raw, acquired_at), ecb_series(usable, ecb_raw, acquired_at), house)
 
 
-def replay(directory, house: hm.Series) -> dict:
-    """Rebuild from the private snapshot and compare with the recorded derived-values hash."""
-    daily, man = read_snapshot(directory)
-    built = build_from_daily(daily["cm_priceusd_daily"], daily["ecb_usd_per_eur_daily"], house, man["coinmetrics"]["retrieved_at_utc"])
-    got = derived_values_sha256(built)
-    return {"status": "IDENTICAL" if got == man["derived_values_sha256"] else "DIFFERENT", "derived_values_sha256": got}
+def replay(directory, house: hm.Series, cbs_input_sha256=None) -> dict:
+    """OFFLINE historical vintage replay: rebuild from the stored snapshot only (no provider request, no live fallback).
+
+    IDENTICAL means the stored inputs reproduce the recorded derived hash. If the CBS input hash is given and differs from the one
+    recorded at export, the result is CBS_INPUT_DIFFERS, never IDENTICAL.
+    """
+    snap = load_snapshot(directory)
+    built = build_from_daily(snap["cm_daily"], snap["ecb_daily"], house, snap["man"]["coinmetrics"]["retrieved_at_utc"])
+    got = derived_values_sha256(built, snap["derived_cutoff"])
+    if cbs_input_sha256 is not None and snap["cbs_input_sha256"] not in (None, cbs_input_sha256):
+        status = "CBS_INPUT_DIFFERS"
+    else:
+        status = "IDENTICAL" if got == snap["man"]["derived_values_sha256"] else "DIFFERENT"
+    return {"status": status, "snapshot_id": snap["snapshot_id"], "derived_values_sha256": got,
+            "raw_source_bytes": "RETAINED_AND_VERIFIED" if snap["raw_pages"] else "NOT_RETAINED"}
+
+
+# ------------------------------------------------------------------ revision detection and monthly update (against a stored vintage)
+def revision_report(old: dict, new: dict) -> dict:
+    """Compare freshly acquired daily values with a stored vintage. The stored values are never replaced; only days are reported.
+
+    UNCHANGED_HISTORY, NEW_OBSERVATIONS_ONLY (days after the stored window), HISTORICAL_REVISION (a stored day changed, or a day
+    inside the stored window appeared that was not stored), MISSING_HISTORICAL (a stored day is absent now; wins over a revision).
+    """
+    if not old:
+        raise Btc04eError("empty stored vintage")
+    first, last = min(old), max(old)
+    revised = sorted(d for d in old if d in new and new[d] != old[d])
+    missing = sorted(d for d in old if d not in new)
+    inserted = sorted(d for d in new if first <= d <= last and d not in old)
+    after = sorted(d for d in new if d > last)
+    status = ("MISSING_HISTORICAL" if missing else "HISTORICAL_REVISION" if (revised or inserted)
+              else "NEW_OBSERVATIONS_ONLY" if after else "UNCHANGED_HISTORY")
+    return {"status": status, "window": [first, last], "unchanged": len(old) - len(revised) - len(missing), "revised": len(revised),
+            "missing": len(missing), "inserted_in_window": len(inserted), "new_after_window": len(after),
+            "revised_days": revised[:10], "missing_days": missing[:10], "inserted_days": inserted[:10]}
+
+
+def monthly_update_plan(old: dict, new: dict) -> dict:
+    """Which COMPLETE calendar months a monthly update may add, given an unchanged history. Pins and the release gate are not touched."""
+    rep = revision_report(old, new)
+    base_complete = [m for m, st in H.monthly_stats(old).items() if st["complete"]]
+    last_old = max(base_complete) if base_complete else None
+    ok = rep["status"] in ("UNCHANGED_HISTORY", "NEW_OBSERVATIONS_ONLY")
+    added = sorted(m for m, st in H.monthly_stats(new).items() if st["complete"] and (last_old is None or m > last_old)) if ok else []
+    return {"history": rep["status"], "baseline_last_complete_month": last_old, "months_added": added,
+            "processed": ok, "note": "" if ok else "history changed: no month is added until Project Control approves a new vintage",
+            "pins": "UNCHANGED (this tool never writes pins)", "release_gate": "CLOSED" if not RELEASE_APPROVALS else "OPEN"}
 
 
 # ------------------------------------------------------------------ independent numerical checks (exact Fractions)
@@ -574,6 +724,7 @@ def run(args):  # noqa: C901
     from tools import btc_02_probe as P
     import contextlib
     import io
+    baseline = load_snapshot(args.baseline_snapshot) if args.baseline_snapshot else None  # a bad baseline stops the run before any request
     notes = io.StringIO()
     now = datetime.now(timezone.utc)
     as_of = now.date().isoformat()
@@ -601,7 +752,7 @@ def run(args):  # noqa: C901
     pins = load_pins(args.pins)
     man = manifest(acq, ecb_raw, ecb_daily, derived_hash, windows, git_commit())
     R = {"caveat": "research only; method conditionally accepted for research; nothing published; rights UNVERIFIED; no raw data stored",
-         "method_id": METHOD_ID, "missing_sources": [], "acquisition": {k: v for k, v in acq.items() if k != "daily"},
+         "method_id": METHOD_ID, "missing_sources": [], "acquisition": {k: v for k, v in acq.items() if k not in ("daily", "raw_pages")},
          "observations_used": {"first": min(cm_daily), "last": max(cm_daily), "n": len(cm_daily), "missing_calendar_days": len(gaps), "missing_sample": gaps[:10]},
          "rebuild_identical": derived_values_sha256(again) == derived_hash, "derived_values_sha256": derived_hash,
          "vintage_check": check_pins(windows, derived_hash, pins), "pins_candidate": {
@@ -625,12 +776,20 @@ def run(args):  # noqa: C901
     R["corroboration"] = corroboration(cm_daily, ecb_daily, bsu, bse)
     meta = month_metadata(built, cm_daily, corroboration_flags(cm_daily, bsu, bse))
     R["quality_metadata_sample"] = {m: meta[m] for m in ("2010-08", "2011-06", "2014-02", "2016-05") if m in meta}
-    # private replay check: the snapshot lives in a runner temp directory, is never uploaded and is removed with the runner
-    snap = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "btc-04e-private-snapshot"
-    write_snapshot(snap, {"cm_priceusd_daily": cm_daily, "ecb_usd_per_eur_daily": ecb_daily}, man)
-    R["replay_from_private_snapshot"] = replay(snap, house)
-    R["replay_limit"] = ("Exact replay of this run is possible only with the private snapshot; the repository keeps window hashes and the derived hash, "
-                         "so a later run can detect revisions but cannot reconstruct the original bytes.")
+    # local snapshot: explicit path, or a private temp directory on the runner that is never uploaded and disappears with it
+    cbs_sha = hashlib.sha256(Path(args.cbs_csv).read_bytes()).hexdigest()
+    snap = Path(args.export_snapshot) if args.export_snapshot else Path(tempfile.mkdtemp(prefix="btc-04e-private-snapshot-", dir=os.environ.get("RUNNER_TEMP")))
+    exported = export_snapshot(snap, cm_daily=cm_daily, ecb_daily=ecb_daily, man=man, raw_pages=acq["raw_pages"], cut_before=as_of,
+                               derived_cutoff=RESEARCH_CUTOFF, cbs_input_sha256=cbs_sha)
+    R["snapshot"] = {"snapshot_id": exported["snapshot_id"], "bytes": exported["bytes"], "total_bytes": sum(exported["bytes"].values()),
+                     "location": "explicit path" if args.export_snapshot else "private runner temp (not uploaded)", "durable_storage": "OPEN"}
+    R["replay_from_private_snapshot"] = replay(snap, house, cbs_sha)
+    R["replay_limit"] = ("Historical vintage replay needs the stored snapshot. The repository keeps window hashes and the derived hash only: they "
+                         "detect a revision but cannot reconstruct the original bytes. Durable private storage is OPEN.")
+    if baseline:
+        R["revision_detection"] = revision_report(baseline["cm_daily"], cm_daily)
+        R["monthly_update"] = monthly_update_plan(baseline["cm_daily"], cm_daily) | {"baseline_snapshot_id": baseline["snapshot_id"],
+                                                                                       "new_vintage_snapshot_id": exported["snapshot_id"]}
     R["source_notes"] = [ln[:200] for ln in notes.getvalue().splitlines() if ln.strip()][:12]
     return R  # main() applies finalize(): status and exit code are decided in one place
 
@@ -647,6 +806,9 @@ def finalize(R: dict, mode: str) -> dict:
         failures.append("private-snapshot replay is not IDENTICAL")
     if R.get("rebuild_identical") is not True:
         failures.append("rebuild is not identical")
+    rev = (R.get("revision_detection") or {}).get("status")
+    if mode == "validate" and rev in ("HISTORICAL_REVISION", "MISSING_HISTORICAL"):
+        failures.append(f"revision_detection {rev}: stored history is never replaced automatically")
     cal = R.get("ecb_calendar") or {}
     if cal.get("unexpected_in_validation_window", 1) != 0:
         failures.append(f"unexpected missing ECB business days in the validation window: {cal.get('unexpected_in_validation_window')}")
@@ -663,6 +825,9 @@ def main(argv=None):
     ap.add_argument("--pins")
     ap.add_argument("--mode", choices=MODES, default="validate",
                     help="validate (default): fail closed unless the pins MATCH; bootstrap: explicit research mode for generating pins")
+    ap.add_argument("--export-snapshot", help="explicit new directory for the local vintage snapshot (never uploaded, never overwritten)")
+    ap.add_argument("--baseline-snapshot", help="stored vintage to compare against (revision detection and monthly update plan)")
+    ap.add_argument("--replay-snapshot", help="OFFLINE replay of a stored vintage: no provider request, no live fallback")
     ap.add_argument("--summary-out")
     ap.add_argument("--print-summary")
     ap.add_argument("--keys", default="")
@@ -675,6 +840,16 @@ def main(argv=None):
                 node = node.get(part) if isinstance(node, dict) else None
             print("SUMMARY", key, json.dumps(node, sort_keys=True, default=str)[:7000])
         return 0
+    if a.replay_snapshot:
+        if not a.cbs_csv:
+            ap.error("--replay-snapshot needs --cbs-csv")
+        try:
+            res = replay(a.replay_snapshot, hb.cbs_2000_series(a.cbs_csv), hashlib.sha256(Path(a.cbs_csv).read_bytes()).hexdigest())
+        except (hm.ModelError, Btc04eError, OSError) as exc:
+            print("DEFECT", type(exc).__name__, str(exc)[:300])
+            return 1
+        print("REPLAY", json.dumps(res, sort_keys=True))
+        return 0 if res["status"] == "IDENTICAL" else 1
     if not (a.summary_out and a.cbs_csv):
         ap.error("--summary-out and --cbs-csv are required")
     out = Path(a.summary_out)

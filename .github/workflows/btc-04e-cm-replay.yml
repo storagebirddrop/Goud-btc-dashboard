@@ -51,6 +51,6 @@ jobs:
         if: always()
         run: >
           python -m tools.btc_04e_cm_replay --print-summary "$RUNNER_TEMP/btc-04e/summary.json"
-          --keys "${BTC04E_KEYS:-status,mode,failures,missing_sources,acquisition,observations_used,rebuild_identical,replay_from_private_snapshot,replay_limit,vintage_check,pins_candidate,derived_values_sha256,coverage,quality_months,chart_segments,june_2011,stale_runs,ecb_calendar,independent,corroboration,quality_metadata_sample,source_notes}"
+          --keys "${BTC04E_KEYS:-status,mode,failures,missing_sources,snapshot,revision_detection,monthly_update,acquisition,observations_used,rebuild_identical,replay_from_private_snapshot,replay_limit,vintage_check,pins_candidate,derived_values_sha256,coverage,quality_months,chart_segments,june_2011,stale_runs,ecb_calendar,independent,corroboration,quality_metadata_sample,source_notes}"
         env:
           BTC04E_KEYS: ''
