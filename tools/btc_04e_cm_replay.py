@@ -379,6 +379,19 @@ def check_pins(current: dict, derived_hash: str, pins) -> dict:
     return {"status": "MATCH" if pins.get("derived", {}).get("values_sha256") == derived_hash else "DEFECT_DERIVED_DRIFT", "sources": per}
 
 
+def load_pins(path):
+    """Pin file or None. A missing file means UNPINNED (the first run creates the candidate); a corrupt file fails closed."""
+    if not path or not Path(path).exists():
+        return None
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise Btc04eError(f"pin file unreadable: {type(exc).__name__}") from None
+    if not isinstance(doc, dict):
+        raise Btc04eError("pin file is not an object")
+    return doc
+
+
 def git_commit() -> str:
     env = os.environ.get("GITHUB_SHA")
     if env:
@@ -544,7 +557,7 @@ def run(args):  # noqa: C901
     again = build_from_daily(cm_daily, ecb_daily, house, acquired_at, acq["response_sha256"], ecb_raw)
     derived_hash = derived_values_sha256(built)
     windows = source_windows({"cm_priceusd_daily": cm_daily, "ecb_usd_per_eur_daily": ecb_daily})
-    pins = json.loads(Path(args.pins).read_text(encoding="utf-8")) if args.pins else None
+    pins = load_pins(args.pins)
     man = manifest(acq, ecb_raw, ecb_daily, derived_hash, windows, git_commit())
     R = {"caveat": "research only; method conditionally accepted for research; nothing published; rights UNVERIFIED; no raw data stored",
          "method_id": METHOD_ID, "missing_sources": [], "acquisition": {k: v for k, v in acq.items() if k != "daily"},
@@ -604,7 +617,7 @@ def main(argv=None):
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         R = run(a)
-    except (hm.ModelError, Btc04eError, H.HistoryError) as exc:
+    except (hm.ModelError, Btc04eError, H.HistoryError, OSError) as exc:
         out.write_text(json.dumps({"status": "FAILED", "error": f"{type(exc).__name__}: {str(exc)[:400]}"}, indent=1) + "\n")
         print("DEFECT", type(exc).__name__, str(exc)[:400])
         return 1

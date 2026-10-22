@@ -414,3 +414,14 @@ def test_tool_does_not_name_public_data_paths():
 
 def test_cm_adapter_reference_rate_module_is_untouched():
     assert "ReferenceRate" in (ROOT / "etl/sources/coinmetrics.py").read_text()
+
+
+def test_missing_pin_file_is_unpinned_and_corrupt_file_fails_closed(tmp_path):
+    assert c.load_pins(None) is None and c.load_pins(tmp_path / "absent.json") is None
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    with pytest.raises(c.Btc04eError):
+        c.load_pins(bad)
+    bad.write_text("[]")
+    with pytest.raises(c.Btc04eError):
+        c.load_pins(bad)
