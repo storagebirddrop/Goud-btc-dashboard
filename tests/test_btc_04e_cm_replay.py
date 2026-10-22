@@ -425,3 +425,15 @@ def test_missing_pin_file_is_unpinned_and_corrupt_file_fails_closed(tmp_path):
     bad.write_text("[]")
     with pytest.raises(c.Btc04eError):
         c.load_pins(bad)
+
+
+def test_committed_pin_file_is_hashes_only_and_ecb_equals_earlier_phases():
+    pins = json.loads((ROOT / "data/fixtures/btc04e/source_pins.json").read_text())
+    assert pins["method_id"] == c.METHOD_ID and pins["parser_version"] == c.PARSER_VERSION
+    assert pins["exception_policy_version"] == c.EXCEPTION_POLICY_VERSION and pins["quality_version"] == c.QUALITY_VERSION
+    b3pins = json.loads((ROOT / "data/fixtures/btc03/source_pins.json").read_text())["sources"]["ecb_usd_per_eur_daily"]
+    h10pins = json.loads((ROOT / "data/fixtures/hist10/source_pins.json").read_text())["sources"]["ecb_usd_per_eur_daily"]
+    ecb = pins["sources"]["ecb_usd_per_eur_daily"]
+    assert (ecb["sha256"], ecb["n"]) == (b3pins["sha256"], b3pins["n"]) == (h10pins["sha256"], h10pins["n"])
+    text = json.dumps(pins)
+    assert "USD_per_BTC" not in text and not any(len(k) == 10 and k[4] == "-" for k in pins)

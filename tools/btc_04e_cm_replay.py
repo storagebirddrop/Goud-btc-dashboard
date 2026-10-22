@@ -407,7 +407,7 @@ def manifest(acq: dict, ecb_raw_sha: str, ecb_daily: dict, derived_hash: str, wi
             "quality_version": QUALITY_VERSION, "git_commit": commit, "status": "RESEARCH ONLY; conditionally accepted method; rights UNVERIFIED",
             "coinmetrics": {k: acq[k] for k in ("source", "metric", "url", "query", "retrieved_at_utc", "pages", "page_sha256", "response_sha256",
                                                 "first", "last", "n", "provider_gaps")} | {"canonical_daily_sha256": canonical_daily_sha256(acq["daily"])},
-            "ecb": {"raw_sha256": ecb_raw_sha, "first": min(ecb_daily), "last": max(ecb_daily), "n": len(ecb_daily),
+            "ecb": {"observation_ref_sha256": ecb_raw_sha, "first": min(ecb_daily), "last": max(ecb_daily), "n": len(ecb_daily),
                     "canonical_daily_sha256": canonical_daily_sha256(ecb_daily)},
             "source_windows": windows, "derived_values_sha256": derived_hash,
             "note": "raw hashes identify the bytes of this run, they are not an archive; exact replay needs the private snapshot"}
