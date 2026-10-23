@@ -6,6 +6,11 @@ name: BTC-07E-B real candidate browser acceptance (manual)
 # Only the price-free QA files are uploaded; the vintage package and the candidate never leave the runner.
 
 on:
+  # Manual run. The pull_request trigger is deliberately narrow (this file only): a workflow that exists only on a feature branch cannot be dispatched
+  # until it is on the default branch, so the acceptance for this change runs on the PR with the defaults below. It never runs for other changes.
+  pull_request:
+    paths:
+      - '.github/workflows/btc-07e-b-real-browser.yml'
   workflow_dispatch:
     inputs:
       source:
@@ -58,22 +63,22 @@ jobs:
           mkdir -p "$RUNNER_TEMP/b" "$RUNNER_TEMP/qa"
       - name: Download the BTC-07E-A package (artifact route)
         id: dl
-        if: inputs.source != 'reacquire'
+        if: (inputs.source || 'auto') != 'reacquire'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: btc-07e-a-real-vintage-owner-download
-          run-id: ${{ inputs.source_run_id }}
+          run-id: ${{ inputs.source_run_id || '40006735985' }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/b/pkg
       - name: Fail when the artifact route was required but unavailable
-        if: inputs.source == 'artifact' && steps.dl.outcome != 'success'
+        if: (inputs.source || 'auto') == 'artifact' && steps.dl.outcome != 'success'
         run: |
           echo "ARTIFACT ROUTE UNAVAILABLE (expired or missing); no fallback requested." >&2
           exit 1
       - name: Fallback only - acquire a NEW real vintage (pinned, fail closed) and pack it
         id: reacq
-        if: inputs.source == 'reacquire' || (inputs.source == 'auto' && steps.dl.outcome != 'success')
+        if: (inputs.source || 'auto') == 'reacquire' || ((inputs.source || 'auto') == 'auto' && steps.dl.outcome != 'success')
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/b/pkg" "$RUNNER_TEMP/b/acq"
@@ -97,7 +102,7 @@ jobs:
           test -f "$pkg" || { echo "no package present" >&2; exit 1; }
           digest="$(sha256sum "$pkg" | cut -d' ' -f1)"
           if [ "${ROUTE:-ARTIFACT}" = "ARTIFACT" ]; then
-            [ "$digest" = "${{ inputs.package_sha256 }}" ] || { echo "PACKAGE SHA-256 DIFFERS FROM THE EXTERNAL ANCHOR" >&2; exit 1; }
+            [ "$digest" = "${{ inputs.package_sha256 || '19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce' }}" ] || { echo "PACKAGE SHA-256 DIFFERS FROM THE EXTERNAL ANCHOR" >&2; exit 1; }
             echo "ROUTE=ARTIFACT" >> "$GITHUB_ENV"
           fi
           echo "PACKAGE_SHA256=$digest" >> "$GITHUB_ENV"
@@ -145,7 +150,7 @@ jobs:
           import json, os, re, pathlib
           t = pathlib.Path(os.environ["RUNNER_TEMP"])
           qa = {"schema": "btc07eb-public-qa/1", "route": os.environ.get("ROUTE", "UNKNOWN"), "package_sha256": os.environ.get("PACKAGE_SHA256"),
-                "source_run_id": "${{ inputs.source_run_id }}", "git_sha": os.environ["GITHUB_SHA"], "note": "no price, no BTC/satoshi value; counts, statuses and hashes only"}
+                "source_run_id": "${{ inputs.source_run_id || '40006735985' }}", "git_sha": os.environ["GITHUB_SHA"], "note": "no price, no BTC/satoshi value; counts, statuses and hashes only"}
           cl = t / "b/candidate.log"
           if cl.exists():
               m = re.search(r"SUMMARY candidate (\{.*\})", cl.read_text())

@@ -94,9 +94,12 @@ def text():
     return WORKFLOW.read_text()
 
 
-def test_workflow_is_manual_only_and_has_minimal_permissions():
+def test_workflow_is_manual_or_narrowly_pr_scoped_and_has_minimal_permissions():
     t = text()
-    assert re.search(r"^on:\n  workflow_dispatch:", t, re.M) and "schedule:" not in t and "pull_request" not in t and "push:" not in t
+    assert "workflow_dispatch:" in t and "schedule:" not in t and "push:" not in t and "pull_request_target" not in t
+    # the only PR trigger: changes to this very file (a branch-only workflow cannot be dispatched before it is on the default branch)
+    m = re.search(r"pull_request:\n    paths:\n((?:      - .*\n)+)", t)
+    assert m and m.group(1).strip() == "- '.github/workflows/btc-07e-b-real-browser.yml'"
     assert re.search(r"^permissions:\n  contents: read\n  actions: read\n", t, re.M)
     assert "contents: write" not in t and "id-token" not in t
 
