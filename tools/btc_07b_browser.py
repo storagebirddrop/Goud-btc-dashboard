@@ -56,6 +56,8 @@ def main(argv=None):
                     "The default payload is then composed from it with a TEST authorization that exists only in the temporary build; output and logs are redacted")
     ap.add_argument("--expect-candidate-sha256", help="with --real-candidate-dir: required SHA-256 of candidate.json")
     ap.add_argument("--expect-sidecar-sha256", help="with --real-candidate-dir: required SHA-256 of candidate_values.json")
+    ap.add_argument("--real-composite", help="BTC-10: with --real-candidate-dir, the exact private composite bytes to test (instead of a freshly composed test payload)")
+    ap.add_argument("--expect-composite-sha256", help="with --real-composite: required SHA-256 of the composite bytes")
     a = ap.parse_args(argv)
     out = Path(a.out_dir).resolve()
     if ROOT in (out, *out.parents):
@@ -74,7 +76,16 @@ def main(argv=None):
                 raise SystemExit(f"REAL CANDIDATE HASH MISMATCH for {name}: refusing to run")
             print(f"real candidate {name} sha256 {got}")
     out.mkdir(parents=True, exist_ok=True)
-    index = fx.build_fixtures(out / "fixtures", real)
+    composite = None
+    if a.real_composite:
+        if real is None:
+            raise SystemExit("--real-composite requires --real-candidate-dir")
+        composite = Path(a.real_composite).resolve().read_bytes()
+        got = hashlib.sha256(composite).hexdigest()
+        if a.expect_composite_sha256 and got != a.expect_composite_sha256:
+            raise SystemExit("REAL COMPOSITE HASH MISMATCH: refusing to run")
+        print(f"real composite sha256 {got}")
+    index = fx.build_fixtures(out / "fixtures", real, composite)
     build_production(out / "dist-production")
     build_test(out, index["pinned"], out / "dist-test")
     real_env = {}
@@ -82,6 +93,10 @@ def main(argv=None):
         real_env = {"REAL_MODE": "1", "REAL_SIDECAR": str(real / "candidate_values.json"), "REAL_PREVIEW": str(real / "candidate.json"),
                     "REAL_PAYLOAD_SHA256": index["shas"]["real_default"]}
         print(f"real default payload sha256 {index['shas']['real_default']}")
+        if composite is not None:  # BTC-10: the page must show the release id of the exact composite under test
+            import json as _json
+            import re as _re
+            real_env["EXPECT_RELEASE_ID_RE"] = _re.escape(_json.loads(composite.decode("utf-8"))["btc"]["release"]["id"].lower())
     env = dict(os.environ, **real_env, CHROME_PATH=a.chrome, OUT_DIR=str(out / "evidence"), FIXTURES=str(out / "fixtures"), DIST_PRODUCTION=str(out / "dist-production"),
                DIST_TEST=str(out / "dist-test"), NODE_PATH=os.environ.get("NODE_PATH", subprocess.run(["npm", "root", "-g"], capture_output=True, text=True).stdout.strip()))
     res = subprocess.run(["node", str(ROOT / "tools/btc_07b_browser.mjs")], env=env, cwd=ROOT)

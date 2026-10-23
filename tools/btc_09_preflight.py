@@ -156,10 +156,11 @@ def scope_report(composite, expect) -> dict:
                   and (hold is None or hold["btc_meta"]["status"] != "PUBLISHED")}
 
 
-def release_preflight_battery(preview, sidecar, legacy_bytes, months) -> dict:
+def release_preflight_battery(preview, sidecar, legacy_bytes, months, ids=None) -> dict:
+    """`ids` (BTC-10) = {release_id, decision_ref, rights_review_ref}: run the battery on the PROPOSED release identity instead of the synthetic one."""
     pv, sc = bc.serialize(preview), bc.serialize(sidecar)
-    auth = {"release_id": "BTC09-SYNTHETIC-NOT-A-RELEASE", "decision_ref": "BTC09-SYNTHETIC-NOT-A-RELEASE", "months": months,
-            "rights_review_ref": "BTC09-SYNTHETIC-NOT-A-RELEASE", "conflicting_contract_check": "VERIFIED", **bc.private_hashes(preview, sidecar)}
+    ids = ids or {k: "BTC09-SYNTHETIC-NOT-A-RELEASE" for k in ("release_id", "decision_ref", "rights_review_ref")}
+    auth = {**ids, "months": months, "conflicting_contract_check": "VERIFIED", **bc.private_hashes(preview, sidecar)}
     composite = bc.compose_release(preview, sidecar, auth)
     blob = bc.serialize(composite)
     record = bc.record_template(composite, auth)
