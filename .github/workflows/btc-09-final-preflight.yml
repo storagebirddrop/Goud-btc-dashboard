@@ -97,6 +97,9 @@ jobs:
             --historical-dir "$RUNNER_TEMP/b/hist_cand" --out-dir "$RUNNER_TEMP/b/candidate" --report "$RUNNER_TEMP/qa/btc09-preflight.json" --isolated
           echo "CAND_SHA=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['candidate_sha256'])" "$RUNNER_TEMP/qa/btc09-preflight.json")" >> "$GITHUB_ENV"
           echo "SIDE_SHA=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['sidecar_sha256'])" "$RUNNER_TEMP/qa/btc09-preflight.json")" >> "$GITHUB_ENV"
+      - name: Print the price-free preflight report (hashes, counts, booleans, key paths only)
+        shell: bash
+        run: cat "$RUNNER_TEMP/qa/btc09-preflight.json"
       - name: Real-candidate browser acceptance B01-B11 + R00-R04 (loopback, temporary build, redacted)
         shell: bash
         run: |

@@ -100,3 +100,25 @@ def test_release_preflight_battery_positive_and_every_negative_refused(world):
 def test_the_tool_changes_no_production_state(world):
     assert bc.ARTIFACT_RECORDS == ()
     assert "BTC_APPROVED_COMPOSITE_SHA256:readonly string[]=[];" in (pf.ROOT / "frontend/src/btc.ts").read_text()
+
+
+# ---------------------------------------------------------------- rollback simulation with a SYNTHETIC release (never the production files)
+def test_synthetic_release_then_rollback_restores_the_exact_legacy_state_and_hides_bitcoin(world, tmp_path):
+    from tools import btc_09_distribution_check as dc
+    legacy = CSV.parent.parent / "frontend/public/data/monthly.json"
+    legacy_bytes = legacy.read_bytes()
+    auth = {"release_id": "SYN-ROLLBACK", "decision_ref": "SYN-ROLLBACK", "months": world["months"], "rights_review_ref": "S", "conflicting_contract_check": "VERIFIED",
+            **bc.private_hashes(world["hp"], world["hs"])}
+    comp = bc.compose_release(world["hp"], world["hs"], auth)
+    blob = bc.serialize(comp)
+    assert bc.legacy_projection_bytes(comp) == legacy_bytes  # a release payload never alters the legacy gold/CBS fields
+    rec = dict(bc.record_template(comp, auth), owner_approval="APPROVED", approved_by="syn", approved_on="n/a")
+    public = tmp_path / "monthly.json"
+    public.write_bytes(blob)  # the "released" state of an isolated copy
+    ts = pf.ROOT / "frontend/src/btc.ts"
+    released = dc.check_state(public, ts)
+    assert not released["ok"] and not released["no_bitcoin_keys"] and not released["equals_pinned_legacy_payload"]
+    public.write_bytes(legacy_bytes)  # rollback: restore the previous authorized payload named by the record
+    assert bc.rollback_target_ok(rec, public.read_bytes()) and dc.check_state(public, ts)["ok"]
+    public.write_bytes(blob[:-1])  # a partial/failed restore is detected, never accepted
+    assert not bc.rollback_target_ok(rec, public.read_bytes()) and not dc.check_state(public, ts)["ok"]
