@@ -34,6 +34,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # The candidate preview carries `calculation_git_commit` (read from GITHUB_SHA by the existing tools). The BTC-07E-A package was packed at this commit, so
+  # an artifact-route restore / rebuild must use the same value; the workflow proves that the calculation code is byte-identical at this PR's commit.
+  CALC_COMMIT: 641151b900df1403f8b4f3879ef45028d64552f2
   EXPECT_CANDIDATE_SHA256: 616ac933e822df5acc22fb7ff5b1fdd7fa063d1f12fbdba54021752fb69645b2
   EXPECT_SIDECAR_SHA256: a0bcb9bad3c093033beba741ddd1fed3ad5626f5f1483beb87efb68518c8ba8a
   EXPECT_SNAPSHOT_ID: btc04e-e11c2538168b2bde
@@ -104,6 +107,12 @@ jobs:
           if [ "${ROUTE:-ARTIFACT}" = "ARTIFACT" ]; then
             [ "$digest" = "${{ inputs.package_sha256 || '19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce' }}" ] || { echo "PACKAGE SHA-256 DIFFERS FROM THE EXTERNAL ANCHOR" >&2; exit 1; }
             echo "ROUTE=ARTIFACT" >> "$GITHUB_ENV"
+            # prove the calculation code equals the code that packed the package, then use that commit for the (hash-bound) provenance field
+            git fetch --no-tags --depth=1 origin "$CALC_COMMIT"
+            git diff --quiet FETCH_HEAD HEAD -- etl tools/btc_04e_cm_replay.py tools/btc_06c_candidate.py tools/btc_07b_package.py tools/btc_public_report.py data/fixtures/btc04e \
+              || { echo "CALCULATION CODE DIFFERS FROM THE PACKING COMMIT" >&2; exit 1; }
+            echo "CALC_SHA=$CALC_COMMIT" >> "$GITHUB_ENV"
+            export GITHUB_SHA="$CALC_COMMIT"
           fi
           echo "PACKAGE_SHA256=$digest" >> "$GITHUB_ENV"
           python -m tools.btc_07b_package restore --package "$pkg" --expect-sha256 "$digest" --dest "$RUNNER_TEMP/b/restore" | tee "$RUNNER_TEMP/b/restore.log"
@@ -111,6 +120,7 @@ jobs:
       - name: Rebuild the private candidate from the restored snapshot (replay must be IDENTICAL)
         shell: bash
         run: |
+          export GITHUB_SHA="${CALC_SHA:-$GITHUB_SHA}"
           python -m tools.btc_06c_candidate \
             --snapshot "$RUNNER_TEMP/b/restore/snapshot" \
             --cbs-csv data/cbs-housing.csv \
@@ -150,7 +160,7 @@ jobs:
           import json, os, re, pathlib
           t = pathlib.Path(os.environ["RUNNER_TEMP"])
           qa = {"schema": "btc07eb-public-qa/1", "route": os.environ.get("ROUTE", "UNKNOWN"), "package_sha256": os.environ.get("PACKAGE_SHA256"),
-                "source_run_id": "${{ inputs.source_run_id || '40006735985' }}", "git_sha": os.environ["GITHUB_SHA"], "note": "no price, no BTC/satoshi value; counts, statuses and hashes only"}
+                "source_run_id": "${{ inputs.source_run_id || '40006735985' }}", "git_sha": os.environ["GITHUB_SHA"], "calculation_commit": os.environ.get("CALC_SHA"), "note": "no price, no BTC/satoshi value; counts, statuses and hashes only"}
           cl = t / "b/candidate.log"
           if cl.exists():
               m = re.search(r"SUMMARY candidate (\{.*\})", cl.read_text())

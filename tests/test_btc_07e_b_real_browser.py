@@ -129,6 +129,15 @@ def test_workflow_uses_the_existing_tools_and_the_external_anchor():
     assert "19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce" in t and "40006735985" in t
 
 
+def test_workflow_pins_the_calculation_commit_only_after_proving_the_code_is_identical():
+    t = text()
+    assert "CALC_COMMIT: 641151b900df1403f8b4f3879ef45028d64552f2" in t
+    i_diff, i_pin = t.index("git diff --quiet FETCH_HEAD HEAD"), t.index('export GITHUB_SHA="$CALC_COMMIT"')
+    assert i_diff < i_pin and "CALCULATION CODE DIFFERS FROM THE PACKING COMMIT" in t
+    for must_match in ("etl", "tools/btc_04e_cm_replay.py", "tools/btc_06c_candidate.py", "tools/btc_07b_package.py", "data/fixtures/btc04e"):
+        assert must_match in t[i_diff:i_pin]
+
+
 def test_workflow_prints_no_summary_file_or_candidate_content():
     t = text()
     for line in t.splitlines():
