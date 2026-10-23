@@ -290,13 +290,14 @@ if (REAL) {
   const realBytes = fixture('real_default'), hsrv = await serveBytes(realBytes);
   {
     const ctx0 = await browser.newContext(), pg0 = await ctx0.newPage();
-    let bodyHash = null;
-    pg0.on('response', async r => { if (r.url().includes('/monthly.json')) bodyHash = crypto.createHash('sha256').update(await r.body()).digest('hex'); });
+    const bodies = [];  // body promises are awaited BEFORE the context is closed (a late r.body() on a closed page would throw)
+    pg0.on('response', r => { if (r.url().includes('/monthly.json')) bodies.push(r.body().then(b => crypto.createHash('sha256').update(b).digest('hex')).catch(() => null)); });
     await pg0.route('**/data/monthly.json*', route => route.continue({url: `${hsrv.base}monthly.json`}));
     await pg0.goto(test.base, {waitUntil: 'networkidle'});
     const inPage = await pg0.evaluate(async () => { const r = await fetch('/data/monthly.json', {cache: 'no-store'}); const b = await r.arrayBuffer(); const d = await crypto.subtle.digest('SHA-256', b); return [...new Uint8Array(d)].map(x => x.toString(16).padStart(2, '0')).join(''); });
+    const bodyHashes = await Promise.all(bodies);
     check('R00', 'payload received by the browser over the loopback HTTP server has the composed SHA-256 (in-page fetch, WebCrypto)', inPage === E.REAL_PAYLOAD_SHA256);
-    check('R00', 'response body captured at the network layer has the composed SHA-256, and the HTTP server delivered it', bodyHash === E.REAL_PAYLOAD_SHA256 && served.count >= 2);
+    check('R00', 'every response body captured at the network layer has the composed SHA-256, and the HTTP server delivered it', bodyHashes.length >= 2 && bodyHashes.every(h => h === E.REAL_PAYLOAD_SHA256) && served.count >= 2);
     await ctx0.close();
   }
   const {ctx, page, errors} = await open(test.base, 'real_default', {http: hsrv});
