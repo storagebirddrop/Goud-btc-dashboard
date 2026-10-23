@@ -1,4 +1,6 @@
 // BTC-07B P3: browser acceptance B01-B11 against LOCAL builds and SYNTHETIC fixtures (loopback only; nothing is deployed).
+// BTC-07E-B: with REAL_MODE=1 the default payload comes from the private real candidate (TEST authorization in the temporary build only). In that mode every
+// check detail is REDACTED (no value ever reaches stdout or result.json), real-page screenshots are skipped, and the extra real-data checks R00-R04 run.
 // Driven by tools/btc_07b_browser.py. Env: CHROME_PATH, OUT_DIR, FIXTURES, DIST_PRODUCTION, DIST_TEST, NODE_PATH (for playwright).
 import {createRequire} from 'node:module';
 import fs from 'node:fs';
@@ -13,7 +15,8 @@ const E = process.env;
 const OUT = E.OUT_DIR; fs.mkdirSync(OUT, {recursive: true});
 const FX = E.FIXTURES;
 const results = [];
-const check = (id, name, ok, detail = '') => {results.push({id, name, ok: !!ok, detail: String(detail).slice(0, 300)}); console.log(`${ok ? 'PASS' : 'FAIL'}  ${id}  ${name}${detail !== '' ? `  [${String(detail).slice(0, 200)}]` : ''}`)};
+const REAL = E.REAL_MODE === '1';
+const check = (id, name, ok, detail = '') => {if (REAL) detail = ''; results.push({id, name, ok: !!ok, detail: String(detail).slice(0, 300)}); console.log(`${ok ? 'PASS' : 'FAIL'}  ${id}  ${name}${detail !== '' ? `  [${String(detail).slice(0, 200)}]` : ''}`)};
 const fixture = n => fs.readFileSync(path.join(FX, `${n}.json`));
 
 function serve(dir) {
@@ -30,14 +33,21 @@ function serve(dir) {
 const browser = await chromium.launch({executablePath: E.CHROME_PATH, args: ['--no-sandbox']});
 const prod = await serve(E.DIST_PRODUCTION), test = await serve(E.DIST_TEST);
 
-async function open(base, fixtureName, {width = 1280, init, query = ''} = {}) {
+// BTC-07E-B: serve fixture bytes from a REAL loopback HTTP server so that the payload is verified as received over HTTP, not read from disk
+const served = {count: 0};
+async function serveBytes(buf) {
+  const srv = http.createServer((req, res) => { served.count++; res.writeHead(200, {'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store'}); res.end(buf); });
+  return new Promise(r => srv.listen(0, '127.0.0.1', () => r({srv, base: `http://127.0.0.1:${srv.address().port}/`})));
+}
+async function open(base, fixtureName, {width = 1280, init, query = '', http: via} = {}) {
   const ctx = await browser.newContext({viewport: {width, height: 900}});
   const page = await ctx.newPage();
   const errors = [];
   page.on('console', m => m.type() === 'error' && errors.push(m.text()));
   page.on('pageerror', e => errors.push(String(e)));
   if (init) await page.addInitScript(init);
-  await page.route('**/data/monthly.json*', route => route.fulfill({status: 200, contentType: 'application/json', body: fixture(fixtureName)}));
+  if (via) await page.route('**/data/monthly.json*', route => route.continue({url: `${via.base}monthly.json`}));
+  else await page.route('**/data/monthly.json*', route => route.fulfill({status: 200, contentType: 'application/json', body: fixture(fixtureName)}));
   await page.goto(base + query, {waitUntil: 'networkidle'});
   await page.waitForTimeout(500);
   return {ctx, page, errors};
@@ -205,7 +215,7 @@ for (const width of [1280, 375]) {
   for (const [n, re] of [['own calculations', /eigen berekeningen/], ['full UTC calendar months', /volledige kalendermaanden \(utc\)/], ['USD-derived euro price', /afgeleid uit een usd-referentieprijs/], ['nominal CBS numerator', /nominale cbs-gemiddelde verkoopprijs/], ['no endorsement', /onderschrijft/], ['not investment advice', /geen beleggingsadvies/], ['authorized period shown', /februari 2014 t\/m augustus 2026/], ['release id shown', /synthetic-browser-fixture/]])
     check('B07', n, re.test(l));
   check('B08', 'interpretation: fewer BTC per average sold house, no claim of an identical house getting cheaper', /minder btc per gemiddeld verkochte woning/.test(l) && /dit zegt niet dat een identieke woning goedkoper is geworden/.test(l));
-  await page.screenshot({path: `${OUT}/B07.png`, fullPage: true});
+  if (!REAL) await page.screenshot({path: `${OUT}/B07.png`, fullPage: true});
   await ctx.close();
 }
 
@@ -273,8 +283,69 @@ for (const [name, why] of [['poisoned_legacy', 'unauthorised numbers + publicati
   await ctx.close();
 }
 
+// ---------------------------------------------------------------- R00-R04 (BTC-07E-B only): the REAL private candidate in the isolated test build
+if (REAL) {
+  const crypto = await import('node:crypto');
+  const sidecar = JSON.parse(fs.readFileSync(E.REAL_SIDECAR, 'utf8')).months;
+  const preview = JSON.parse(fs.readFileSync(E.REAL_PREVIEW, 'utf8'));
+  const months = Object.keys(sidecar).filter(m => m >= '2014-02').sort();
+  const want = {Q2: 0, 'Q1-kandidaat': 0};
+  for (const r of preview.data) if (months.includes(r.period) && r.btc_meta) want[r.btc_meta.quality === 'Q2' ? 'Q2' : 'Q1-kandidaat']++;
+  check('R00', 'fixture file on disk is byte-identical to the composed real payload (SHA-256)', crypto.createHash('sha256').update(fixture('real_default')).digest('hex') === E.REAL_PAYLOAD_SHA256);
+  // the 151 candidate months are EXACTLY the contiguous calendar interval first..last (no gap, no extra month, nothing outside)
+  const nextMonth = m => { let [y, mo] = m.split('-').map(Number); mo++; if (mo > 12) { mo = 1; y++; } return `${y}-${String(mo).padStart(2, '0')}`; };
+  const FIRST = E.REAL_EXPECT_FIRST || '2014-02', LAST = E.REAL_EXPECT_LAST || '2026-08', COUNT = Number(E.REAL_EXPECT_COUNT || 151);
+  const interval = []; for (let m = FIRST; m <= LAST; m = nextMonth(m)) interval.push(m);
+  const allSidecar = Object.keys(sidecar).sort();
+  check('R00', `candidate months are exactly the contiguous calendar interval ${FIRST}..${LAST} (${COUNT} months)`, interval.length === COUNT && months.length === COUNT && months.every((m, i) => m === interval[i]) && allSidecar.length === COUNT);
+  // independent verification of the bytes the browser actually RECEIVES over the loopback HTTP server
+  const realBytes = fixture('real_default'), hsrv = await serveBytes(realBytes);
+  {
+    const ctx0 = await browser.newContext(), pg0 = await ctx0.newPage();
+    const bodies = [];  // body promises are awaited BEFORE the context is closed (a late r.body() on a closed page would throw)
+    pg0.on('response', r => { if (r.url().includes('/monthly.json')) bodies.push(r.body().then(b => crypto.createHash('sha256').update(b).digest('hex')).catch(() => null)); });
+    await pg0.route('**/data/monthly.json*', route => route.continue({url: `${hsrv.base}monthly.json`}));
+    await pg0.goto(test.base, {waitUntil: 'networkidle'});
+    const inPage = await pg0.evaluate(async () => { const r = await fetch('/data/monthly.json', {cache: 'no-store'}); const b = await r.arrayBuffer(); const d = await crypto.subtle.digest('SHA-256', b); return [...new Uint8Array(d)].map(x => x.toString(16).padStart(2, '0')).join(''); });
+    const bodyHashes = await Promise.all(bodies);
+    check('R00', 'payload received by the browser over the loopback HTTP server has the composed SHA-256 (in-page fetch, WebCrypto)', inPage === E.REAL_PAYLOAD_SHA256);
+    check('R00', 'every response body captured at the network layer has the composed SHA-256, and the HTTP server delivered it', bodyHashes.length >= 2 && bodyHashes.every(h => h === E.REAL_PAYLOAD_SHA256) && served.count >= 2);
+    await ctx0.close();
+  }
+  const {ctx, page, errors} = await open(test.base, 'real_default', {http: hsrv});
+  await pick(page, ALT, BTC_VIEW);
+  await page.getByRole('button', {name: 'Alles', exact: true}).click();
+  await page.waitForTimeout(300);
+  await openTable(page);
+  const rows = await tableRows(page), hs = await headers(page);
+  const bi = hs.findIndex(x => x.startsWith('Bitcoin per woning')), si = hs.findIndex(x => x.startsWith('Satoshi per woning')), ni = hs.length - 1;
+  const by = new Map(rows.map(r => [r[0], r]));
+  let bad = 0, shown = 0;
+  for (const m of months) {
+    const r = by.get(m);
+    if (!r) { bad++; continue; }
+    if (r[bi] !== '') shown++;
+    if (r[bi] !== `${nlBtc(Number(sidecar[m].btc_per_house))} BTC` || r[si] !== `${nlSat(Number(sidecar[m].sat_per_house))} sat`) bad++;
+  }
+  check('R01', `every authorized month shows exactly the private candidate value in BTC and satoshi (months=${months.length}, mismatches=${bad})`, bad === 0 && shown === months.length);
+  const got = {Q2: rows.filter(r => r[0] >= '2014-02' && r[ni] === 'Q2').length, 'Q1-kandidaat': rows.filter(r => r[0] >= '2014-02' && r[ni] === 'Q1-kandidaat').length};
+  check('R02', `quality labels match the candidate (Q2=${want.Q2}, Q1-kandidaat=${want['Q1-kandidaat']})`, got.Q2 === want.Q2 && got['Q1-kandidaat'] === want['Q1-kandidaat'] && want.Q2 + want['Q1-kandidaat'] === months.length);
+  const numeric = rows.filter(r => r[bi] !== '').map(r => r[0]).sort();
+  check('R03', 'numeric BTC rows are exactly the authorized months: none earlier, none missing, last month = candidate end', numeric.length === months.length && numeric[0] === '2014-02' && numeric[numeric.length - 1] === months[months.length - 1] && numeric.every((m, i) => m === months[i]));
+  check('R03', 'no console errors on the real-candidate page', errors.length === 0, errors.join(' | '));
+  await ctx.close();
+  const p = await open(prod.base, 'real_default', {http: hsrv});
+  const ptxt = stripNote(await body(p.page));
+  const psvg = (await p.page.$$eval('svg', s => s.map(x => x.textContent || ''))).join(' ');
+  const pbtn = await p.page.$$eval('button,a,select', bs => bs.map(x => x.textContent || ''));
+  check('R04', 'PRODUCTION build (empty approval pins) given the real payload: no Bitcoin text, series, control or chart text', !FORBID.test(ptxt) && !FORBID.test(psvg) && !pbtn.some(c => FORBID.test(c)));
+  check('R04', 'PRODUCTION build still renders the legacy gold/CBS view', /320 maanden/.test(await body(p.page)) && (await p.page.locator('svg.recharts-surface').count()) > 0);
+  await p.ctx.close();
+  hsrv.srv.close();
+}
+
 await browser.close(); prod.srv.close(); test.srv.close();
 const failed = results.filter(r => !r.ok);
-fs.writeFileSync(`${OUT}/result.json`, JSON.stringify({executed: true, total: results.length, failed: failed.length, results}, null, 1) + '\n');
+fs.writeFileSync(`${OUT}/result.json`, JSON.stringify({executed: true, real_mode: REAL, payload_sha256: REAL ? E.REAL_PAYLOAD_SHA256 : null, total: results.length, failed: failed.length, results}, null, 1) + '\n');
 console.log(`\nRESULT: ${failed.length === 0 ? 'ALL CHECKS PASSED' : 'FAILURES PRESENT'} (${results.length - failed.length}/${results.length})`);
 process.exit(failed.length === 0 ? 0 : 1);

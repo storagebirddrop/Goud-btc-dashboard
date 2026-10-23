@@ -73,12 +73,26 @@ def _put(out: Path, name: str, payload=None, blob: bytes = None) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def build_fixtures(out_dir) -> dict:
+def load_real_candidate(candidate_dir) -> tuple:
+    """BTC-07E-B: the PRIVATE real candidate written by tools/btc_06c_candidate.py (preview + private sidecar). Read only; nothing is written back."""
+    d = Path(candidate_dir)
+    return json.loads((d / "candidate.json").read_text(encoding="utf-8")), json.loads((d / "candidate_values.json").read_text(encoding="utf-8"))
+
+
+def build_fixtures(out_dir, real_candidate_dir=None) -> dict:
+    """Without `real_candidate_dir` everything is SYNTHETIC (BTC-07B). With it, ONLY the default payload (and the fixtures derived from it: incomplete,
+    unpinned claim, exact) is composed from the real private candidate with a TEST authorization that exists only in the temporary test build;
+    the early/Q3 fixture stays synthetic because the standard candidate carries no Q3 values."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     preview, sidecar, _, built = synthetic_candidate(out)
-    all_months = sorted(sidecar["months"])
-    default = bc.compose_release(preview, sidecar, _auth([m for m in all_months if m >= "2014-02"]))
+    if real_candidate_dir is not None:
+        r_preview, r_sidecar = load_real_candidate(real_candidate_dir)
+        r_months = sorted(r_sidecar["months"])
+        default = bc.compose_release(r_preview, r_sidecar, _auth([m for m in r_months if m >= "2014-02"]))
+    else:
+        all_months = sorted(sidecar["months"])
+        default = bc.compose_release(preview, sidecar, _auth([m for m in all_months if m >= "2014-02"]))
     # separately authorised FICTIONAL early history (Q3): the standard sidecar never carries it, so the values are added here for the UI proof only
     early_sidecar = json.loads(json.dumps(sidecar))
     for m, (btc_v, sat_v) in cand.candidate_months(built, "2010-08").items():
@@ -126,7 +140,10 @@ def build_fixtures(out_dir) -> dict:
     shas["poisoned_legacy"] = _put(out, "poisoned_legacy", poison)
     shas["legacy"] = _put(out, "legacy", blob=LEGACY.read_bytes())
     assert shas["legacy"] == bc.LEGACY_PUBLIC_SHA256
-    index = {"shas": shas, "pinned": sorted(shas[n] for n in pinned), "note": "SYNTHETIC fixtures; fictional prices; not a release"}
+    index = {"shas": shas, "pinned": sorted(shas[n] for n in pinned),
+             "real_mode": real_candidate_dir is not None,
+             "note": "REAL default payload from the private candidate (TEST authorization, temporary build only); other fixtures synthetic; not a release"
+             if real_candidate_dir is not None else "SYNTHETIC fixtures; fictional prices; not a release"}
     (out / "index.json").write_text(json.dumps(index, indent=1, sort_keys=True) + "\n")
     return index
 

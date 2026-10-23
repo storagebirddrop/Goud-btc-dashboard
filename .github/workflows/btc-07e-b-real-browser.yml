@@ -1,0 +1,207 @@
+name: BTC-07E-B real candidate browser acceptance (manual)
+
+# Manual only. Runs the existing BTC-07B browser acceptance (B01-B11) with the REAL private BTC candidate in an isolated, temporary
+# frontend build on 127.0.0.1 and a TEST authorization that exists only in that temporary copy. Publishes nothing, deploys nothing,
+# registers no release record, changes no pin. Check details and logs are redacted: counts, statuses and SHA-256 hashes only.
+# Only the price-free QA files are uploaded; the vintage package and the candidate never leave the runner.
+
+on:
+  # Manual run. The pull_request trigger is deliberately narrow (this file only): a workflow that exists only on a feature branch cannot be dispatched
+  # until it is on the default branch, so the acceptance for this change runs on the PR with the defaults below. It never runs for other changes.
+  pull_request:
+    paths:
+      - '.github/workflows/btc-07e-b-real-browser.yml'
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'artifact = use the BTC-07E-A package of source_run_id (fail if unavailable); auto = artifact, else fall back to a new acquisition; reacquire = always acquire anew'
+        type: choice
+        options: [auto, artifact, reacquire]
+        default: auto
+      source_run_id:
+        description: 'BTC-07E-A run that produced the owner-download package'
+        default: '40006735985'
+      package_sha256:
+        description: 'external anchor: SHA-256 of btc-real-vintage.tar (artifact route)'
+        default: '19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: btc-07e-b-real-browser
+  cancel-in-progress: false
+
+env:
+  # The candidate preview carries `calculation_git_commit` (read from GITHUB_SHA by the existing tools). The BTC-07E-A package was packed at this commit, so
+  # an artifact-route restore / rebuild must use the same value; the workflow proves that the calculation code is byte-identical at this PR's commit.
+  CALC_COMMIT: 641151b900df1403f8b4f3879ef45028d64552f2
+  EXPECT_CANDIDATE_SHA256: 616ac933e822df5acc22fb7ff5b1fdd7fa063d1f12fbdba54021752fb69645b2
+  EXPECT_SIDECAR_SHA256: a0bcb9bad3c093033beba741ddd1fed3ad5626f5f1483beb87efb68518c8ba8a
+  EXPECT_SNAPSHOT_ID: btc04e-e11c2538168b2bde
+
+jobs:
+  real-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies (project requirements, frontend, Playwright)
+        shell: bash
+        run: |
+          python -m pip install -r requirements.txt
+          (cd frontend && npm ci --no-audit --no-fund)
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null \
+            && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund playwright@1.49.1 >/dev/null
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/b" "$RUNNER_TEMP/qa"
+      - name: Download the BTC-07E-A package (artifact route)
+        id: dl
+        if: (inputs.source || 'auto') != 'reacquire'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: btc-07e-a-real-vintage-owner-download
+          run-id: ${{ inputs.source_run_id || '40006735985' }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/b/pkg
+      - name: Fail when the artifact route was required but unavailable
+        if: (inputs.source || 'auto') == 'artifact' && steps.dl.outcome != 'success'
+        run: |
+          echo "ARTIFACT ROUTE UNAVAILABLE (expired or missing); no fallback requested." >&2
+          exit 1
+      - name: Fallback only - acquire a NEW real vintage (pinned, fail closed) and pack it
+        id: reacq
+        if: (inputs.source || 'auto') == 'reacquire' || ((inputs.source || 'auto') == 'auto' && steps.dl.outcome != 'success')
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/b/pkg" "$RUNNER_TEMP/b/acq"
+          python -m tools.btc_04e_cm_replay \
+            --cbs-csv data/cbs-housing.csv \
+            --pins data/fixtures/btc04e/source_pins.json \
+            --mode validate \
+            --export-snapshot "$RUNNER_TEMP/b/acq/snapshot" \
+            --summary-out "$RUNNER_TEMP/b/acq/private-summary.json" \
+            --public-summary-out "$RUNNER_TEMP/qa/acquisition-public-summary.json"
+          python -m tools.btc_07b_package pack \
+            --snapshot "$RUNNER_TEMP/b/acq/snapshot" \
+            --cbs-csv data/cbs-housing.csv \
+            --legacy-json frontend/public/data/monthly.json \
+            --out "$RUNNER_TEMP/b/pkg/btc-real-vintage.tar"
+          echo "ROUTE=REACQUIRED" >> "$GITHUB_ENV"
+      - name: Verify the package anchor and restore it (offline replay)
+        shell: bash
+        run: |
+          pkg="$RUNNER_TEMP/b/pkg/btc-real-vintage.tar"
+          test -f "$pkg" || { echo "no package present" >&2; exit 1; }
+          digest="$(sha256sum "$pkg" | cut -d' ' -f1)"
+          if [ "${ROUTE:-ARTIFACT}" = "ARTIFACT" ]; then
+            [ "$digest" = "${{ inputs.package_sha256 || '19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce' }}" ] || { echo "PACKAGE SHA-256 DIFFERS FROM THE EXTERNAL ANCHOR" >&2; exit 1; }
+            echo "ROUTE=ARTIFACT" >> "$GITHUB_ENV"
+            # prove the calculation code equals the code that packed the package, then use that commit for the (hash-bound) provenance field
+            git fetch --no-tags --depth=1 origin "$CALC_COMMIT"
+            git diff --quiet FETCH_HEAD HEAD -- etl tools/btc_04e_cm_replay.py tools/btc_06c_candidate.py tools/btc_07b_package.py tools/btc_public_report.py data/fixtures/btc04e \
+              || { echo "CALCULATION CODE DIFFERS FROM THE PACKING COMMIT" >&2; exit 1; }
+            echo "CALC_SHA=$CALC_COMMIT" >> "$GITHUB_ENV"
+            export GITHUB_SHA="$CALC_COMMIT"
+          fi
+          echo "PACKAGE_SHA256=$digest" >> "$GITHUB_ENV"
+          python -m tools.btc_07b_package restore --package "$pkg" --expect-sha256 "$digest" --dest "$RUNNER_TEMP/b/restore" | tee "$RUNNER_TEMP/b/restore.log"
+          echo "package sha256: $digest"
+      - name: Rebuild the private candidate from the restored snapshot (replay must be IDENTICAL)
+        shell: bash
+        run: |
+          export GITHUB_SHA="${CALC_SHA:-$GITHUB_SHA}"
+          python -m tools.btc_06c_candidate \
+            --snapshot "$RUNNER_TEMP/b/restore/snapshot" \
+            --cbs-csv data/cbs-housing.csv \
+            --legacy-json frontend/public/data/monthly.json \
+            --out-dir "$RUNNER_TEMP/b/candidate" \
+            --verify-release-path | tee "$RUNNER_TEMP/b/candidate.log"
+          grep -q '"replay": "IDENTICAL"' "$RUNNER_TEMP/b/candidate.log"
+          if [ "${ROUTE:-ARTIFACT}" = "ARTIFACT" ]; then
+            grep -q "\"snapshot_id\": \"$EXPECT_SNAPSHOT_ID\"" "$RUNNER_TEMP/b/candidate.log"
+          fi
+      - name: Real-candidate browser acceptance B01-B11 + R00-R04 (loopback, temporary build, redacted)
+        shell: bash
+        run: |
+          extra=""
+          if [ "${ROUTE:-ARTIFACT}" = "ARTIFACT" ]; then
+            extra="--expect-candidate-sha256 $EXPECT_CANDIDATE_SHA256 --expect-sidecar-sha256 $EXPECT_SIDECAR_SHA256"
+          fi
+          python -m tools.btc_07b_browser \
+            --out-dir "$RUNNER_TEMP/btc07eb" \
+            --chrome "$(command -v google-chrome || command -v chromium-browser || command -v chromium)" \
+            --real-candidate-dir "$RUNNER_TEMP/b/candidate" $extra
+      - name: BTC-08A independent restore from the package (fresh directory, offline replay in an empty network namespace)
+        shell: bash
+        run: |
+          extra="--expect-sha256 $PACKAGE_SHA256"
+          if [ "${ROUTE:-ARTIFACT}" = "ARTIFACT" ]; then
+            extra="$extra --calc-commit $CALC_COMMIT --expect-candidate-sha256 $EXPECT_CANDIDATE_SHA256 --expect-sidecar-sha256 $EXPECT_SIDECAR_SHA256 --expect-snapshot-id $EXPECT_SNAPSHOT_ID"
+          fi
+          python -m tools.btc_08a_verify_package --package "$RUNNER_TEMP/b/pkg/btc-real-vintage.tar" --dest "$RUNNER_TEMP/b/independent" $extra | tee "$RUNNER_TEMP/qa/btc08a-verify.json"
+      - name: Synthetic regressions, production gates and public-data parity
+        shell: bash
+        run: |
+          python -m pytest -q tests/test_btc_07b_p0_containment.py tests/test_btc_07b_p1_restore.py tests/test_btc_07b_p2_release_path.py \
+            tests/test_btc_07b_p3_frontend.py tests/test_btc_07b_p4_rollback.py tests/test_btc_06c_candidate.py tests/test_btc_07e_b_real_browser.py tests/test_btc_08a_verify_package.py
+          python -m etl.data_quality
+          grep -q 'BTC_APPROVED_COMPOSITE_SHA256:readonly string\[\]=\[\];' frontend/src/btc.ts
+          grep -q '^ARTIFACT_RECORDS: tuple = ()' etl/btc_contract.py
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json data/fixtures/btc04e/source_pins.json frontend/src etl
+          test -z "$(git status --porcelain)"
+      - name: Assemble the price-free QA record
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re, pathlib
+          t = pathlib.Path(os.environ["RUNNER_TEMP"])
+          qa = {"schema": "btc07eb-public-qa/1", "route": os.environ.get("ROUTE", "UNKNOWN"), "package_sha256": os.environ.get("PACKAGE_SHA256"),
+                "source_run_id": "${{ inputs.source_run_id || '40006735985' }}", "git_sha": os.environ["GITHUB_SHA"], "calculation_commit": os.environ.get("CALC_SHA"), "note": "no price, no BTC/satoshi value; counts, statuses and hashes only"}
+          cl = t / "b/candidate.log"
+          if cl.exists():
+              m = re.search(r"SUMMARY candidate (\{.*\})", cl.read_text())
+              if m:
+                  s = json.loads(m.group(1))
+                  qa["candidate"] = {k: s.get(k) for k in ("snapshot_id", "candidate_value_months", "replay", "published_months", "sidecar_sha256", "payload_sha256", "derived_values_sha256", "legacy_sha256", "raw_source_bytes", "status_counts", "reason_counts")}
+                  qa["candidate"]["release_path_status"] = (s.get("release_path") or {}).get("status")
+                  qa["candidate"]["first_last"] = [(s.get("release_path") or {}).get("first"), (s.get("release_path") or {}).get("last")]
+          rl = t / "b/restore.log"
+          if rl.exists():
+              m = re.search(r"EVIDENCE (\{.*\})", rl.read_text())
+              if m:
+                  e = json.loads(m.group(1))
+                  qa["restore"] = {"status": e.get("status"), "replay": e.get("replay"), "all_compared": all((e.get("compared") or {}).values()), "scope": e.get("scope")}
+          rj = t / "btc07eb/evidence/result.json"
+          if rj.exists():
+              r = json.loads(rj.read_text())
+              qa["browser"] = {"real_mode": r.get("real_mode"), "payload_sha256": r.get("payload_sha256"), "total": r["total"], "failed": r["failed"],
+                               "by_id": {i: {"pass": sum(1 for x in r["results"] if x["id"] == i and x["ok"]), "fail": sum(1 for x in r["results"] if x["id"] == i and not x["ok"])} for i in sorted({x["id"] for x in r["results"]})}}
+              (t / "qa/result-redacted.json").write_text(json.dumps({k: r[k] for k in ("executed", "real_mode", "payload_sha256", "total", "failed")} | {"results": [{k: x[k] for k in ("id", "name", "ok")} for x in r["results"]]}, indent=1))
+          (t / "qa/qa.json").write_text(json.dumps(qa, indent=1, sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("### BTC-07E-B real candidate browser acceptance\n```json\n" + json.dumps(qa, indent=1, sort_keys=True) + "\n```\n")
+          PY
+      - name: Upload price-free QA record only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-07e-b-public-qa
+          path: |
+            ${{ runner.temp }}/qa/qa.json
+            ${{ runner.temp }}/qa/result-redacted.json
+            ${{ runner.temp }}/qa/btc08a-verify.json
+            ${{ runner.temp }}/qa/acquisition-public-summary.json
+          if-no-files-found: warn
+          retention-days: 7
