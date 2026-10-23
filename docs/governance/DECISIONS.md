@@ -154,3 +154,16 @@ De opname van dit register in GitHub op 2026-10-17 was **geen nieuw economisch b
 - **Impact:** BTC-07E private kandidaatverificatie mag binnen bestaande veiligheids- en methodegates doorgaan. **Geen** nieuwe rechten voor publieke JSON/grafieken vastgesteld, geen auto-publicatie, geen wijziging aan ADR-012, goud/CBS, `ARTIFACT_RECORDS`, `RELEASE_APPROVALS` of frontend-hashpins.
 - **Publicatie:** BTC-PUBLICATIE **HOLD** totdat de exacte kandidaat en distributievorm apart door Project Control zijn geautoriseerd. Bij concreet strijdige voorwaarden volgt herbeoordeling.
 - **Volledig besluit:** [PC_BTC07D_CM10_OWNER_RISK_DECISION_2026-10-23.md](PC_BTC07D_CM10_OWNER_RISK_DECISION_2026-10-23.md). BTC-07D-R01 blijft de rechtenonderbouwing.
+
+## PC-BTC09-A1 — Release-uitgangspunten Bitcoinreeksen (2026-10-23)
+
+- **Status:** `DECIDED — OWNER_APPROVED`; Project Control heeft de zeven punten expliciet goedgekeurd op 2026-10-23; dit is geen autorisatie voor D07/D08.
+- **Basis:** [BTC-09 owner decision proposal](../research/btc-09/DECISION_AMENDMENT_PROPOSAL.md), goedgekeurd door Project Control na PR #107.
+
+1. **Restrisico bronrechten (CM-10).** Het in PC-BTC07D-CM10 aanvaarde restrisico geldt ook voor de beoogde persoonlijke, informatieve en niet-commerciële, publiek bereikbare website (geen advertenties, affiliate-inkomsten, betaalde toegang, diensten of promotie). De publieke bereikbaarheid van de JSON en de daaruit volgende terugrekenbaarheid van maandreferentieprijzen worden bewust aanvaard. Geen juridische vrijwaring; bij concreet strijdige voorwaarden of een wijziging van het niet-commerciële gebruik volgt herbeoordeling. Geen afzonderlijke Coin Metrics-/Talos-toestemming vereist.
+2. **Bronvintage.** Uitsluitend snapshot `btc04e-e11c2538168b2bde` (bron-TAR SHA-256 `19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce`). Een andere vintage vereist een nieuw besluit en een nieuw releaserecord; vintages worden nooit gemengd.
+3. **Dekking.** Standaardprofiel 2014-02 t/m 2026-08 (151 aaneengesloten maanden). Q3-maanden en 2011-06 (`RESEARCH_ONLY_HOLD`) blijven buiten publicatie; geen interpolatie of aanvulling.
+4. **Kwaliteitspresentatie.** Q2 (27 maanden) en Q1_CANDIDATE (124 maanden) worden getoond met behoud van het voorlopige onderscheid; Q1_CANDIDATE wordt nergens als definitief Q1 gepresenteerd.
+5. **Bronvermelding.** De bestaande BTC-08B-teksten (bronrollen, wijzigingsvermelding, bronstand, geen onderschrijving door Coin Metrics, ECB of CBS) gelden als definitieve attributie voor de release.
+6. **Herstelkopie (D05).** Een privé-eigenaarkopie van de bron-TAR is een **disaster-recovery-eis**, geen operationele afhankelijkheid: de publieke website is statisch en leest tijdens runtime geen back-up. De TAR is wel de bouwinvoer voor de herbouw van de kandidaat; een gecontroleerde herstelrun (`REAL_OWNER_RESTORE_PASS`) is vereist vóór die herbouw.
+7. **Geen publicatieautorisatie.** Dit besluit autoriseert geen releaserecord, geen frontend-hashpin, geen `ARTIFACT_RECORDS`-vermelding, geen deployment en geen publieke activering. Die vereisen een afzonderlijk, exact besluit over artefactidentiteit en deployment (D07/D08).
