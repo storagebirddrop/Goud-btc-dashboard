@@ -1,0 +1,157 @@
+name: BTC-10 D07 release artifact preparation (manual, private inputs, price-free output)
+
+# Manual only. Prepares the EXACT Bitcoin release artifact privately on the runner: restores the BTC-07E-A vintage package (external SHA-256 anchor), rebuilds the
+# candidate under the frozen calculation commit C (code identity proven), composes the public composite for the PROPOSED release identity, regenerates it
+# independently, builds the UNAPPROVED btc-release-record/2 template, runs release_preflight with a SYNTHETIC in-memory approval plus the negative battery, and
+# tests the exact composite bytes in a temporary loopback browser build. Publishes nothing, deploys nothing, registers no record, changes no pin.
+# Only price-free QA files are uploaded (hashes, counts, ids, booleans); the package, candidate, sidecar and composite bytes never leave the runner.
+
+on:
+  # The pull_request trigger is deliberately narrow (this file only): a workflow that exists only on a feature branch cannot be dispatched.
+  pull_request:
+    paths:
+      - '.github/workflows/btc-10-d07-artifact.yml'
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'BTC-07E-A run that produced the owner-download package'
+        default: '40006735985'
+      package_sha256:
+        description: 'external anchor: SHA-256 of btc-real-vintage.tar'
+        default: '19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: btc-10-d07-artifact
+  cancel-in-progress: false
+
+env:
+  # Frozen calculation commit C: the calculation code of this checkout must be byte-identical to it (proved by tools.btc_10_d07).
+  CALC_COMMIT: c11f82a83234593ace70369da07ca183c0cc3db3
+  HIST_COMMIT: 641151b900df1403f8b4f3879ef45028d64552f2
+  EXPECT_HIST_CANDIDATE_SHA256: 616ac933e822df5acc22fb7ff5b1fdd7fa063d1f12fbdba54021752fb69645b2
+  EXPECT_HIST_SIDECAR_SHA256: a0bcb9bad3c093033beba741ddd1fed3ad5626f5f1483beb87efb68518c8ba8a
+  EXPECT_SNAPSHOT_ID: btc04e-e11c2538168b2bde
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies (project requirements, frontend, Playwright)
+        shell: bash
+        run: |
+          python -m pip install -r requirements.txt
+          (cd frontend && npm ci --no-audit --no-fund)
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null \
+            && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund playwright@1.49.1 >/dev/null
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/b" "$RUNNER_TEMP/qa"
+      - name: Download the BTC-07E-A package (required; no re-acquisition)
+        uses: actions/download-artifact@v4
+        with:
+          name: btc-07e-a-real-vintage-owner-download
+          run-id: ${{ inputs.source_run_id || '40006735985' }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/b/pkg
+      - name: Verify the external SHA-256 anchor
+        shell: bash
+        run: |
+          pkg="$RUNNER_TEMP/b/pkg/btc-real-vintage.tar"
+          test -f "$pkg" || { echo "no package present" >&2; exit 1; }
+          digest="$(sha256sum "$pkg" | cut -d' ' -f1)"
+          [ "$digest" = "${{ inputs.package_sha256 || '19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce' }}" ] || { echo "PACKAGE SHA-256 DIFFERS FROM THE EXTERNAL ANCHOR" >&2; exit 1; }
+          echo "PACKAGE_SHA256=$digest" >> "$GITHUB_ENV"
+          echo "package sha256: $digest"
+      - name: Restore at the packing commit and rebuild the HISTORICAL candidate (must equal the recorded hashes)
+        shell: bash
+        run: |
+          git worktree add "$RUNNER_TEMP/hist" "$HIST_COMMIT"
+          cd "$RUNNER_TEMP/hist"
+          export GITHUB_SHA="$HIST_COMMIT"
+          python -m tools.btc_07b_package restore --package "$RUNNER_TEMP/b/pkg/btc-real-vintage.tar" --expect-sha256 "$PACKAGE_SHA256" --dest "$RUNNER_TEMP/b/restore" > "$RUNNER_TEMP/b/restore.log"
+          grep -q 'RESTORE_VERIFIED_LOCAL' "$RUNNER_TEMP/b/restore.log"
+          python -m tools.btc_06c_candidate --snapshot "$RUNNER_TEMP/b/restore/snapshot" --cbs-csv data/cbs-housing.csv --legacy-json frontend/public/data/monthly.json \
+            --out-dir "$RUNNER_TEMP/b/hist_cand" > "$RUNNER_TEMP/b/hist.log"
+          grep -q "\"snapshot_id\": \"$EXPECT_SNAPSHOT_ID\"" "$RUNNER_TEMP/b/hist.log"
+          [ "$(sha256sum "$RUNNER_TEMP/b/hist_cand/candidate.json" | cut -d' ' -f1)" = "$EXPECT_HIST_CANDIDATE_SHA256" ]
+          [ "$(sha256sum "$RUNNER_TEMP/b/hist_cand/candidate_values.json" | cut -d' ' -f1)" = "$EXPECT_HIST_SIDECAR_SHA256" ]
+          echo "historical candidate reproduced at $HIST_COMMIT"
+      - name: D07 artifact preparation under the frozen calculation commit (offline namespace; candidate, composite, unapproved template, preflight)
+        shell: bash
+        run: |
+          python -m tools.btc_10_d07 --snapshot "$RUNNER_TEMP/b/restore/snapshot" --cbs-csv data/cbs-housing.csv --legacy-json frontend/public/data/monthly.json \
+            --historical-dir "$RUNNER_TEMP/b/hist_cand" --private-dir "$RUNNER_TEMP/b/private" --calc-commit "$CALC_COMMIT" \
+            --manifest-out "$RUNNER_TEMP/qa/d07-manifest.json" --template-out "$RUNNER_TEMP/qa/d07-record-template.json" --isolated
+          pyget() { python -c "import json,sys;d=json.load(open(sys.argv[1]));print(eval(sys.argv[2]))" "$RUNNER_TEMP/qa/d07-manifest.json" "$1"; }
+          echo "CAND_SHA=$(pyget "d['hashes']['candidate_preview_sha256']")" >> "$GITHUB_ENV"
+          echo "SIDE_SHA=$(pyget "d['hashes']['private_sidecar_sha256']")" >> "$GITHUB_ENV"
+          echo "COMP_SHA=$(pyget "d['hashes']['public_composite_sha256']")" >> "$GITHUB_ENV"
+      - name: Print the price-free manifest and the unapproved record template
+        shell: bash
+        run: |
+          cat "$RUNNER_TEMP/qa/d07-manifest.json"
+          cat "$RUNNER_TEMP/qa/d07-record-template.json"
+      - name: Exact-composite browser acceptance B01-B11 + R00-R04 (loopback, temporary build, redacted)
+        shell: bash
+        run: |
+          python -m tools.btc_07b_browser --out-dir "$RUNNER_TEMP/btc10" \
+            --chrome "$(command -v google-chrome || command -v chromium-browser || command -v chromium)" \
+            --real-candidate-dir "$RUNNER_TEMP/b/private/candidate" --expect-candidate-sha256 "$CAND_SHA" --expect-sidecar-sha256 "$SIDE_SHA" \
+            --real-composite "$RUNNER_TEMP/b/private/monthly.composite.json" --expect-composite-sha256 "$COMP_SHA"
+      - name: Production build, static-distribution and rollback-state checks (no private data, legacy payload unchanged)
+        shell: bash
+        run: |
+          (cd frontend && npm run build >/dev/null)
+          python -m tools.btc_09_distribution_check dist --dist frontend/dist | tee "$RUNNER_TEMP/qa/d07-distribution.json"
+          python -m tools.btc_09_distribution_check state --json frontend/public/data/monthly.json | tee "$RUNNER_TEMP/qa/d07-rollback-state.json"
+      - name: Regressions, production gates and public-data parity
+        shell: bash
+        run: |
+          python -m pytest -q tests/test_btc_10_d07.py tests/test_btc_09_preflight.py tests/test_btc_09_distribution.py tests/test_btc_08b_release_contract.py \
+            tests/test_btc_07b_p2_release_path.py tests/test_btc_07b_p4_rollback.py tests/test_btc_06c_candidate.py
+          python -m etl.data_quality
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json data/fixtures/btc04e/source_pins.json frontend/src etl
+          test -z "$(git status --porcelain)"
+      - name: Assemble the price-free QA record
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          t = pathlib.Path(os.environ["RUNNER_TEMP"])
+          rj = t / "btc10/evidence/result.json"
+          if rj.exists():
+              r = json.loads(rj.read_text())
+              (t / "qa/result-redacted.json").write_text(json.dumps({k: r[k] for k in ("executed", "real_mode", "payload_sha256", "total", "failed")} | {"results": [{k: x[k] for k in ("id", "name", "ok")} for x in r["results"]]}, indent=1))
+          pf = t / "qa/d07-manifest.json"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("### BTC-10 D07 artifact manifest (price-free)\n```json\n" + (pf.read_text() if pf.exists() else "{}") + "\n```\n")
+          PY
+      - name: Upload price-free QA record only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-10-public-qa
+          path: |
+            ${{ runner.temp }}/qa/d07-manifest.json
+            ${{ runner.temp }}/qa/d07-record-template.json
+            ${{ runner.temp }}/qa/d07-distribution.json
+            ${{ runner.temp }}/qa/d07-rollback-state.json
+            ${{ runner.temp }}/qa/result-redacted.json
+          if-no-files-found: warn
+          retention-days: 7

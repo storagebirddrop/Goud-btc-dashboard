@@ -79,7 +79,7 @@ def load_real_candidate(candidate_dir) -> tuple:
     return json.loads((d / "candidate.json").read_text(encoding="utf-8")), json.loads((d / "candidate_values.json").read_text(encoding="utf-8"))
 
 
-def build_fixtures(out_dir, real_candidate_dir=None) -> dict:
+def build_fixtures(out_dir, real_candidate_dir=None, real_composite=None) -> dict:
     """Without `real_candidate_dir` everything is SYNTHETIC (BTC-07B). With it, ONLY the default payload (and the fixtures derived from it: incomplete,
     unpinned claim, exact) is composed from the real private candidate with a TEST authorization that exists only in the temporary test build;
     the early/Q3 fixture stays synthetic because the standard candidate carries no Q3 values."""
@@ -90,6 +90,10 @@ def build_fixtures(out_dir, real_candidate_dir=None) -> dict:
         r_preview, r_sidecar = load_real_candidate(real_candidate_dir)
         r_months = sorted(r_sidecar["months"])
         default = bc.compose_release(r_preview, r_sidecar, _auth([m for m in r_months if m >= "2014-02"]))
+        if real_composite is not None:  # BTC-10: test the EXACT proposed release bytes instead of a freshly composed test payload
+            default = json.loads(real_composite.decode("utf-8"))
+            if bc.serialize(default) != real_composite:
+                raise ValueError("the supplied composite is not in canonical serialization")
     else:
         all_months = sorted(sidecar["months"])
         default = bc.compose_release(preview, sidecar, _auth([m for m in all_months if m >= "2014-02"]))

@@ -212,7 +212,7 @@ for (const width of [1280, 375]) {
   const txt = await body(page), l = txt.toLowerCase();
   const links = await page.$$eval('aside.btc-src a[href]', as => as.map(a => a.href));
   for (const host of ['docs.coinmetrics.io', 'data.ecb.europa.eu', 'opendata.cbs.nl', 'creativecommons.org/licenses/by-nc/4.0']) check('B07', `link to ${host}`, links.some(h => h.includes(host)), links.join(' '));
-  for (const [n, re] of [['own calculations', /eigen berekeningen/], ['full UTC calendar months', /volledige kalendermaanden \(utc\)/], ['USD-derived euro price', /afgeleid uit een usd-referentieprijs/], ['nominal CBS numerator', /nominale cbs-gemiddelde verkoopprijs/], ['no endorsement', /onderschrijft/], ['not investment advice', /geen beleggingsadvies/], ['authorized period shown', /februari 2014 t\/m augustus 2026/], ['release id shown', /synthetic-browser-fixture/]])
+  for (const [n, re] of [['own calculations', /eigen berekeningen/], ['full UTC calendar months', /volledige kalendermaanden \(utc\)/], ['USD-derived euro price', /afgeleid uit een usd-referentieprijs/], ['nominal CBS numerator', /nominale cbs-gemiddelde verkoopprijs/], ['no endorsement', /onderschrijft/], ['not investment advice', /geen beleggingsadvies/], ['authorized period shown', /februari 2014 t\/m augustus 2026/], ['release id shown', new RegExp(process.env.EXPECT_RELEASE_ID_RE || 'synthetic-browser-fixture')]])
     check('B07', n, re.test(l));
   check('B08', 'interpretation: fewer BTC per average sold house, no claim of an identical house getting cheaper', /minder btc per gemiddeld verkochte woning/.test(l) && /dit zegt niet dat een identieke woning goedkoper is geworden/.test(l));
   if (!REAL) await page.screenshot({path: `${OUT}/B07.png`, fullPage: true});
