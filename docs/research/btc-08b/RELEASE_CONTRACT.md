@@ -20,6 +20,7 @@ Status: IMPLEMENTED AND TESTED WITH SYNTHETIC FIXTURES. No production record exi
 Default deny; wrong/other hash; one tampered byte; extra or missing record field; PENDING or malformed hashes; month-scoped and quality-scoped (Q2-only, Q1-only, forged quality label, Q3/2011-06 unauthorizable); other snapshot; other calculation commit; no self-authorization (nothing inside the payload can supply a record); mixed vintages rejected (a second snapshot with one revised price needs a new record); regeneration from private inputs must be byte-identical; withdrawal returns to the pinned legacy bytes only.
 
 ## Preflight functions
+- `release_preflight(composite, record, preview_bytes, sidecar_bytes, previous_public_bytes)`: MANDATORY before any record is registered or a pin added. Runs the public gate, byte-identical regeneration from the bound private inputs, the rollback check and refuses PENDING fields. Demonstrated need: a payload with one edited value and a record recomputed for it passes the public gate (shape/hash only) and is caught only by regeneration (tests/test_btc_08b_release_contract.py).
 - `record_template(composite, authorization)`: what the OWNER would approve; owner_approval stays PENDING.
 - `reproduce_composite(record, preview_bytes, sidecar_bytes)`: independent byte-identical regeneration.
 - `rollback_target_ok(record, public_state_bytes)`: rollback target check.
@@ -27,4 +28,4 @@ Default deny; wrong/other hash; one tampered byte; extra or missing record field
 
 ## Not executed / not proven
 - No production record created (forbidden). Real-data owner restore (REAL_OWNER_RESTORE_NOT_EXECUTED), Cloudflare cache/preview behavior and a real deployment are NOT executed.
-- Code identity: changing etl/ or BTC tools changes the commit-bound calculation identity (`calculation_git_commit` is hash-bound in the candidate). The historical BTC-07E-A package restores only at its packing commit 641151b900df1403f8b4f3879ef45028d64552f2; the final release must re-pack/rebuild the candidate from the SAME snapshot bytes under the final release commit (derived values identical, candidate hash changes via the commit field only). See BTC09_HANDOVER.md.
+- Code identity: changing etl/ or BTC tools changes the commit-bound calculation identity (`calculation_git_commit` is hash-bound in the candidate). The historical BTC-07E-A package restores only at its packing commit 641151b900df1403f8b4f3879ef45028d64552f2; the final release must re-pack/rebuild the candidate from the SAME snapshot bytes under the final release commit (derived values identical; the candidate preview hash WILL change because it binds the commit and, since BTC-08B, the corrected source attribution strings). See BTC09_HANDOVER.md.

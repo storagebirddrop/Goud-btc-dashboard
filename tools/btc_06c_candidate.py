@@ -142,7 +142,8 @@ def verify_release_path(preview: dict, sidecar: dict) -> dict:
     blob = bc.serialize(composite)
     record = bc.record_template(composite, auth)
     record.update(owner_approval="APPROVED", approved_by="synthetic-in-memory-check", approved_on="n/a")
-    passed = bc.composite_release_gate(blob, records=[record]) is record
+    legacy_public = bc.legacy_projection_bytes(composite)  # validated to equal the pinned previous public state (the rollback target)
+    passed = bc.release_preflight(blob, record, bc.serialize(preview), bc.serialize(sidecar), legacy_public) is record  # gate + regeneration + rollback
     denied = {}
     for label, call in (("default_registry", lambda: bc.composite_release_gate(blob)),
                         ("tampered_hash", lambda: bc.composite_release_gate(blob, records=[dict(record, composite_sha256="0" * 64)])),

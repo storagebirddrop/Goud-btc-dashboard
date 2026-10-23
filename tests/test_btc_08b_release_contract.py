@@ -197,6 +197,58 @@ def test_regeneration_refuses_other_private_inputs_or_a_changed_record(world, fu
         bc.reproduce_composite("not a record", preview_b, sidecar_b)
 
 
+# ---------------------------------------------------------------- release_preflight is the mandatory prerequisite for registering a record
+LEGACY_BYTES = (ROOT / "frontend/public/data/monthly.json").read_bytes()
+
+
+def preflight_inputs(world):
+    return bc.serialize(world["preview"]), bc.serialize(world["sidecar"])
+
+
+def test_preflight_passes_only_with_gate_regeneration_and_rollback_together(world, full):
+    pv, sc = preflight_inputs(world)
+    assert bc.release_preflight(full["blob"], full["record"], pv, sc, LEGACY_BYTES) is full["record"]
+
+
+def test_preflight_refuses_templates_missing_private_inputs_and_wrong_rollback_bytes(world, full):
+    pv, sc = preflight_inputs(world)
+    tpl = dict(full["record"], private_sidecar_sha256=bc.PENDING)
+    with pytest.raises(bc.ReleaseDenied):
+        bc.release_preflight(full["blob"], tpl, pv, sc, LEGACY_BYTES)
+    with pytest.raises(bc.BtcContractError):  # gate opens (hashes are well-formed) but the private inputs are not the bound ones
+        bc.release_preflight(full["blob"], full["record"], pv + b" ", sc, LEGACY_BYTES)
+    with pytest.raises(bc.ReleaseDenied):
+        bc.release_preflight(full["blob"], full["record"], pv, sc, LEGACY_BYTES + b" ")
+    with pytest.raises(bc.ReleaseDenied):
+        bc.release_preflight(full["blob"], {**full["record"], "owner_approval": "PENDING"}, pv, sc, LEGACY_BYTES)
+
+
+def test_preflight_catches_a_self_consistent_record_for_a_payload_not_regenerable_from_the_bound_inputs(world, full):
+    """A payload with one edited published value and a record recomputed for the edited bytes (all public hashes consistent) is canonical and
+    valid, so the shape-only public gate may open; only regeneration from the bound private inputs exposes it."""
+    pv, sc = preflight_inputs(world)
+    forged = json.loads(full["blob"])
+    row = next(r for r in forged["data"] if r["btc_meta"]["status"] == "PUBLISHED")
+    row["btc_per_house"] = row["btc_per_house"] * 1.01
+    row["sat_per_house"] = row["sat_per_house"] * 1.01
+    blob = bc.serialize(forged)
+    rec = bc.record_template(forged, full["auth"])
+    rec.update(owner_approval="APPROVED", approved_by="synthetic-owner", approved_on="2026-01-01")
+    assert bc.composite_release_gate(blob, records=[rec]) is rec  # the public gate alone cannot see the difference
+    with pytest.raises(bc.BtcContractError, match="regenerated"):
+        bc.release_preflight(blob, rec, pv, sc, LEGACY_BYTES)
+
+
+def test_registry_pins_and_public_files_are_untouched():
+    assert bc.ARTIFACT_RECORDS == ()
+    assert re.search(r"BTC_APPROVED_COMPOSITE_SHA256:readonly string\[\]=\[\];", BTC_TS)
+    assert bc.sha256(LEGACY_BYTES) == bc.LEGACY_PUBLIC_SHA256
+
+
+def test_generated_typescript_build_info_is_not_versioned():
+    assert "*.tsbuildinfo" in (ROOT / ".gitignore").read_text()
+
+
 # ---------------------------------------------------------------- withdrawal and rollback
 def test_withdrawal_returns_to_the_pinned_legacy_state_without_mixed_data(full):
     legacy = LEGACY.read_bytes()

@@ -456,6 +456,21 @@ def _record_matches(record, composite: dict, blob: bytes) -> bool:
     return all(checks)
 
 
+def release_preflight(composite_bytes: bytes, record: dict, preview_bytes: bytes, sidecar_bytes: bytes, previous_public_bytes: bytes) -> dict:
+    """MANDATORY gate before an owner record may be registered or a pin added (BTC-08B). The public gate and the frontend pin cannot see the
+    private candidate; this does. All four must hold, otherwise it raises: (1) the exact record opens `composite_release_gate` for THESE bytes;
+    (2) the composite regenerates byte-identically from the private preview and sidecar the record binds; (3) the rollback target is the pinned
+    previous public state and the supplied previous public bytes are exactly that state; (4) the record is not a template (no PENDING field)."""
+    if not isinstance(record, dict) or PENDING in {v for v in record.values() if isinstance(v, str)}:
+        raise ReleaseDenied("record still carries PENDING owner fields")
+    composite_release_gate(composite_bytes, records=[record])
+    if reproduce_composite(record, preview_bytes, sidecar_bytes) != composite_bytes:
+        raise BtcContractError("composite is not the regenerated output of the bound private inputs")
+    if not rollback_target_ok(record, previous_public_bytes):
+        raise ReleaseDenied("rollback target is not the pinned previous public state")
+    return record
+
+
 def composite_release_gate(composite_bytes: bytes, records=None) -> dict:
     """Closed by default. An extended payload may only be released with an exact owner-approved record for THESE bytes: matching hashes of
     the composite, the BTC selection and the legacy projection, the authorized fields and months (exceptions excluded), the provenance
