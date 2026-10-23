@@ -219,6 +219,18 @@ for (const width of [1280, 375]) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------- B07b BTC-08B source vintage, modification notice and non-endorsement
+{
+  const {ctx, page} = await open(test.base, 'real_default');
+  await pick(page, ALT, BTC_VIEW);
+  const l = (await body(page)).toLowerCase();
+  const vint = await page.$eval('aside.btc-src [data-btc-vintage]', e => e.textContent || '').catch(() => '');
+  check('B07b', 'source vintage (snapshot id) is shown', /^btc04e-[0-9a-f]+$/.test(vint.trim()));
+  check('B07b', 'modification notice is shown', /wijzigingen ten opzichte van de bronnen/.test(l) && /ruwe dagreeksen worden niet verspreid/.test(l));
+  check('B07b', 'no source organisation is presented as publisher or endorser', /geen publicatie van coin metrics, de ecb of het cbs/.test(l) && /geen bronorganisatie onderschrijft/.test(l));
+  await ctx.close();
+}
+
 // ---------------------------------------------------------------- B09 URL and storage cannot select or unlock anything
 {
   const init = () => { try { localStorage.setItem('view', 'sat_per_house'); localStorage.setItem('series', 'sat_per_house'); sessionStorage.setItem('btc_range', '2000-01'); localStorage.setItem('early_history', 'true'); } catch (e) {} };

@@ -5,7 +5,7 @@ import './style.css';
 
 import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRange,sliceRange,viewAnnotations,viewHasGold,goldPeriod,GOLD_SOURCE_ASOF,GOLD_SOURCE_LINKS,GOLD_OWN_CALC_TEXT,GOLD_METHOD_TEXT,GOLD_BREAK_TEXT,METHODOLOGY_URL,MONTH_RE,ok} from './series';
 import type {SeriesKey,Point,Kind,Range,PresetId} from './series';
-import {activateBtc,applyBtc,btcNote,btcDefaultFrom,btcQualitiesIn,btcMissingSummary,BTC_QUALITY_TEXT,BTC_SOURCE_LINKS,BTC_LICENSE_URL,BTC_ATTRIBUTION_TEXT,BTC_DERIVED_TEXT,BTC_METHOD_TEXT,BTC_INTERPRETATION_TEXT,BTC_HOLD_TEXT,BTC_HEADING_TEXT,BTC_NOTE_HEADER} from './btc';
+import {activateBtc,applyBtc,btcNote,btcDefaultFrom,btcQualitiesIn,btcMissingSummary,BTC_QUALITY_TEXT,BTC_SOURCE_LINKS,BTC_LICENSE_URL,BTC_ATTRIBUTION_TEXT,BTC_DERIVED_TEXT,BTC_MODIFICATION_TEXT,BTC_METHOD_TEXT,BTC_INTERPRETATION_TEXT,BTC_HOLD_TEXT,BTC_HEADING_TEXT,BTC_NOTE_HEADER} from './btc';
 import type {BtcRoot} from './btc';
 
 const PRESETS:{id:PresetId;label:string}[]=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}];
@@ -66,6 +66,8 @@ function BtcSources({rows,root}:{rows:Point[];root:BtcRoot}){
   <ul>{BTC_SOURCE_LINKS.map(l=><li key={l.url}>{l.name}, {l.detail}: <a href={l.url}>{l.linkText}</a></li>)}</ul>
   <p>{BTC_ATTRIBUTION_TEXT} Licentie: <a href={BTC_LICENSE_URL}>CC BY-NC 4.0</a>.</p>
   <p>{BTC_DERIVED_TEXT}</p>
+  <p data-btc-modification>{BTC_MODIFICATION_TEXT}</p>
+  <p>Bronstand: <span data-btc-vintage>{root.provenance.snapshot_id}</span>, vastgelegd op <time dateTime={root.provenance.vintage_reference_utc}>{root.provenance.vintage_reference_utc.slice(0,10)}</time> (UTC). Latere bronrevisies zijn hierin niet verwerkt.</p>
   <p><strong>Methode.</strong> {BTC_METHOD_TEXT.join(' ')} <a href={METHODOLOGY_URL}>Volledige methodologie</a></p>
   <p>{BTC_INTERPRETATION_TEXT}</p>
   <p>Release: <span data-btc-release>{root.release.id}</span>, besluit {root.release.decision_ref}. Geautoriseerde periode: {month(root.coverage.authorized_from)} t/m {month(root.coverage.authorized_through)}.</p>

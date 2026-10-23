@@ -25,7 +25,7 @@ def world(tmp_path_factory):
     snap = t6.make_snapshot(base / "snap")
     preview, sidecar, _ = cand.build_candidate(snap, CSV, LEGACY)
     auth = {"release_id": "SYN-REL-07B", "decision_ref": "SYN-DEC-07B", "months": MONTHS, "rights_review_ref": "SYN-RIGHTS",
-            "conflicting_contract_check": "VERIFIED"}
+            "conflicting_contract_check": "VERIFIED", **bc.private_hashes(preview, sidecar)}
     composite = bc.compose_release(preview, sidecar, auth)
     blob = bc.serialize(composite)
     record = bc.record_template(composite, auth)

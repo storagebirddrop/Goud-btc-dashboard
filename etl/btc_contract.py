@@ -50,6 +50,15 @@ PROVENANCE_KEYS = ["snapshot_format", "snapshot_id", "snapshot_manifest_sha256",
 SOURCE_IDS = ["coinmetrics_community_priceusd", "ecb_exr_d_usd", "cbs_85773NED_csv"]
 UNITS = {"btc_per_house": "BTC/home", "sat_per_house": "satoshi/home"}
 RECORD_STATUS = "AUTHORIZED_EXACT_CANDIDATE"
+RECORD_SCHEMA = "btc-release-record/2"  # BTC-08B: the record binds the whole release identity, not only the composite bytes
+ROLLBACK_STATE = "LEGACY_GOLD_CBS_NO_BTC"  # the previously authorized public state a withdrawal returns to (the pinned legacy payload)
+PENDING = "PENDING"  # template placeholder for fields the OWNER fills; a record carrying it never opens the gate
+RECORD_KEYS = frozenset([
+    "schema", "record_id", "owner_approval", "status", "release_id", "decision_ref", "approved_by", "approved_on", "composite_sha256",
+    "public_payload_sha256", "btc_selection_sha256", "legacy_projection_sha256", "snapshot_manifest_sha256", "snapshot_id", "calculation_git_commit",
+    "provenance_sha256", "cbs_input_sha256", "candidate_preview_sha256", "private_sidecar_sha256", "method_id", "quality_version",
+    "exception_policy_version", "authorized_fields", "authorized_months", "authorized_qualities", "quality_by_month_sha256", "exceptions",
+    "early_history_authorized", "review_refs", "rollback_ref"])
 ARTIFACT_RECORDS: tuple = ()  # exact owner-approved composite artifact records; EMPTY: nothing may be released
 
 
@@ -351,31 +360,85 @@ def compose_release(preview: dict, sidecar: dict, authorization: dict) -> dict:
     return out
 
 
+def private_hashes(preview: dict, sidecar: dict) -> dict:
+    """Hashes of the PRIVATE candidate objects (preview and values sidecar) exactly as tools.btc_06c_candidate writes them. Put them in the
+    authorization given to `record_template`; they are recorded for reproducibility and checked by `reproduce_composite`, never by the public gate."""
+    return {"candidate_preview_sha256": sha256(serialize(preview)), "private_sidecar_sha256": sha256(serialize(sidecar))}
+
+
+def quality_by_month(composite: dict) -> dict:
+    """{month: quality} for the PUBLISHED months: the quality class each month is released under."""
+    return {r["period"]: r["btc_meta"]["quality"] for r in composite["data"] if r["btc_meta"]["status"] == "PUBLISHED"}
+
+
 def record_template(composite: dict, authorization: dict) -> dict:
-    """The record an OWNER would have to approve for exactly these bytes (the approval itself is never created here)."""
+    """The record an OWNER would have to approve for exactly these bytes (the approval itself is never created here).
+
+    Binds: the public payload bytes, the BTC selection, the legacy projection, the source snapshot (id, manifest, provenance block), the calculation
+    commit, the CBS input, the private candidate/sidecar hashes (from `authorization`, else PENDING), the methodology versions, the exact months,
+    the exact quality classes (and their month-by-month hash), the exceptions, the rights references, the release identity and the rollback target."""
     blob = serialize(composite)
     prov = composite["btc"]["provenance"]
     pub = [r["period"] for r in composite["data"] if r["btc_meta"]["status"] == "PUBLISHED"]
-    return {"record_id": authorization["release_id"], "owner_approval": "PENDING", "status": RECORD_STATUS, "release_id": authorization["release_id"],
-            "decision_ref": authorization["decision_ref"], "approved_by": "", "approved_on": "", "composite_sha256": sha256(blob),
+    quals = quality_by_month(composite)
+    return {"schema": RECORD_SCHEMA, "record_id": authorization["release_id"], "owner_approval": "PENDING", "status": RECORD_STATUS,
+            "release_id": authorization["release_id"], "decision_ref": authorization["decision_ref"], "approved_by": "", "approved_on": "",
+            "composite_sha256": sha256(blob), "public_payload_sha256": sha256(blob),
             "btc_selection_sha256": btc_selection_sha256(composite), "legacy_projection_sha256": sha256(legacy_projection_bytes(composite)),
-            "snapshot_manifest_sha256": prov["snapshot_manifest_sha256"], "cbs_input_sha256": prov["cbs_input_sha256"],
+            "snapshot_manifest_sha256": prov["snapshot_manifest_sha256"], "snapshot_id": prov["snapshot_id"], "calculation_git_commit": prov["calculation_git_commit"],
+            "provenance_sha256": sha256(serialize(prov)), "cbs_input_sha256": prov["cbs_input_sha256"],
+            "candidate_preview_sha256": authorization.get("candidate_preview_sha256", PENDING), "private_sidecar_sha256": authorization.get("private_sidecar_sha256", PENDING),
             "method_id": composite["btc"]["method_id"], "quality_version": composite["btc"]["quality_version"],
             "exception_policy_version": composite["btc"]["exception_policy_version"], "authorized_fields": ["btc_per_house", "sat_per_house"],
-            "authorized_months": pub, "exceptions": sorted(HOLD_MONTHS), "early_history_authorized": composite["btc"]["coverage"]["early_history_authorized"],
-            "review_refs": {"rights": composite["btc"]["rights"]["review_ref"], "contract_check": composite["btc"]["rights"]["conflicting_contract_check"]}}
+            "authorized_months": pub, "authorized_qualities": sorted(set(quals.values())), "quality_by_month_sha256": sha256(serialize(quals)),
+            "exceptions": sorted(HOLD_MONTHS), "early_history_authorized": composite["btc"]["coverage"]["early_history_authorized"],
+            "review_refs": {"rights": composite["btc"]["rights"]["review_ref"], "contract_check": composite["btc"]["rights"]["conflicting_contract_check"]},
+            "rollback_ref": {"previous_public_sha256": LEGACY_PUBLIC_SHA256, "state": ROLLBACK_STATE}}
+
+
+def reproduce_composite(record: dict, preview_bytes: bytes, sidecar_bytes: bytes) -> bytes:
+    """Independent regeneration (release preflight, PRIVATE inputs): rebuild the composite from the private preview and sidecar using ONLY what the
+    record states, and require byte-identical output. Raises BtcContractError on any difference; returns the regenerated bytes."""
+    if not isinstance(record, dict):
+        raise BtcContractError("record is not an object")
+    if sha256(preview_bytes) != record.get("candidate_preview_sha256") or sha256(sidecar_bytes) != record.get("private_sidecar_sha256"):
+        raise BtcContractError("the private candidate or sidecar is not the one the record binds")
+    refs = record.get("review_refs") or {}
+    auth = {"release_id": record["release_id"], "decision_ref": record["decision_ref"], "months": list(record["authorized_months"]),
+            "rights_review_ref": refs.get("rights"), "conflicting_contract_check": refs.get("contract_check"),
+            "early_history_authorized": record.get("early_history_authorized", False)}
+    regenerated = serialize(compose_release(json.loads(preview_bytes.decode("utf-8")), json.loads(sidecar_bytes.decode("utf-8")), auth))
+    if sha256(regenerated) != record.get("composite_sha256") or sha256(regenerated) != record.get("public_payload_sha256"):
+        raise BtcContractError("regenerated composite differs from the record (not reproducible from the pinned private inputs)")
+    return regenerated
+
+
+def rollback_target_ok(record: dict, public_state_bytes: bytes) -> bool:
+    """A withdrawal returns to the previously authorized public state: the bytes must be the pinned legacy payload the record names."""
+    ref = record.get("rollback_ref") if isinstance(record, dict) else None
+    return (isinstance(ref, dict) and ref == {"previous_public_sha256": LEGACY_PUBLIC_SHA256, "state": ROLLBACK_STATE}
+            and sha256(public_state_bytes) == ref["previous_public_sha256"])
 
 
 def _record_matches(record, composite: dict, blob: bytes) -> bool:
-    if not isinstance(record, dict) or record.get("owner_approval") != "APPROVED" or record.get("status") != RECORD_STATUS:
+    if not isinstance(record, dict) or set(record) != RECORD_KEYS or record.get("schema") != RECORD_SCHEMA:
+        return False  # exact key set: no missing and no extra (unreviewed) field
+    if record.get("owner_approval") != "APPROVED" or record.get("status") != RECORD_STATUS:
         return False
     if not record.get("approved_by") or not record.get("approved_on") or not record.get("record_id"):
         return False
     root = composite["btc"]
     prov = root["provenance"]
     published = [r["period"] for r in composite["data"] if r["btc_meta"]["status"] == "PUBLISHED"]
+    quals = quality_by_month(composite)
     checks = (
-        record.get("composite_sha256") == sha256(blob),
+        record.get("composite_sha256") == sha256(blob) == record.get("public_payload_sha256"),
+        record.get("snapshot_id") == prov["snapshot_id"] and record.get("calculation_git_commit") == prov["calculation_git_commit"],
+        record.get("provenance_sha256") == sha256(serialize(prov)),
+        _is_sha(record.get("candidate_preview_sha256")) and _is_sha(record.get("private_sidecar_sha256")),  # owner-supplied; checked by reproduce_composite
+        record.get("authorized_qualities") == sorted(set(quals.values())) and set(quals.values()) <= set(QUALITIES)
+        and record.get("quality_by_month_sha256") == sha256(serialize(quals)),
+        record.get("rollback_ref") == {"previous_public_sha256": LEGACY_PUBLIC_SHA256, "state": ROLLBACK_STATE},
         record.get("btc_selection_sha256") == btc_selection_sha256(composite),
         record.get("legacy_projection_sha256") == sha256(legacy_projection_bytes(composite)) == LEGACY_PUBLIC_SHA256,
         record.get("snapshot_manifest_sha256") == prov["snapshot_manifest_sha256"],
@@ -391,6 +454,21 @@ def _record_matches(record, composite: dict, blob: bytes) -> bool:
         and record["review_refs"].get("contract_check") == root["rights"]["conflicting_contract_check"] == "VERIFIED",
     )
     return all(checks)
+
+
+def release_preflight(composite_bytes: bytes, record: dict, preview_bytes: bytes, sidecar_bytes: bytes, previous_public_bytes: bytes) -> dict:
+    """MANDATORY gate before an owner record may be registered or a pin added (BTC-08B). The public gate and the frontend pin cannot see the
+    private candidate; this does. All four must hold, otherwise it raises: (1) the exact record opens `composite_release_gate` for THESE bytes;
+    (2) the composite regenerates byte-identically from the private preview and sidecar the record binds; (3) the rollback target is the pinned
+    previous public state and the supplied previous public bytes are exactly that state; (4) the record is not a template (no PENDING field)."""
+    if not isinstance(record, dict) or PENDING in {v for v in record.values() if isinstance(v, str)}:
+        raise ReleaseDenied("record still carries PENDING owner fields")
+    composite_release_gate(composite_bytes, records=[record])
+    if reproduce_composite(record, preview_bytes, sidecar_bytes) != composite_bytes:
+        raise BtcContractError("composite is not the regenerated output of the bound private inputs")
+    if not rollback_target_ok(record, previous_public_bytes):
+        raise ReleaseDenied("rollback target is not the pinned previous public state")
+    return record
 
 
 def composite_release_gate(composite_bytes: bytes, records=None) -> dict:
