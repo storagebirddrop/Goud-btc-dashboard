@@ -1,0 +1,83 @@
+name: BTC-07E-A real vintage and offline restore (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: btc-07e-a-real-vintage
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Acquire real Coin Metrics and ECB vintage (pinned; fail closed)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/btc07ea/reports"
+          python -m tools.btc_04e_cm_replay \
+            --cbs-csv data/cbs-housing.csv \
+            --pins data/fixtures/btc04e/source_pins.json \
+            --mode validate \
+            --export-snapshot "$RUNNER_TEMP/btc07ea/snapshot" \
+            --summary-out "$RUNNER_TEMP/btc07ea/reports/private-summary.json" \
+            --public-summary-out "$RUNNER_TEMP/btc07ea/reports/public-summary.json"
+      - name: Build candidate using existing private tool
+        shell: bash
+        run: |
+          python -m tools.btc_06c_candidate \
+            --snapshot "$RUNNER_TEMP/btc07ea/snapshot" \
+            --cbs-csv data/cbs-housing.csv \
+            --legacy-json frontend/public/data/monthly.json \
+            --out-dir "$RUNNER_TEMP/btc07ea/private-candidate" \
+            --verify-release-path
+      - name: Pack real vintage and verify offline restore
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/btc07ea/export"
+          python -m tools.btc_07b_package pack \
+            --snapshot "$RUNNER_TEMP/btc07ea/snapshot" \
+            --cbs-csv data/cbs-housing.csv \
+            --legacy-json frontend/public/data/monthly.json \
+            --out "$RUNNER_TEMP/btc07ea/export/btc-real-vintage.tar"
+          (cd "$RUNNER_TEMP/btc07ea/export" && sha256sum btc-real-vintage.tar > SHA256SUMS)
+          digest="$(sha256sum "$RUNNER_TEMP/btc07ea/export/btc-real-vintage.tar" | cut -d' ' -f1)"
+          python -m tools.btc_07b_package restore \
+            --package "$RUNNER_TEMP/btc07ea/export/btc-real-vintage.tar" \
+            --expect-sha256 "$digest" \
+            --dest "$RUNNER_TEMP/btc07ea/restore"
+          echo "Real vintage archive SHA256: $digest"
+      - name: Check public legacy state is unchanged
+        run: |
+          python -m etl.data_quality
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json data/fixtures/btc04e/source_pins.json
+      - name: Upload real vintage archive for owner retention
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-07e-a-real-vintage-owner-download
+          path: |
+            ${{ runner.temp }}/btc07ea/export/btc-real-vintage.tar
+            ${{ runner.temp }}/btc07ea/export/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload price-free evidence (including on failed acquisition)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-07e-a-public-qa
+          path: ${{ runner.temp }}/btc07ea/reports/public-summary.json
+          if-no-files-found: warn
+          retention-days: 7
