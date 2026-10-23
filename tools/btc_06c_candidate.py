@@ -25,12 +25,12 @@ from tools import btc_public_report as pr  # noqa: E402
 
 SOURCES = [
     {"id": "coinmetrics_community_priceusd", "metric": "btc.PriceUSD.1d", "url": "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics",
-     "license_url": "https://creativecommons.org/licenses/by-nc/4.0/", "attribution": "Coin Metrics Community PriceUSD; eigen maandberekening"},
+     "license_url": "https://creativecommons.org/licenses/by-nc/4.0/", "attribution": "Coin Metrics Community, PriceUSD (dagelijkse USD-referentieprijs, CC BY-NC 4.0). Gewijzigd: rekenkundig gemiddelde per volledige UTC-kalendermaand, gedeeld door het maandgemiddelde van de ECB-koers; eigen berekening, geen publicatie van of onderschrijving door Coin Metrics"},
     {"id": "ecb_exr_d_usd", "metric": "EXR.D.USD.EUR.SP00.A", "url": "https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.USD.EUR.SP00.A",
      "license_url": "https://www.ecb.europa.eu/services/using-our-site/disclaimer/html/index.en.html",
-     "attribution": "ECB; eigen maandgemiddelde en valutaomrekening"},
+     "attribution": "Europese Centrale Bank, euro foreign exchange reference rate USD/EUR (EXR.D.USD.EUR.SP00.A); bron: ECB. Gewijzigd: rekenkundig gemiddelde van de geldige dagkoersen per kalendermaand; eigen berekening, geen officiële ECB-publicatie"},
     {"id": "cbs_85773NED_csv", "metric": "nl_house_avg_eur", "url": "https://opendata.cbs.nl/CBS/nl/dataset/85773NED/table",
-     "license_url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "CBS StatLine 85773NED; eigen BTC/satoshi-ratio"},
+     "license_url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "CBS StatLine 85773NED, gemiddelde verkoopprijs bestaande koopwoningen (CC BY 4.0). Gebruikt als teller; BTC- en satoshi-per-woning zijn eigen berekeningen, geen CBS-publicatie"},
 ]
 SIDECAR_CONTRACT = "btc-monthly/1-private-values"
 
@@ -137,7 +137,7 @@ def verify_release_path(preview: dict, sidecar: dict) -> dict:
     SYNTHETIC in-memory approval (never registered), pass the gate, and check that the default gate and tampered records still deny.
     Nothing here authorizes anything; the registry stays empty."""
     auth = {"release_id": "SYNTHETIC-VERIFICATION-ONLY", "decision_ref": "SYNTHETIC-VERIFICATION-ONLY", "months": sorted(sidecar["months"]),
-            "rights_review_ref": "SYNTHETIC-VERIFICATION-ONLY", "conflicting_contract_check": "VERIFIED"}
+            "rights_review_ref": "SYNTHETIC-VERIFICATION-ONLY", "conflicting_contract_check": "VERIFIED", **bc.private_hashes(preview, sidecar)}
     composite = bc.compose_release(preview, sidecar, auth)
     blob = bc.serialize(composite)
     record = bc.record_template(composite, auth)
@@ -147,7 +147,10 @@ def verify_release_path(preview: dict, sidecar: dict) -> dict:
     for label, call in (("default_registry", lambda: bc.composite_release_gate(blob)),
                         ("tampered_hash", lambda: bc.composite_release_gate(blob, records=[dict(record, composite_sha256="0" * 64)])),
                         ("fewer_months", lambda: bc.composite_release_gate(blob, records=[dict(record, authorized_months=record["authorized_months"][1:])])),
-                        ("pending_approval", lambda: bc.composite_release_gate(blob, records=[dict(record, owner_approval="PENDING")]))):
+                        ("pending_approval", lambda: bc.composite_release_gate(blob, records=[dict(record, owner_approval="PENDING")])),
+                        ("other_quality_scope", lambda: bc.composite_release_gate(blob, records=[dict(record, authorized_qualities=["Q2"])])),
+                        ("other_snapshot", lambda: bc.composite_release_gate(blob, records=[dict(record, snapshot_id="btc04e-" + "0" * 16)])),
+                        ("owner_fields_pending", lambda: bc.composite_release_gate(blob, records=[dict(record, private_sidecar_sha256=bc.PENDING)]))):
         try:
             call()
             denied[label] = False

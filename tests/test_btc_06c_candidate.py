@@ -97,7 +97,7 @@ def rows(payload):
 
 def authorization(world, months=None, **over):
     base = {"release_id": "SYN-RELEASE-1", "decision_ref": "SYN-DECISION-1", "months": sorted(world["sidecar"]["months"]) if months is None else months,
-            "rights_review_ref": "SYN-RIGHTS-1", "conflicting_contract_check": "VERIFIED"}
+            "rights_review_ref": "SYN-RIGHTS-1", "conflicting_contract_check": "VERIFIED", **(bc.private_hashes(world["preview"], world["sidecar"]) if "preview" in world else {})}
     base.update(over)
     return base
 
@@ -353,7 +353,7 @@ def test_missing_or_incomplete_inputs_stay_null_without_fill(tmp_path):
         assert month not in sidecar["months"]
         assert (r[month]["btc_meta"]["status"], r[month]["btc_meta"]["missing_reason"]) == ("MISSING", "INCOMPLETE_PERIOD")
     assert "2015-05" in sidecar["months"] and "2015-07" in sidecar["months"] and "2018-02" in sidecar["months"] and "2018-04" in sidecar["months"]
-    composite = bc.compose_release(preview, sidecar, authorization({"sidecar": sidecar}))
+    composite = bc.compose_release(preview, sidecar, authorization({"sidecar": sidecar, "preview": preview}))
     assert rows(composite)["2015-06"]["btc_meta"]["status"] == "MISSING" and rows(composite)["2015-06"]["btc_per_house"] is None
 
 
@@ -521,7 +521,7 @@ def test_compose_refuses_unknown_months_and_non_candidates(world):
 def test_verify_release_path_proves_the_closed_gate_in_memory(world):
     res = cand.verify_release_path(world["preview"], world["sidecar"])
     assert res["status"] == "NOT_AUTHORIZED_IN_MEMORY_VERIFICATION_ONLY" and res["published_months"] == 151 and res["registry_records"] == 0
-    assert all(res["denied"].values()) and set(res["denied"]) == {"default_registry", "tampered_hash", "fewer_months", "pending_approval"}
+    assert all(res["denied"].values()) and set(res["denied"]) == {"default_registry", "tampered_hash", "fewer_months", "pending_approval", "other_quality_scope", "other_snapshot", "owner_fields_pending"}
     assert bc.ARTIFACT_RECORDS == ()
 
 

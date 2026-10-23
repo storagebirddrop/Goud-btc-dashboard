@@ -88,7 +88,7 @@ def rehearse(work_dir) -> dict:
     preview, sidecar, _, _ = fx.synthetic_candidate(sb["root"])
     months = [m for m in sorted(sidecar["months"]) if m >= "2014-02"]
     auth = {"release_id": "SYNTHETIC-REHEARSAL", "decision_ref": "SYNTHETIC-NOT-A-DECISION", "months": months, "rights_review_ref": "SYNTHETIC",
-            "conflicting_contract_check": "VERIFIED"}
+            "conflicting_contract_check": "VERIFIED", **bc.private_hashes(preview, sidecar)}
     composite = bc.compose_release(preview, sidecar, auth)
     blob = bc.serialize(composite)
     record = bc.record_template(composite, auth)
