@@ -158,7 +158,7 @@ De opname van dit register in GitHub op 2026-10-17 was **geen nieuw economisch b
 ## PC-BTC09-A1 — Release-uitgangspunten Bitcoinreeksen (2026-10-23)
 
 - **Status:** `DECIDED — OWNER_APPROVED`; Project Control heeft de zeven punten expliciet goedgekeurd op 2026-10-23; dit is geen autorisatie voor D07/D08.
-- **Basis:** [BTC-09 owner decision proposal](../research/btc-09/DECISION_AMENDMENT_PROPOSAL.md), goedgekeurd door Project Control na PR #107.
+- **Basis:** `docs/research/btc-09/DECISION_AMENDMENT_PROPOSAL.md`, goedgekeurd door Project Control na PR #107.
 
 1. **Restrisico bronrechten (CM-10).** Het in PC-BTC07D-CM10 aanvaarde restrisico geldt ook voor de beoogde persoonlijke, informatieve en niet-commerciële, publiek bereikbare website (geen advertenties, affiliate-inkomsten, betaalde toegang, diensten of promotie). De publieke bereikbaarheid van de JSON en de daaruit volgende terugrekenbaarheid van maandreferentieprijzen worden bewust aanvaard. Geen juridische vrijwaring; bij concreet strijdige voorwaarden of een wijziging van het niet-commerciële gebruik volgt herbeoordeling. Geen afzonderlijke Coin Metrics-/Talos-toestemming vereist.
 2. **Bronvintage.** Uitsluitend snapshot `btc04e-e11c2538168b2bde` (bron-TAR SHA-256 `19abaa9b47c8172924920249304009bbea47e1c612b190666dfa28991b80d4ce`). Een andere vintage vereist een nieuw besluit en een nieuw releaserecord; vintages worden nooit gemengd.
