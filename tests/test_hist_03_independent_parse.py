@@ -4,12 +4,18 @@ All workbooks are SYNTHETIC. They prove comparison/parsing code only, never
 anything about real World Bank data, and a parser match is not a second source.
 """
 import io
+import os
+from pathlib import Path
+
 import pytest
 from test_hist_03_worldbank_validate import UNIT, book, make_xlsx
 from tools.hist_03_independent_parse import FIELDS, compare, crosscheck, fingerprint
 from tools.hist_03_worldbank_validate import ValidationError, expected_months, validate
 
-openpyxl = pytest.importorskip("openpyxl")
+if os.environ.get("CI"):
+    import openpyxl  # a missing test dependency must fail in CI, never skip these tests silently
+else:
+    openpyxl = pytest.importorskip("openpyxl")
 
 
 def openpyxl_book(value=lambda p: 100.5, gold_cols=("Gold",)):
@@ -149,3 +155,9 @@ def test_main_workbook_option_fails_closed_on_missing_or_empty_file(tmp_path):
     assert json.loads(out.read_text())["status"] == "ACQUISITION_FAILED"
     (tmp_path / "empty.xlsx").write_bytes(b"")
     assert v.main(["--summary-out", str(out), "--workbook", str(tmp_path / "empty.xlsx")]) == 3
+
+
+def test_openpyxl_is_a_declared_test_dependency():
+    """CI installs requirements.txt only; without this line the module above is not collected there."""
+    reqs = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8").splitlines()
+    assert any(line.strip().lower().startswith("openpyxl") for line in reqs)
