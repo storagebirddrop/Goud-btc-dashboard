@@ -19,6 +19,11 @@ def test_governance_checker_rejects_broken_links_and_approval_drift(tmp_path, mo
         original / "docs/governance/GOLD_PUBLICATION_DECISION.md",
         tmp_path / "docs/governance/GOLD_PUBLICATION_DECISION.md",
     )
+    # The CM-10 owner decision is linked from DECISIONS.md and belongs in the fixture.
+    shutil.copyfile(
+        original / "docs/governance/PC_BTC07D_CM10_OWNER_RISK_DECISION_2026-10-23.md",
+        tmp_path / "docs/governance/PC_BTC07D_CM10_OWNER_RISK_DECISION_2026-10-23.md",
+    )
     shutil.copyfile(original / "README.md", tmp_path / "README.md")
     shutil.copyfile(original / "docs/next-phase.md", tmp_path / "docs/next-phase.md")
     for extra in ("data/README.md", "docs/methodology.md", "docs/static-pipeline.md", "CONTRIBUTING.md", "SECURITY.md", "CLAUDE.md"):

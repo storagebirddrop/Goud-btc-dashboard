@@ -144,3 +144,13 @@ De opname van dit register in GitHub op 2026-10-17 was **geen nieuw economisch b
 - **Scheiding:** technische voorbereiding (private preview, validators, tests) is geautoriseerd; publicatie, merge, bronrechtenvrijwaring, afgeronde duurzame opslag, UI-activering en browser-, restore- en live-releaseproeven zijn **niet** besloten en blijven OPEN.
 - **Verhouding tot eerdere rijen:** de tabelrijen ADR-004 (BTC-deel), ADR-007, ADR-008 en ADR-009 zijn niet herschreven (`PROPOSED`, bewaakt door `scripts/check_governance_docs.py`); formele supersessie is een afzonderlijk Project Control-besluit. De recente PC-BTC04-secties gaan volgens het ADR-concept boven oudere Yahoo-/daily-FX-voorstellen.
 - **Impact:** `etl/btc_contract.py`, `tools/btc_06c_candidate.py`, inerte frontendtypes en tests; geen wijziging van `monthly.json`, bronpins, ADR-004 (goud) of de publicatieallowlist. ORANJE/ROOD volgens [CHANGE_CONTROL.md](CHANGE_CONTROL.md): geen merge zonder Project Control.
+
+## PC-BTC07D-CM10 — Community-bronrechten: eigenaar accepteert restrisico (2026-10-23)
+
+- **Status:** `DECIDED — OWNER_ACCEPTED_RESIDUAL_RISK`; beslisser: Project Control, 2026-10-23.
+- **Besluit:** het ontbreken van een afzonderlijke schriftelijke Coin Metrics-/Talos-bevestiging (CM-10) is **geen verplichte externe goedkeuringsgate** voor private BTC-07E-voorbereiding. De in BTC-07D-R01 gedocumenteerde Community CC BY-NC 4.0 is het werkuitgangspunt; aantoonbaar toepasselijke aanvullende voorwaarden blijven gelden.
+- **Eigenaarverklaring:** niet-commerciële exploitatie, beoogd privé-/kleine-kringgebruik, correcte bron- en licentievermelding in notes, geen afzonderlijke Coin Metrics-/Talos-overeenkomst; risico van CM-10-onzekerheid en reconstructeerbaarheid bewust aanvaard.
+- **Bewijsgrens:** `OWNER_ATTESTED` en `DOCUMENTED_IN_R01`, **geen** juridische vrijwaring; beperkte verwachte verspreiding is niet hetzelfde als technisch private toegang.
+- **Impact:** BTC-07E private kandidaatverificatie mag binnen bestaande veiligheids- en methodegates doorgaan. **Geen** nieuwe rechten voor publieke JSON/grafieken vastgesteld, geen auto-publicatie, geen wijziging aan ADR-012, goud/CBS, `ARTIFACT_RECORDS`, `RELEASE_APPROVALS` of frontend-hashpins.
+- **Publicatie:** BTC-PUBLICATIE **HOLD** totdat de exacte kandidaat en distributievorm apart door Project Control zijn geautoriseerd. Bij concreet strijdige voorwaarden volgt herbeoordeling.
+- **Volledig besluit:** [PC_BTC07D_CM10_OWNER_RISK_DECISION_2026-10-23.md](PC_BTC07D_CM10_OWNER_RISK_DECISION_2026-10-23.md). BTC-07D-R01 blijft de rechtenonderbouwing.
