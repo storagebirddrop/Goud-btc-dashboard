@@ -52,7 +52,7 @@ jobs:
             --cbs-csv data/cbs-housing.csv \
             --legacy-json frontend/public/data/monthly.json \
             --out "$RUNNER_TEMP/btc07ea/export/btc-real-vintage.tar"
-          sha256sum "$RUNNER_TEMP/btc07ea/export/btc-real-vintage.tar" > "$RUNNER_TEMP/btc07ea/export/SHA256SUMS"
+          (cd "$RUNNER_TEMP/btc07ea/export" && sha256sum btc-real-vintage.tar > SHA256SUMS)
           digest="$(sha256sum "$RUNNER_TEMP/btc07ea/export/btc-real-vintage.tar" | cut -d' ' -f1)"
           python -m tools.btc_07b_package restore \
             --package "$RUNNER_TEMP/btc07ea/export/btc-real-vintage.tar" \
