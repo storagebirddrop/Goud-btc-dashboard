@@ -142,11 +142,19 @@ jobs:
             --out-dir "$RUNNER_TEMP/btc07eb" \
             --chrome "$(command -v google-chrome || command -v chromium-browser || command -v chromium)" \
             --real-candidate-dir "$RUNNER_TEMP/b/candidate" $extra
+      - name: BTC-08A independent restore from the package (fresh directory, offline replay in an empty network namespace)
+        shell: bash
+        run: |
+          extra="--expect-sha256 $PACKAGE_SHA256"
+          if [ "${ROUTE:-ARTIFACT}" = "ARTIFACT" ]; then
+            extra="$extra --calc-commit $CALC_COMMIT --expect-candidate-sha256 $EXPECT_CANDIDATE_SHA256 --expect-sidecar-sha256 $EXPECT_SIDECAR_SHA256 --expect-snapshot-id $EXPECT_SNAPSHOT_ID"
+          fi
+          python -m tools.btc_08a_verify_package --package "$RUNNER_TEMP/b/pkg/btc-real-vintage.tar" --dest "$RUNNER_TEMP/b/independent" $extra | tee "$RUNNER_TEMP/qa/btc08a-verify.json"
       - name: Synthetic regressions, production gates and public-data parity
         shell: bash
         run: |
           python -m pytest -q tests/test_btc_07b_p0_containment.py tests/test_btc_07b_p1_restore.py tests/test_btc_07b_p2_release_path.py \
-            tests/test_btc_07b_p3_frontend.py tests/test_btc_07b_p4_rollback.py tests/test_btc_06c_candidate.py tests/test_btc_07e_b_real_browser.py
+            tests/test_btc_07b_p3_frontend.py tests/test_btc_07b_p4_rollback.py tests/test_btc_06c_candidate.py tests/test_btc_07e_b_real_browser.py tests/test_btc_08a_verify_package.py
           python -m etl.data_quality
           grep -q 'BTC_APPROVED_COMPOSITE_SHA256:readonly string\[\]=\[\];' frontend/src/btc.ts
           grep -q '^ARTIFACT_RECORDS: tuple = ()' etl/btc_contract.py
@@ -193,6 +201,7 @@ jobs:
           path: |
             ${{ runner.temp }}/qa/qa.json
             ${{ runner.temp }}/qa/result-redacted.json
+            ${{ runner.temp }}/qa/btc08a-verify.json
             ${{ runner.temp }}/qa/acquisition-public-summary.json
           if-no-files-found: warn
           retention-days: 7

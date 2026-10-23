@@ -138,6 +138,13 @@ def test_workflow_pins_the_calculation_commit_only_after_proving_the_code_is_ide
         assert must_match in t[i_diff:i_pin]
 
 
+def test_workflow_runs_the_independent_restore_and_uploads_only_its_price_free_json():
+    t = text()
+    assert "tools.btc_08a_verify_package" in t and "--calc-commit $CALC_COMMIT" in t and "qa/btc08a-verify.json" in t
+    u = [p for p in t.split("- name:") if "actions/upload-artifact" in p][0]
+    assert "qa/btc08a-verify.json" in u and "b/independent" not in u
+
+
 def test_workflow_prints_no_summary_file_or_candidate_content():
     t = text()
     for line in t.splitlines():

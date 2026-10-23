@@ -33,14 +33,21 @@ function serve(dir) {
 const browser = await chromium.launch({executablePath: E.CHROME_PATH, args: ['--no-sandbox']});
 const prod = await serve(E.DIST_PRODUCTION), test = await serve(E.DIST_TEST);
 
-async function open(base, fixtureName, {width = 1280, init, query = ''} = {}) {
+// BTC-07E-B: serve fixture bytes from a REAL loopback HTTP server so that the payload is verified as received over HTTP, not read from disk
+const served = {count: 0};
+async function serveBytes(buf) {
+  const srv = http.createServer((req, res) => { served.count++; res.writeHead(200, {'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store'}); res.end(buf); });
+  return new Promise(r => srv.listen(0, '127.0.0.1', () => r({srv, base: `http://127.0.0.1:${srv.address().port}/`})));
+}
+async function open(base, fixtureName, {width = 1280, init, query = '', http: via} = {}) {
   const ctx = await browser.newContext({viewport: {width, height: 900}});
   const page = await ctx.newPage();
   const errors = [];
   page.on('console', m => m.type() === 'error' && errors.push(m.text()));
   page.on('pageerror', e => errors.push(String(e)));
   if (init) await page.addInitScript(init);
-  await page.route('**/data/monthly.json*', route => route.fulfill({status: 200, contentType: 'application/json', body: fixture(fixtureName)}));
+  if (via) await page.route('**/data/monthly.json*', route => route.continue({url: `${via.base}monthly.json`}));
+  else await page.route('**/data/monthly.json*', route => route.fulfill({status: 200, contentType: 'application/json', body: fixture(fixtureName)}));
   await page.goto(base + query, {waitUntil: 'networkidle'});
   await page.waitForTimeout(500);
   return {ctx, page, errors};
@@ -272,9 +279,27 @@ if (REAL) {
   const months = Object.keys(sidecar).filter(m => m >= '2014-02').sort();
   const want = {Q2: 0, 'Q1-kandidaat': 0};
   for (const r of preview.data) if (months.includes(r.period) && r.btc_meta) want[r.btc_meta.quality === 'Q2' ? 'Q2' : 'Q1-kandidaat']++;
-  check('R00', 'served test payload is byte-identical to the composed real payload (SHA-256)', crypto.createHash('sha256').update(fixture('real_default')).digest('hex') === E.REAL_PAYLOAD_SHA256);
-  check('R00', 'candidate covers 2014-02 onward, contiguous months, at least one month', months.length > 0 && months[0] === '2014-02');
-  const {ctx, page, errors} = await open(test.base, 'real_default');
+  check('R00', 'fixture file on disk is byte-identical to the composed real payload (SHA-256)', crypto.createHash('sha256').update(fixture('real_default')).digest('hex') === E.REAL_PAYLOAD_SHA256);
+  // the 151 candidate months are EXACTLY the contiguous calendar interval first..last (no gap, no extra month, nothing outside)
+  const nextMonth = m => { let [y, mo] = m.split('-').map(Number); mo++; if (mo > 12) { mo = 1; y++; } return `${y}-${String(mo).padStart(2, '0')}`; };
+  const FIRST = E.REAL_EXPECT_FIRST || '2014-02', LAST = E.REAL_EXPECT_LAST || '2026-08', COUNT = Number(E.REAL_EXPECT_COUNT || 151);
+  const interval = []; for (let m = FIRST; m <= LAST; m = nextMonth(m)) interval.push(m);
+  const allSidecar = Object.keys(sidecar).sort();
+  check('R00', `candidate months are exactly the contiguous calendar interval ${FIRST}..${LAST} (${COUNT} months)`, interval.length === COUNT && months.length === COUNT && months.every((m, i) => m === interval[i]) && allSidecar.length === COUNT);
+  // independent verification of the bytes the browser actually RECEIVES over the loopback HTTP server
+  const realBytes = fixture('real_default'), hsrv = await serveBytes(realBytes);
+  {
+    const ctx0 = await browser.newContext(), pg0 = await ctx0.newPage();
+    let bodyHash = null;
+    pg0.on('response', async r => { if (r.url().includes('/monthly.json')) bodyHash = crypto.createHash('sha256').update(await r.body()).digest('hex'); });
+    await pg0.route('**/data/monthly.json*', route => route.continue({url: `${hsrv.base}monthly.json`}));
+    await pg0.goto(test.base, {waitUntil: 'networkidle'});
+    const inPage = await pg0.evaluate(async () => { const r = await fetch('/data/monthly.json', {cache: 'no-store'}); const b = await r.arrayBuffer(); const d = await crypto.subtle.digest('SHA-256', b); return [...new Uint8Array(d)].map(x => x.toString(16).padStart(2, '0')).join(''); });
+    check('R00', 'payload received by the browser over the loopback HTTP server has the composed SHA-256 (in-page fetch, WebCrypto)', inPage === E.REAL_PAYLOAD_SHA256);
+    check('R00', 'response body captured at the network layer has the composed SHA-256, and the HTTP server delivered it', bodyHash === E.REAL_PAYLOAD_SHA256 && served.count >= 2);
+    await ctx0.close();
+  }
+  const {ctx, page, errors} = await open(test.base, 'real_default', {http: hsrv});
   await pick(page, ALT, BTC_VIEW);
   await page.getByRole('button', {name: 'Alles', exact: true}).click();
   await page.waitForTimeout(300);
@@ -296,13 +321,14 @@ if (REAL) {
   check('R03', 'numeric BTC rows are exactly the authorized months: none earlier, none missing, last month = candidate end', numeric.length === months.length && numeric[0] === '2014-02' && numeric[numeric.length - 1] === months[months.length - 1] && numeric.every((m, i) => m === months[i]));
   check('R03', 'no console errors on the real-candidate page', errors.length === 0, errors.join(' | '));
   await ctx.close();
-  const p = await open(prod.base, 'real_default');
+  const p = await open(prod.base, 'real_default', {http: hsrv});
   const ptxt = stripNote(await body(p.page));
   const psvg = (await p.page.$$eval('svg', s => s.map(x => x.textContent || ''))).join(' ');
   const pbtn = await p.page.$$eval('button,a,select', bs => bs.map(x => x.textContent || ''));
   check('R04', 'PRODUCTION build (empty approval pins) given the real payload: no Bitcoin text, series, control or chart text', !FORBID.test(ptxt) && !FORBID.test(psvg) && !pbtn.some(c => FORBID.test(c)));
   check('R04', 'PRODUCTION build still renders the legacy gold/CBS view', /320 maanden/.test(await body(p.page)) && (await p.page.locator('svg.recharts-surface').count()) > 0);
   await p.ctx.close();
+  hsrv.srv.close();
 }
 
 await browser.close(); prod.srv.close(); test.srv.close();
