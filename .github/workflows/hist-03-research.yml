@@ -49,7 +49,7 @@ jobs:
         run: python -m tools.hist_03_second_source --workbook "$RUNNER_TEMP/wb/world-bank-gold-history.xlsx" --summary-out "$RUNNER_TEMP/out/hist-03-second-source.json"
       - name: Metadata-only review artifacts (raw workbook is not uploaded)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hist-03-research-summaries-review-only
           path: ${{ runner.temp }}/out/*.json

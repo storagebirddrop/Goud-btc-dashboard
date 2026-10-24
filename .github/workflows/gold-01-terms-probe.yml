@@ -57,7 +57,7 @@ jobs:
           PY
       - name: Metadata-only review artifact (URL, status, sha256, short quotes; no third-party pages)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gold-01-terms-probe-review-only
           path: ${{ runner.temp }}/gold-01-terms-probe.json

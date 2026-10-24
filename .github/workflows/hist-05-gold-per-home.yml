@@ -33,7 +33,7 @@ jobs:
           --table-csv-out "$RUNNER_TEMP/hist-05-gold-per-home/table.csv"
       - name: Derived research artifact (research candidate - not approved, rights UNVERIFIED, no raw source data)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hist-05-gold-per-home-research-candidate-not-approved
           path: ${{ runner.temp }}/hist-05-gold-per-home/

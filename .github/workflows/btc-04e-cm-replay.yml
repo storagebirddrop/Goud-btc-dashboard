@@ -58,7 +58,7 @@ jobs:
           --verify-release-path
       - name: Public QA summary (price-free allowlist only; the full private summary never leaves the runner)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: btc-04e-public-summary-not-approved
           path: ${{ runner.temp }}/btc-04e-public/

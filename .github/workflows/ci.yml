@@ -32,7 +32,7 @@ jobs:
           cat "${RUNNER_TEMP}/cbs-i2b-e2e/manifest.json"
           git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
       - name: Upload isolated 380-month E2E proof
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cbs-i2b-380-month-e2e-review-only
           path: ${{ runner.temp }}/cbs-i2b-e2e/

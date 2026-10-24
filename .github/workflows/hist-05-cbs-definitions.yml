@@ -33,7 +33,7 @@ jobs:
         run: python -m tools.hist_05_cbs_definitions --summary-out "$RUNNER_TEMP/hist-05-cbs-definitions.json"
       - name: Metadata-only review artifact (metadata, short quotes, aggregates, sha256; no raw third-party data)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hist-05-cbs-definitions-summary-review-only
           path: ${{ runner.temp }}/hist-05-cbs-definitions.json

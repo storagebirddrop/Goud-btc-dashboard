@@ -53,7 +53,7 @@ jobs:
         run: python -m etl.coinmetrics_backfill
       - name: Upload validation report (no prices)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: btc-backfill-validation
           path: backfill-report.json

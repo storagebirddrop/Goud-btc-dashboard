@@ -85,7 +85,7 @@ jobs:
           PY
       - name: Upload verification report only
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cbs-02-i2a-e2e-report
           path: ${{ runner.temp }}/cbs/E2E-RESULT.json

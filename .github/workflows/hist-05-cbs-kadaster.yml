@@ -35,7 +35,7 @@ jobs:
           fi
       - name: Metadata-only review artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hist-05-cbs-kadaster-summary-review-only
           path: ${{ runner.temp }}/hist-05-cbs-kadaster.json
