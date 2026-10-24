@@ -25,7 +25,8 @@ Adversarial review of the gate. Every attempt below fails closed; no gate was we
 ## Defects found and corrected during review
 1. The initial deep-link and fetch code lived in `main.tsx`, which is guarded against URL/storage state and extra fetches (BTC publication boundary). Moved into two dedicated modules (`histNav.ts`, `histLoad.ts`) so the guard stays unchanged; each module's scope is asserted by tests.
 2. The TypeScript gate accepted extra keys on a series object; tightened to the exact model key set and break entries.
-3. Existing guards (research artifacts out of the frontend, model out of production files, single data target) were narrowed with explicit, test-asserted exemptions for the approved HD2/HD3 files only; no guard was removed.
+3. **BTC identity defect (caught by CI):** the contract module was first placed in `etl/`, which is part of the BTC calculation paths (`CALC_PATHS`); any new file there changes the approved D07 calculation identity. Moved to `tools/hist_publication.py` (outside the calculation paths); the identity test now also fails on untracked files in those paths. The browser harness bundle scan also compared absolute paths and tripped on a directory name; it now compares paths relative to the build output.
+4. Existing guards (research artifacts out of the frontend, single data target) were narrowed with explicit, test-asserted exemptions for the approved HD2 files only; no guard was removed.
 
 ## Counts
 - Python contract and gate: 30 tests, all pass (all but two positive cases assert a refusal).
