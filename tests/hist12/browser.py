@@ -33,7 +33,7 @@ def build_production(out: Path):
     vite_build(FRONTEND, out)
 
 
-def build_test(work: Path, pins: list, out: Path):
+def build_test(work: Path, pins: list, out: Path, allow_synthetic: bool = True):
     copy = work / "frontend-test-copy"
     copy.mkdir()
     for name in ("src", "index.html", "package.json", "tsconfig.json"):
@@ -44,7 +44,7 @@ def build_test(work: Path, pins: list, out: Path):
     text = hist.read_text(encoding="utf-8")
     if PIN_LINE not in text or ALLOW_LINE not in text:
         raise SystemExit("pin or synthetic-allow line not found: the test build cannot be prepared")
-    text = text.replace(PIN_LINE, "export const HIST_APPROVED_PAYLOAD_SHA256:readonly string[]=[" + ",".join(f"'{p}'" for p in pins) + "];").replace(ALLOW_LINE, "export const HIST_ALLOW_SYNTHETIC=true;")
+    text = text.replace(PIN_LINE, "export const HIST_APPROVED_PAYLOAD_SHA256:readonly string[]=[" + ",".join(f"'{p}'" for p in pins) + "];").replace(ALLOW_LINE, "export const HIST_ALLOW_SYNTHETIC=" + ("true" if allow_synthetic else "false") + ";")
     hist.write_text(text, encoding="utf-8")
     vite_build(copy, out)
 
