@@ -124,7 +124,11 @@ def test_research_artifacts_stay_out_of_the_frontend():
     for path in (ROOT / "frontend" / "src").rglob("*"):
         if path.suffix in {".ts", ".tsx"}:
             text = path.read_text(encoding="utf-8")
-            assert not re.search(r"hist_0|HIST-0|docs/research|1995|NLG", text), path.name
+            assert not re.search(r"hist_0|HIST-0|docs/research", text), path.name
+            if path.name not in {"hist.ts", "HistoricView.tsx"}:  # HIST-12: only the approved, inert HD2 scope constants (period bounds, currency labels) may live there
+                assert not re.search(r"1995|NLG", text), path.name
+            else:  # ... and never an array of observations
+                assert not re.search(r"(?:\d{3,}(?:\.\d+)?\s*,\s*){6,}", text), path.name
     assert not list((ROOT / "frontend" / "public").rglob("*hist*"))
 
 

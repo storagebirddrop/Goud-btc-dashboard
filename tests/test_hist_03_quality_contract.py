@@ -69,10 +69,13 @@ def test_frontend_src_has_no_historical_references():
     files = [p for p in (ROOT / "frontend" / "src").rglob("*") if p.is_file()]
     assert files
     pattern = re.compile(r"hist[_-]0\d|HIST-0\d|1975M|fixtures|\b19\d\d(?:-\d\d)?\b|\b19\d\dM\d\d\b", re.I)
+    # HIST-12 (HD1-HD3): the two files of the inert historical view may name the approved period bounds (1975..2000); research artifacts, fixtures and series codes stay forbidden everywhere
+    artifacts = re.compile(r"hist[_-]0\d|HIST-0\d|1975M|fixtures|\b19\d\dM\d\d\b", re.I)
     hits = []
     for p in files:
+        rule = artifacts if p.name in {"hist.ts", "HistoricView.tsx"} else pattern
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if pattern.search(line):
+            if rule.search(line):
                 hits.append(f"{p.name}:{i}")
     assert not hits, hits
 

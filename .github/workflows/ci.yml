@@ -53,3 +53,11 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+      # HIST-12: the TypeScript historical gate must agree with the Python contract on the SYNTHETIC fixtures (no browser, no network, no real data).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+        working-directory: .
+      - run: python -m tests.hist12.gate_parity
+        working-directory: .

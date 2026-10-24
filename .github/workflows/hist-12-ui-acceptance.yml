@@ -1,0 +1,55 @@
+name: HIST-12 inert historical UI acceptance (manual, synthetic fixtures only)
+
+# Manual only. Builds the production frontend (pin list empty) and a TEST copy whose pin list holds the hashes of SYNTHETIC fixtures, then runs the browser
+# acceptance (loopback, Playwright + Chromium). Publishes nothing, deploys nothing, uploads nothing; no historical data exists in this repository or workflow.
+# The pull_request trigger is deliberately narrow (this file only): a workflow that exists only on a feature branch cannot be dispatched.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/hist-12-ui-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hist-12-ui-acceptance
+  cancel-in-progress: false
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies (project requirements, frontend, Playwright)
+        shell: bash
+        run: |
+          python -m pip install -r requirements.txt
+          (cd frontend && npm ci --no-audit --no-fund)
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null \
+            && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund playwright@1.49.1 >/dev/null
+          echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules" >> "$GITHUB_ENV"
+      - name: Browser acceptance H01-H06 (synthetic)
+        shell: bash
+        run: |
+          python -m tests.hist12.browser --out-dir "$RUNNER_TEMP/hist12" \
+            --chrome "$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
+      - name: Contract, gate parity and production-parity regressions
+        shell: bash
+        run: |
+          python -m tests.hist12.gate_parity
+          python -m pytest -q tests/test_hist_12_publication.py tests/test_hist_12_frontend.py tests/test_hist_12_gate_parity.py tests/test_hist_12_production_parity.py tests/test_static_architecture.py
+          python -m etl.data_quality
+          git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
+          test -z "$(git status --porcelain)"

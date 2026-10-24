@@ -1,4 +1,4 @@
-"""Guard the decided static architecture (ADR-001): the dashboard reads only /data/monthly.json.
+"""Guard the decided static architecture (ADR-001): the dashboard reads only static JSON: /data/monthly.json and the inert, hash-pinned /data/historical.json.
 
 No Pages Functions, no D1 or other Cloudflare bindings, no API route that could serve data
 (for example gold values) outside the validated static JSON and its publication checks.
@@ -27,7 +27,8 @@ def test_frontend_reads_only_the_static_json():
         assert "/api/" not in text, f"{path.name} references an API route"
         targets += re.findall(r"fetch\(\s*([^),]+)", text)
     assert targets, "frontend must fetch the static dataset"
-    assert set(t.strip() for t in targets) == {"'/data/monthly.json'"}
+    # HIST-12: the one additional, inert target. It is requested only when a payload hash is pinned (tests/test_hist_12_frontend.py).
+    assert set(t.strip() for t in targets) == {"'/data/monthly.json'", "'/data/historical.json'"}
 
 
 def test_wrangler_config_is_static_only():
