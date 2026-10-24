@@ -67,7 +67,7 @@ for (const width of [1280, 375]) {
   const files = []; const walk = d => fs.readdirSync(d, {withFileTypes: true}).forEach(e => e.isDirectory() ? walk(path.join(d, e.name)) : files.push(path.join(d, e.name)));
   walk(E.DIST_PRODUCTION);
   const all = files.map(f => fs.readFileSync(f, 'latin1')).join('\n');
-  check('H01', 'production output: no historical.json and no fixture values or hashes', !files.some(f => /hist.*\.json$/i.test(f)) && !all.includes(E.VALID_SHA) && !/SYNTHETIC_TEST_ONLY_SOURCE/.test(all) && !all.includes('hist_gold'));
+  check('H01', 'production output: no historical.json and no fixture values or hashes', !files.some(f => /hist.*\.json$/i.test(path.relative(E.DIST_PRODUCTION, f))) && !all.includes(E.VALID_SHA) && !/SYNTHETIC_TEST_ONLY_SOURCE/.test(all) && !all.includes('hist_gold'));
 }
 
 // ---------------------------------------------------------------- H02 test build, valid synthetic payload
