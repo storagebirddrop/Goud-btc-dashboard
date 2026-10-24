@@ -7,6 +7,11 @@ import {SERIES,CATEGORIES,CARD_KEYS,visibleKeys,chartViews,presetRange,clampRang
 import type {SeriesKey,Point,Kind,Range,PresetId} from './series';
 import {activateBtc,applyBtc,btcNote,btcDefaultFrom,btcQualitiesIn,btcMissingSummary,BTC_QUALITY_TEXT,BTC_SOURCE_LINKS,BTC_LICENSE_URL,BTC_ATTRIBUTION_TEXT,BTC_DERIVED_TEXT,BTC_MODIFICATION_TEXT,BTC_METHOD_TEXT,BTC_INTERPRETATION_TEXT,BTC_HOLD_TEXT,BTC_HEADING_TEXT,BTC_NOTE_HEADER} from './btc';
 import type {BtcRoot} from './btc';
+import {useDark,useNarrow} from './hooks';
+import {loadHist} from './histLoad';
+import {histHashRequested,setHistHash,onHashChange} from './histNav';
+import type {HistData} from './hist';
+import {HistoricView} from './HistoricView';
 
 const PRESETS:{id:PresetId;label:string}[]=[{id:'all',label:'Alles'},{id:'2008',label:'Sinds 2008'},{id:'10y',label:'Laatste 10 jaar'}];
 const WARNING='De reeks toont de prijs van een gemiddeld verkochte bestaande koopwoning uitgedrukt in de gekozen rekeneenheid. De mix van verkochte woningen kan veranderen; de reeks meet geen constante woningkwaliteit of algemene betaalbaarheid. Dit is geen beleggingsadvies.';
@@ -23,18 +28,6 @@ async function sha256Hex(buf:ArrayBuffer):Promise<string|null>{
  try{const d=await crypto.subtle.digest('SHA-256',buf);return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('')}catch{return null}
 }
 function month(p:string){const [y,m]=p.split('-').map(Number);return new Date(Date.UTC(y,m-1,1)).toLocaleDateString('nl-NL',{month:'long',year:'numeric',timeZone:'UTC'})}
-function useDark(){
- const q='(prefers-color-scheme: dark)';
- const [d,setD]=React.useState(()=>window.matchMedia?.(q).matches??false);
- React.useEffect(()=>{const m=window.matchMedia?.(q);if(!m)return;const h=(e:MediaQueryListEvent)=>setD(e.matches);m.addEventListener('change',h);return()=>m.removeEventListener('change',h)},[]);
- return d;
-}
-function useNarrow(){
- const q='(max-width: 560px)';
- const [n,setN]=React.useState(()=>window.matchMedia?.(q).matches??false);
- React.useEffect(()=>{const m=window.matchMedia?.(q);if(!m)return;const h=(e:MediaQueryListEvent)=>setN(e.matches);m.addEventListener('change',h);return()=>m.removeEventListener('change',h)},[]);
- return n;
-}
 const colorOf=(k:SeriesKey,dark:boolean)=>dark?SERIES[k].dark:SERIES[k].light;
 
 function InfoHint({id}:{id:string}){
@@ -146,10 +139,25 @@ function App(){
  const [catId,setCatId]=React.useState('');
  const [viewId,setViewId]=React.useState('');
  const [open,setOpen]=React.useState(false);
+ const [hist,setHist]=React.useState<HistData|null>(null);
+ const [view,setView]=React.useState<'actueel'|'historisch'>('actueel');
  const [table,setTable]=React.useState(false);
  const dark=useDark();
  const narrow=useNarrow();
  React.useEffect(()=>{fetch('/data/monthly.json').then(async r=>{if(!r.ok)throw Error(`HTTP ${r.status}`);const buf=await r.arrayBuffer();return {sha:await sha256Hex(buf),j:JSON.parse(new TextDecoder().decode(buf)) as {data:Point[]}|null}}).then(({sha,j})=>{if(!j||!Array.isArray(j.data))throw Error('Ongeldig dataformaat');const rows=j.data.filter(p=>p&&typeof p.period==='string'&&/^\d{4}-\d{2}$/.test(p.period));if(rows.length!==j.data.length)throw Error('Ongeldig dataformaat (periode)');const root=activateBtc(sha,j);setBtc(root);setData(applyBtc(rows,root))}).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[]);
+
+
+ // HIST-12: the historical payload is requested ONLY when a payload hash is pinned (histLoad.ts; default: no request at all). Any failure is silent.
+ React.useEffect(()=>{let live=true;loadHist().then(h=>{if(live)setHist(h)});return()=>{live=false}},[]);
+ // Deep link: '#historisch' is honoured only once a payload has been authorized by hash; it never grants access (histNav.ts).
+ React.useEffect(()=>{
+  if(!hist){setView('actueel');return}
+  const apply=()=>setView(histHashRequested()?'historisch':'actueel');
+  apply();return onHashChange(apply);
+ },[hist]);
+ const go=(v:'actueel'|'historisch')=>{if(!hist)return;setView(v);setHistHash(v==='historisch')};
+ const onTabKey=(e:React.KeyboardEvent)=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'||e.key==='Home'||e.key==='End'){e.preventDefault();const next=e.key==='Home'?'actueel':e.key==='End'?'historisch':view==='actueel'?'historisch':'actueel';go(next);document.getElementById(`tab-${next}`)?.focus()}};
+ const showHist=!!hist&&view==='historisch';
 
  const avail=React.useMemo(()=>new Set<SeriesKey>(visibleKeys(data,!!btc)),[data,btc]);
  const periods=React.useMemo(()=>data.map(p=>p.period),[data]);
@@ -178,7 +186,11 @@ function App(){
    {data.length>0&&<p className="lede">Maandelijkse CBS-reeksen, {month(first)} t/m {month(last)}: gemiddelde verkoopprijs in euro en prijsindex.</p>}
    {!error&&!loading&&<p className="muted">Nog niet beschikbaar: {missing}.</p>}
   </header>
-  {error?<p role="alert" className="notice">Dashboardgegevens niet beschikbaar: {error}</p>:loading?<p role="status">Gegevens laden…</p>:data.length===0||avail.size===0||!eff?<p className="notice">Nog geen gevalideerde brongegevens geladen.</p>:<>
+  {hist&&<div className="segs" role="tablist" aria-label="Weergave" onKeyDown={onTabKey}>
+   <button type="button" role="tab" id="tab-actueel" aria-selected={view==='actueel'} aria-controls="view-main" tabIndex={view==='actueel'?0:-1} className="seg" onClick={()=>go('actueel')}>Actueel</button>
+   <button type="button" role="tab" id="tab-historisch" aria-selected={view==='historisch'} aria-controls="view-main" tabIndex={view==='historisch'?0:-1} className="seg" onClick={()=>go('historisch')}>Historisch</button>
+  </div>}
+  {showHist&&hist?<div id="view-main" role="tabpanel" aria-labelledby="tab-historisch"><HistoricView data={hist}/></div>:error?<p role="alert" className="notice">Dashboardgegevens niet beschikbaar: {error}</p>:loading?<p role="status">Gegevens laden…</p>:data.length===0||avail.size===0||!eff?<p className="notice">Nog geen gevalideerde brongegevens geladen.</p>:<>
   <div className="toolbar" role="group" aria-label="Periode">
    <span className="tl">Periode</span>
    <span className="segs">{PRESETS.map(p=><button key={p.id} type="button" className="seg" aria-pressed={pressed(p.id)} onClick={()=>setRange(presetRange(p.id,periods))}>{p.label}</button>)}</span>
