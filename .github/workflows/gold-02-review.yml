@@ -42,7 +42,7 @@ jobs:
           sha256sum "${RUNNER_TEMP}/gold-02-review/"*
           git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
       - name: Upload review-only release bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gold-02-release-candidate-review-only
           path: ${{ runner.temp }}/gold-02-review/

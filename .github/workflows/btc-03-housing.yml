@@ -36,7 +36,7 @@ jobs:
           --bundles-out "$RUNNER_TEMP/btc-03-bundles"
       - name: Derived research artifact (aggregates only; no raw exchange data; rights UNVERIFIED)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: btc-03-summary-not-approved
           path: ${{ runner.temp }}/btc-03/

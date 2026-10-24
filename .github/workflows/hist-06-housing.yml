@@ -30,7 +30,7 @@ jobs:
         run: python -m tools.hist_06_housing probe --cbs-csv data/cbs-housing.csv --summary-out "$RUNNER_TEMP/hist-06-housing.json"
       - name: Metadata-only review artifact (no raw third-party bytes)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hist-06-housing-summary-review-only
           path: ${{ runner.temp }}/hist-06-housing.json

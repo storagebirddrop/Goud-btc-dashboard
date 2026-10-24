@@ -65,7 +65,7 @@ jobs:
           git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json data/fixtures/btc04e/source_pins.json
       - name: Upload real vintage archive for owner retention
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: btc-07e-a-real-vintage-owner-download
           path: |
@@ -75,7 +75,7 @@ jobs:
           retention-days: 1
       - name: Upload price-free evidence (including on failed acquisition)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: btc-07e-a-public-qa
           path: ${{ runner.temp }}/btc07ea/reports/public-summary.json

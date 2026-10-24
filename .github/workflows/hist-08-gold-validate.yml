@@ -37,7 +37,7 @@ jobs:
           --overlap-csv-out "$RUNNER_TEMP/hist-08/overlap_1999_2001.csv"
       - name: Derived research artifact (aggregates and a 36-row derived overlap table; rights UNVERIFIED; no raw source bytes)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hist-08-gold-validation-not-approved
           path: ${{ runner.temp }}/hist-08/

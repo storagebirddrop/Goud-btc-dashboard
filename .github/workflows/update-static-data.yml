@@ -39,7 +39,7 @@ jobs:
           python -m etl.cbs_historical_update --live-csv "${RUNNER_TEMP}/cbs-source/live.csv" --output-dir "${RUNNER_TEMP}/cbs-review"
       - name: Upload blocked revision report for governance review
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cbs-revision-blocked-review-only
           path: ${{ runner.temp }}/cbs-review-revision-review/revision-report.json
@@ -53,7 +53,7 @@ jobs:
         run: |
           git diff --exit-code -- data/cbs-housing.csv frontend/public/data/monthly.json
       - name: Upload review-only candidate and provenance manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cbs-validated-review-only
           path: ${{ runner.temp }}/cbs-review/

@@ -48,7 +48,7 @@ jobs:
           OUT_DIR="$RUNNER_TEMP/gold04-shots" node gold_04_live_browser.mjs
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gold-04-live-screenshots
           path: ${{ runner.temp }}/gold04-shots/

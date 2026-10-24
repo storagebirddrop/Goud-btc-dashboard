@@ -65,7 +65,7 @@ jobs:
           }, sort_keys=True, indent=2)+"\n")
           PY
       - name: Upload metadata-only audit report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-01b-offline-evidence-review-only
           path: ${{ runner.temp }}/data-01b/status.json
