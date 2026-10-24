@@ -9,7 +9,7 @@ Status: IMPLEMENTED, **INERT**. Historical publication: HOLD. No historical valu
 ## What was built
 | Part | Files |
 |---|---|
-| Publication contract `hist-publication/1` (reuses `hist_model`: canonical JSON, `Series`, `release_hash`, `ReleaseRecord`, `publication_gate`) | `etl/hist_publication.py` |
+| Publication contract `hist-publication/1` (reuses `hist_model`: canonical JSON, `Series`, `release_hash`, `ReleaseRecord`, `publication_gate`) | `tools/hist_publication.py` |
 | Frontend gate (TypeScript counterpart; fail closed, no messages) | `frontend/src/hist.ts` (`HIST_APPROVED_PAYLOAD_SHA256 = []`, `HIST_ALLOW_SYNTHETIC = false`) |
 | Only network access, empty pin list = no request | `frontend/src/histLoad.ts` |
 | Only URL-hash access (selects the tab, after authorization) | `frontend/src/histNav.ts` |

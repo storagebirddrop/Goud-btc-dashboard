@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from etl import hist_model as hm
-from etl import hist_publication as hp
+from tools import hist_publication as hp
 from tests.hist12 import synthetic as sy
 
 

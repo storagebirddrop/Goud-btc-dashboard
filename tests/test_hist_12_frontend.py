@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from etl import hist_publication as hp
+from tools import hist_publication as hp
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "frontend/src"

@@ -1,7 +1,7 @@
 """HIST-12: the historical publication contract `hist-publication/1` (inert: nothing is published; the release allowlist stays empty).
 
 A SEPARATE static payload (`historical.json`) for the approved HIST-11 scope (HD2): nominal NVM half-year medians (NLG original and a labelled retrospective EUR
-denomination), CBS monthly averages 1995-01..1999-12 and the matching half-year CBS means for a comparison panel. It never touches `monthly.json`.
+denomination), CBS monthly averages 1995-01..1999-12 and the matching half-year CBS means for a comparison panel. It never touches the current public dataset.
 
 Authority never comes from the payload itself. A payload is accepted only when ALL hold (fail closed, `HistPublicationDenied` otherwise):
   1. the SHA-256 of its exact bytes is in the supplied pin list (the frontend counterpart is `HIST_APPROVED_PAYLOAD_SHA256`, default empty);

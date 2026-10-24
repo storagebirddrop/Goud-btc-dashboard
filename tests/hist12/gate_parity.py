@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from etl import hist_model as hm  # noqa: E402
-from etl import hist_publication as hp  # noqa: E402
+from tools import hist_publication as hp  # noqa: E402
 from tests.hist12 import fixtures as fx  # noqa: E402
 from tests.hist12 import synthetic as sy  # noqa: E402
 

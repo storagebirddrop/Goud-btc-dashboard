@@ -7,7 +7,7 @@ import pytest
 
 from etl import btc_contract as bc
 from etl import hist_model as hm
-from etl import hist_publication as hp
+from tools import hist_publication as hp
 from tools import btc_10_d07 as d07
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +41,7 @@ def test_the_btc_d07_calculation_identity_is_unchanged():
     if subprocess.run(["git", "cat-file", "-e", f"{C}^{{commit}}"], cwd=ROOT, capture_output=True).returncode != 0:
         pytest.skip("NOT EXECUTED: the frozen calculation commit is not in this (shallow) checkout")
     ident = d07.calc_identity(C)
-    assert ident["calc_paths_identical_to_C"], "calculation code differs from the frozen BTC commit: the approved D07 identity would be invalidated"
+    assert ident["ok"], "calculation code differs (or an uncommitted/untracked file sits in the calculation paths) from the frozen BTC commit: the approved D07 identity would be invalidated"
 
 
 def test_no_historical_data_exists_in_public_or_data_directories():

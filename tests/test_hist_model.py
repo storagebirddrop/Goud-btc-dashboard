@@ -639,8 +639,7 @@ def test_no_production_file_references_the_model():
             if path.is_file() and path.suffix in {".py", ".ts", ".tsx", ".yml", ".yaml", ".json", ".csv"}:
                 if path.name != "hist_model.py" and "hist_model" in path.read_text(encoding="utf-8", errors="ignore"):
                     users.append(str(path.relative_to(ROOT)))
-    # HIST-12 (HD3): the inert historical publication contract is the one approved production user of the model (it reuses the gate; ALLOWLIST stays empty)
-    assert users == ["etl/hist_publication.py"]
+    assert users == []
 
 
 def test_published_json_is_untouched_by_the_model():

@@ -7,7 +7,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from etl import hist_model as hm
-from etl import hist_publication as hp
+from tools import hist_publication as hp
 
 M = hp.SYNTHETIC_MARKER
 SRC_ID = "synthetic_test_only_source"

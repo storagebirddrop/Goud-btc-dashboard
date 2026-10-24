@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from etl import hist_model as hm
-from etl import hist_publication as hp
+from tools import hist_publication as hp
 from tests.hist12 import synthetic as sy
 
 ROOT = Path(__file__).resolve().parents[1]

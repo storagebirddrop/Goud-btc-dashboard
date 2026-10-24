@@ -3,7 +3,7 @@
 // The historical interface is INERT: `HIST_APPROVED_PAYLOAD_SHA256` is empty, so `activateHist` returns null for every input and the app does not even
 // request /data/historical.json. A payload is accepted only when the SHA-256 of its exact bytes is pinned AND its structure matches the approved HD2 scope
 // (series, frequency, currency, unit, definitions, exact periods, quality, flags, provenance, comparison). A label, a flag, a query parameter or browser
-// storage never authorizes anything. This file is the TypeScript counterpart of etl/hist_publication.py; tests/test_hist_12_frontend.py keeps them equal.
+// storage never authorizes anything. This file is the TypeScript counterpart of tools/hist_publication.py; tests/test_hist_12_frontend.py keeps them equal.
 
 export type HistId='hist_nvm_median_nlg_h'|'hist_nvm_median_eur_retro_h'|'hist_cbs_avg_eur_m'|'hist_cbs_avg_eur_h';
 export type HistSpec={frequency:'semiannual'|'monthly';currency:'NLG'|'EUR';unit:string;kind:string;definition_id:string;layer:string;first:string;last:string;count:number;flags:string[]};
